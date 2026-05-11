@@ -21,12 +21,12 @@ export default function Sidebar({ user }) {
       {/* Logo */}
       <div className="px-6 py-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
-            <BookOpen className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shadow-lg">
+            <BookOpen className="w-5 h-5 text-sidebar-primary-foreground" />
           </div>
           <div>
-            <p className="text-sidebar-foreground font-sora font-semibold text-sm leading-tight">Knowledge</p>
-            <p className="text-sidebar-foreground/50 text-xs">Base</p>
+            <p className="text-sidebar-foreground font-merriweather font-bold text-sm leading-tight">Knowledge</p>
+            <p className="text-sidebar-foreground/50 text-xs font-inter">Base</p>
           </div>
         </div>
       </div>

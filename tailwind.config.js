@@ -7,6 +7,7 @@ module.exports = {
       fontFamily: {
         inter: ['Inter', 'sans-serif'],
         sora: ['Sora', 'sans-serif'],
+        merriweather: ['Merriweather', 'serif'],
       },
   		borderRadius: {
   			lg: 'var(--radius)',
