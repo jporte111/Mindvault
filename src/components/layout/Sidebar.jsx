@@ -25,8 +25,8 @@ export default function Sidebar({ user }) {
             <BookOpen className="w-5 h-5 text-sidebar-primary-foreground" />
           </div>
           <div>
-            <p className="text-sidebar-foreground font-merriweather font-bold text-sm leading-tight">Knowledge</p>
-            <p className="text-sidebar-foreground/50 text-xs font-inter">Base</p>
+            <p className="text-sidebar-foreground font-sora font-semibold text-sm leading-tight">Knowledge</p>
+            <p className="text-sidebar-foreground/50 text-xs">Base</p>
           </div>
         </div>
       </div>
