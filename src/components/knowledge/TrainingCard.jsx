@@ -1,0 +1,89 @@
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Play, User, Clock, ChevronRight, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+const categoryColors = {
+  Sales: 'bg-blue-100 text-blue-700 border-blue-200',
+  Operations: 'bg-green-100 text-green-700 border-green-200',
+  Product: 'bg-purple-100 text-purple-700 border-purple-200',
+  HR: 'bg-pink-100 text-pink-700 border-pink-200',
+  Leadership: 'bg-amber-100 text-amber-700 border-amber-200',
+  'Customer Service': 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  Technical: 'bg-orange-100 text-orange-700 border-orange-200',
+  Onboarding: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  General: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+export default function TrainingCard({ training }) {
+  const colorClass = categoryColors[training.category] || categoryColors.General;
+
+  return (
+    <Link to={`/training/${training.id}`}>
+      <Card className="group hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer border border-border bg-card overflow-hidden h-full">
+        {/* Top accent bar */}
+        <div className="h-1 bg-gradient-to-r from-primary to-primary/40" />
+        
+        <CardHeader className="pb-3 pt-5 px-5">
+          <div className="flex items-start justify-between gap-3">
+            <Badge variant="outline" className={`text-xs font-medium border ${colorClass} shrink-0`}>
+              {training.category || 'General'}
+            </Badge>
+            {training.status === 'processing' && (
+              <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30 gap-1">
+                <Sparkles className="w-3 h-3 animate-pulse" />
+                Processing
+              </Badge>
+            )}
+          </div>
+          <h3 className="font-sora font-semibold text-foreground text-base leading-snug group-hover:text-primary transition-colors mt-2 line-clamp-2">
+            {training.title}
+          </h3>
+        </CardHeader>
+
+        <CardContent className="px-5 pb-5 space-y-4">
+          {training.summary && (
+            <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
+              {training.summary}
+            </p>
+          )}
+
+          {training.key_takeaways?.length > 0 && (
+            <div className="space-y-1.5">
+              {training.key_takeaways.slice(0, 2).map((kt, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <span className="text-primary mt-0.5 flex-shrink-0">•</span>
+                  <span className="line-clamp-1">{kt}</span>
+                </div>
+              ))}
+              {training.key_takeaways.length > 2 && (
+                <p className="text-xs text-primary/70 font-medium">+{training.key_takeaways.length - 2} more takeaways</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              {training.presenter && (
+                <span className="flex items-center gap-1">
+                  <User className="w-3 h-3" />
+                  {training.presenter}
+                </span>
+              )}
+              {training.duration_minutes && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {training.duration_minutes}m
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              View <ChevronRight className="w-3 h-3" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}

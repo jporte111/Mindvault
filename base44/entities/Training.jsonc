@@ -1,0 +1,65 @@
+{
+  "name": "Training",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the training session"
+    },
+    "category": {
+      "type": "string",
+      "description": "Category or topic of the training"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Link to the Google Meet recording"
+    },
+    "transcript": {
+      "type": "string",
+      "description": "Full transcript of the training session"
+    },
+    "summary": {
+      "type": "string",
+      "description": "AI-generated summary of the training"
+    },
+    "key_takeaways": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "AI-generated key takeaways from the training"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Duration of the training in minutes"
+    },
+    "drive_file_id": {
+      "type": "string",
+      "description": "Google Drive file ID for the transcript"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for additional filtering"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "ready",
+        "error"
+      ],
+      "default": "processing",
+      "description": "Processing status of the training"
+    },
+    "presenter": {
+      "type": "string",
+      "description": "Name of the presenter"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}
