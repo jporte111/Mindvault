@@ -6,35 +6,35 @@
 
 @layer base {
   :root {
-    /* Forest green + warm cream theme */
-    --background: 60 20% 96%;
-    --foreground: 120 25% 15%;
+    /* Clean white + forest green theme */
+    --background: 0 0% 100%;
+    --foreground: 120 30% 18%;
     --card: 0 0% 100%;
-    --card-foreground: 120 25% 15%;
+    --card-foreground: 120 30% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 120 25% 15%;
+    --popover-foreground: 120 30% 18%;
     --primary: 120 40% 28%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 60 18% 91%;
-    --secondary-foreground: 120 25% 20%;
-    --muted: 60 15% 90%;
-    --muted-foreground: 120 10% 42%;
-    --accent: 120 30% 88%;
+    --secondary: 120 10% 95%;
+    --secondary-foreground: 120 30% 20%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 120 8% 45%;
+    --accent: 120 25% 92%;
     --accent-foreground: 120 40% 22%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 60 12% 85%;
-    --input: 60 12% 88%;
+    --border: 120 8% 88%;
+    --input: 120 8% 90%;
     --ring: 120 40% 28%;
     --radius: 0.75rem;
     --sidebar-background: 120 35% 20%;
-    --sidebar-foreground: 60 20% 90%;
-    --sidebar-primary: 60 70% 55%;
-    --sidebar-primary-foreground: 120 35% 15%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 120 35% 18%;
     --sidebar-accent: 120 30% 26%;
-    --sidebar-accent-foreground: 60 20% 92%;
+    --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 120 28% 25%;
-    --sidebar-ring: 60 70% 55%;
+    --sidebar-ring: 0 0% 100%;
     --chart-1: 120 40% 28%;
     --chart-2: 60 70% 45%;
     --chart-3: 30 80% 55%;
