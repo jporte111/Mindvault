@@ -39,12 +39,9 @@ export default function UploadTraining() {
     let transcript = '';
     const fileName = transcriptFile.name.toLowerCase();
     if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
-      // Use LLM vision to extract text from Word docs
-      const extracted = await base44.integrations.Core.InvokeLLM({
-        prompt: 'Extract the full verbatim text content from this document. Return only the raw text, no commentary.',
-        file_urls: [file_url]
-      });
-      transcript = typeof extracted === 'string' ? extracted : JSON.stringify(extracted);
+      // Use backend function with mammoth to extract text from Word docs
+      const res = await base44.functions.invoke('extractDocxText', { file_url });
+      transcript = res.data?.text || '';
     } else if (fileName.endsWith('.pdf')) {
       const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
         file_url,
