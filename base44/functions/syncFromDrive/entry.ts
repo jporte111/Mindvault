@@ -15,14 +15,15 @@ Deno.serve(async (req) => {
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googledrive');
     const authHeader = { Authorization: `Bearer ${accessToken}` };
 
-    // List files in the specified folder (or root if none)
-    let filesUrl = `https://www.googleapis.com/drive/v3/files?fields=files(id,name,mimeType,webViewLink,createdTime)&q=`;
-    
+    // List all files in the folder
+    let query = `trashed=false`;
     if (folderId) {
-      filesUrl += encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+      query = `'${folderId}' in parents and trashed=false`;
     } else {
-      filesUrl += encodeURIComponent(`mimeType='text/plain' and name contains 'transcript' and trashed=false`);
+      query = `(mimeType='text/plain' or mimeType='application/vnd.google-apps.document') and name contains 'transcript' and trashed=false`;
     }
+
+    const filesUrl = `https://www.googleapis.com/drive/v3/files?fields=files(id,name,mimeType,webViewLink,createdTime)&q=${encodeURIComponent(query)}&pageSize=100`;
 
     const filesRes = await fetch(filesUrl, { headers: authHeader });
     if (!filesRes.ok) {
@@ -31,6 +32,8 @@ Deno.serve(async (req) => {
     }
 
     const { files } = await filesRes.json();
+    console.log(`Found ${(files || []).length} files in folder`);
+    console.log('Files:', JSON.stringify((files || []).map(f => ({ name: f.name, mimeType: f.mimeType, id: f.id }))));
 
     // Get existing trainings to avoid duplicates
     const existingTrainings = await base44.asServiceRole.entities.Training.list();
@@ -40,16 +43,51 @@ Deno.serve(async (req) => {
     const results = [];
 
     for (const file of newFiles) {
-      // Download file content
-      const contentRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-        { headers: authHeader }
-      );
+      let transcript = '';
 
-      if (!contentRes.ok) continue;
+      try {
+        if (file.mimeType === 'application/vnd.google-apps.document') {
+          // Export Google Doc as plain text
+          const exportRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain`,
+            { headers: authHeader }
+          );
+          if (!exportRes.ok) {
+            console.log(`Failed to export Google Doc ${file.name}: ${exportRes.status}`);
+            continue;
+          }
+          transcript = await exportRes.text();
+        } else if (
+          file.mimeType === 'text/plain' ||
+          file.mimeType === 'text/vtt' ||
+          file.mimeType === 'application/octet-stream' ||
+          file.name.match(/\.(txt|vtt|srt|md)$/i)
+        ) {
+          // Download plain text file
+          const contentRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+            { headers: authHeader }
+          );
+          if (!contentRes.ok) {
+            console.log(`Failed to download ${file.name}: ${contentRes.status}`);
+            continue;
+          }
+          transcript = await contentRes.text();
+        } else {
+          console.log(`Skipping unsupported file type: ${file.name} (${file.mimeType})`);
+          continue;
+        }
+      } catch (downloadErr) {
+        console.log(`Error downloading ${file.name}: ${downloadErr.message}`);
+        continue;
+      }
 
-      const transcript = await contentRes.text();
-      const title = file.name.replace(/\.(txt|vtt|srt|docx?)$/i, '').replace(/transcript/i, '').trim() || file.name;
+      if (!transcript || transcript.trim().length < 50) {
+        console.log(`Skipping ${file.name} — transcript too short or empty`);
+        continue;
+      }
+
+      const title = file.name.replace(/\.(txt|vtt|srt|md|docx?)$/i, '').trim() || file.name;
 
       // Create the training record first as "processing"
       const training = await base44.asServiceRole.entities.Training.create({
@@ -98,6 +136,7 @@ Return JSON with: summary (string), key_takeaways (array of strings), category (
 
         results[results.length - 1].status = 'processed';
       } catch (aiErr) {
+        console.log(`AI processing error for ${title}: ${aiErr.message}`);
         await base44.asServiceRole.entities.Training.update(training.id, { status: 'ready' });
       }
     }
