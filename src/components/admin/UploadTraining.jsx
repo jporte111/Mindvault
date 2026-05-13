@@ -65,6 +65,10 @@ export default function UploadTraining() {
       return;
     }
 
+    // 2b. Upload the extracted text as a plain text file
+    const textFile = new File([transcript], 'transcript.txt', { type: 'text/plain' });
+    const { file_url: transcriptFileUrl } = await base44.integrations.Core.UploadFile({ file: textFile });
+
     // 3. AI processing
     const aiResult = await base44.integrations.Core.InvokeLLM({
       prompt: `You are processing a training session transcript. Extract and generate the following from the transcript below.
@@ -90,10 +94,10 @@ Return a JSON object with:
       },
     });
 
-    // 4. Save to DB — store file_url instead of raw transcript text
+    // 4. Save to DB — store extracted text file URL
     await base44.entities.Training.create({
       title: title.trim(),
-      transcript: file_url,
+      transcript: transcriptFileUrl,
       video_url: videoUrl.trim() || undefined,
       summary: aiResult.summary,
       key_takeaways: aiResult.key_takeaways,
