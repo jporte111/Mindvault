@@ -35,9 +35,28 @@ export default function UploadTraining() {
     // 1. Upload the file
     const { file_url } = await base44.integrations.Core.UploadFile({ file: transcriptFile });
 
-    // 2. Fetch the text content for AI processing
-    const textRes = await fetch(file_url);
-    const transcript = await textRes.text();
+    // 2. Extract text content (handles .docx, .pdf, .txt properly)
+    let transcript = '';
+    const fileName = transcriptFile.name.toLowerCase();
+    if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf')) {
+      const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+        json_schema: {
+          type: 'object',
+          properties: { text: { type: 'string', description: 'The full text content of the document' } }
+        }
+      });
+      transcript = extracted?.output?.text || '';
+    } else {
+      const textRes = await fetch(file_url);
+      transcript = await textRes.text();
+    }
+
+    if (!transcript || transcript.trim().length < 50) {
+      toast.error('Could not extract text from the file. Please try a .txt file instead.');
+      setUploading(false);
+      return;
+    }
 
     // 3. AI processing
     const aiResult = await base44.integrations.Core.InvokeLLM({
