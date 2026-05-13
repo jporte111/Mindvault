@@ -24,15 +24,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build context from summaries + key takeaways (not full transcripts to save tokens)
-    const context = trainings.map((t, i) => `
-[Training ${i + 1}]: ${t.title}
+    // Build context from summaries + key takeaways
+    // transcript field may now be a URL — fetch a snippet if so
+    const contextParts = await Promise.all(trainings.map(async (t, i) => {
+      let transcriptExcerpt = '';
+      if (t.transcript) {
+        if (t.transcript.startsWith('http')) {
+          try {
+            const res = await fetch(t.transcript);
+            const text = await res.text();
+            transcriptExcerpt = `Transcript excerpt: ${text.substring(0, 1500)}`;
+          } catch (_) { /* skip */ }
+        } else {
+          transcriptExcerpt = `Transcript excerpt: ${t.transcript.substring(0, 1500)}`;
+        }
+      }
+      return `[Training ${i + 1}]: ${t.title}
 Category: ${t.category || 'General'}
 Presenter: ${t.presenter || 'Unknown'}
 Summary: ${t.summary || 'No summary available'}
 Key Takeaways: ${(t.key_takeaways || []).join('; ')}
-${t.transcript ? `Transcript excerpt: ${t.transcript.substring(0, 1500)}` : ''}
----`).join('\n');
+${transcriptExcerpt}
+---`;
+    }));
+    const context = contextParts.join('\n');
 
     const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: `You are a knowledgeable assistant for an internal company training knowledge base. 

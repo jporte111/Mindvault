@@ -35,7 +35,7 @@ export default function UploadTraining() {
     // 1. Upload the file
     const { file_url } = await base44.integrations.Core.UploadFile({ file: transcriptFile });
 
-    // 2. Fetch the text content
+    // 2. Fetch the text content for AI processing
     const textRes = await fetch(file_url);
     const transcript = await textRes.text();
 
@@ -64,10 +64,10 @@ Return a JSON object with:
       },
     });
 
-    // 4. Save to DB
+    // 4. Save to DB — store file_url instead of raw transcript text
     await base44.entities.Training.create({
       title: title.trim(),
-      transcript,
+      transcript: file_url,
       video_url: videoUrl.trim() || undefined,
       summary: aiResult.summary,
       key_takeaways: aiResult.key_takeaways,

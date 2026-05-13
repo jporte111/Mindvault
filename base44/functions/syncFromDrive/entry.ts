@@ -89,10 +89,15 @@ Deno.serve(async (req) => {
 
       const title = file.name.replace(/\.(txt|vtt|srt|md|docx?)$/i, '').trim() || file.name;
 
+      // Upload transcript text as a file to avoid field size limits
+      const transcriptBlob = new Blob([transcript], { type: 'text/plain' });
+      const transcriptFile = new File([transcriptBlob], `${file.id}.txt`, { type: 'text/plain' });
+      const { file_url: transcriptUrl } = await base44.asServiceRole.integrations.Core.UploadFile({ file: transcriptFile });
+
       // Create the training record first as "processing"
       const training = await base44.asServiceRole.entities.Training.create({
         title,
-        transcript,
+        transcript: transcriptUrl,
         drive_file_id: file.id,
         status: 'processing',
         video_url: file.webViewLink || ''

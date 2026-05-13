@@ -10,6 +10,8 @@ import { ArrowLeft, Play, User, Clock, CheckCircle2, FileText, Sparkles } from '
 export default function TrainingDetail() {
   const { id } = useParams();
   const [showTranscript, setShowTranscript] = useState(false);
+  const [transcriptText, setTranscriptText] = useState(null);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
 
   const { data: training, isLoading } = useQuery({
     queryKey: ['training', id],
@@ -140,17 +142,30 @@ export default function TrainingDetail() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowTranscript(prev => !prev)}
+                disabled={loadingTranscript}
+                onClick={async () => {
+                  if (!showTranscript && transcriptText === null) {
+                    setLoadingTranscript(true);
+                    if (training.transcript.startsWith('http')) {
+                      const res = await fetch(training.transcript);
+                      setTranscriptText(await res.text());
+                    } else {
+                      setTranscriptText(training.transcript);
+                    }
+                    setLoadingTranscript(false);
+                  }
+                  setShowTranscript(prev => !prev);
+                }}
                 className="text-xs"
               >
-                {showTranscript ? 'Hide' : 'Show'} Transcript
+                {loadingTranscript ? 'Loading...' : showTranscript ? 'Hide' : 'Show'} Transcript
               </Button>
             </CardHeader>
-            {showTranscript && (
+            {showTranscript && transcriptText && (
               <CardContent>
                 <div className="bg-muted/50 rounded-xl p-4 max-h-96 overflow-y-auto">
                   <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
-                    {training.transcript}
+                    {transcriptText}
                   </pre>
                 </div>
               </CardContent>
