@@ -35,10 +35,17 @@ export default function UploadTraining() {
     // 1. Upload the file
     const { file_url } = await base44.integrations.Core.UploadFile({ file: transcriptFile });
 
-    // 2. Extract text content (handles .docx, .pdf, .txt properly)
+    // 2. Extract text content
     let transcript = '';
     const fileName = transcriptFile.name.toLowerCase();
-    if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf')) {
+    if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+      // Use LLM vision to extract text from Word docs
+      const extracted = await base44.integrations.Core.InvokeLLM({
+        prompt: 'Extract the full verbatim text content from this document. Return only the raw text, no commentary.',
+        file_urls: [file_url]
+      });
+      transcript = typeof extracted === 'string' ? extracted : JSON.stringify(extracted);
+    } else if (fileName.endsWith('.pdf')) {
       const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
         file_url,
         json_schema: {
