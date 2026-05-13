@@ -13,9 +13,10 @@ Deno.serve(async (req) => {
     // Download the file
     const fileRes = await fetch(file_url);
     const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = new Uint8Array(arrayBuffer);
 
     // Extract text using mammoth
-    const result = await mammoth.extractRawText({ arrayBuffer });
+    const result = await mammoth.extractRawText({ buffer });
     const text = result.value;
 
     return Response.json({ text });
