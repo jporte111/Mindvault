@@ -11,6 +11,7 @@ import {
   Clock, BookOpen, Settings, CloudOff, Cloud
 } from 'lucide-react';
 import { toast } from 'sonner';
+import UploadTraining from '@/components/admin/UploadTraining';
 
 export default function Admin() {
   const [folderId, setFolderId] = useState('');
@@ -98,6 +99,9 @@ export default function Admin() {
             </Card>
           ))}
         </div>
+
+        {/* Upload Card */}
+        <UploadTraining />
 
         {/* Sync Card */}
         <Card className="border-border">
