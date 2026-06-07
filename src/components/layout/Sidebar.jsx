@@ -1,12 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Zap } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Library' },
-  { path: '/roadmap', icon: Zap, label: 'App Roadmap' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
 ];
 

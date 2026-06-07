@@ -7,17 +7,32 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { 
-  RefreshCw, Trash2, FolderOpen, CheckCircle2, AlertCircle, 
-  Clock, BookOpen, Settings, CloudOff, Cloud
+  RefreshCw, Trash2, CheckCircle2, AlertCircle, 
+  Clock, BookOpen, Settings, Cloud, Zap, Download, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Link } from 'react-router-dom';
 import UploadTraining from '@/components/admin/UploadTraining';
 
+const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
+const priorityColor = {
+  High: 'bg-red-100 text-red-700 border-red-200',
+  Medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  Low: 'bg-green-100 text-green-700 border-green-200',
+};
+const facingColor = {
+  Internal: 'bg-slate-100 text-slate-700 border-slate-200',
+  'Client-Facing': 'bg-blue-100 text-blue-700 border-blue-200',
+  Both: 'bg-purple-100 text-purple-700 border-purple-200',
+};
+
 export default function Admin() {
+  const [activeTab, setActiveTab] = useState('content');
   const [folderId, setFolderId] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
-  const [driveConnected, setDriveConnected] = useState(true);
+  const [filterPriority, setFilterPriority] = useState('All');
+  const [filterFacing, setFilterFacing] = useState('All');
 
   const queryClient = useQueryClient();
 
@@ -63,21 +78,150 @@ export default function Admin() {
     processing: trainings.filter(t => t.status === 'processing').length,
   };
 
+  const allFeatures = trainings.flatMap(t =>
+    (t.app_feature_opportunities || []).map(f => ({ ...f, trainingId: t.id, trainingTitle: t.title }))
+  ).sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3));
+
+  const filteredFeatures = allFeatures.filter(f => {
+    const matchesPriority = filterPriority === 'All' || f.priority === filterPriority;
+    const matchesFacing = filterFacing === 'All' || f.facing === filterFacing;
+    return matchesPriority && matchesFacing;
+  });
+
+  const exportRoadmapCSV = () => {
+    const headers = ['Feature Name', 'Problem Solved', 'User Type', 'Required Inputs', 'Output', 'Facing', 'Priority', 'Source Training'];
+    const rows = filteredFeatures.map(f => [
+      f.feature_name, f.problem_solved, f.user_type, f.required_inputs, f.output, f.facing, f.priority, f.trainingTitle
+    ].map(v => `"${(v || '').replace(/"/g, '""')}"`));
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'app-roadmap.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const tabs = [
+    { id: 'content', label: 'Content Management', icon: Settings },
+    { id: 'roadmap', label: 'App Roadmap', icon: Zap },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="bg-card border-b border-border px-8 py-8">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Settings className="w-4 h-4 text-primary" />
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Settings className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h1 className="font-sora text-2xl font-bold text-foreground">Admin Panel</h1>
+              <p className="text-muted-foreground text-sm">Manage your knowledge base content</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-sora text-2xl font-bold text-foreground">Admin Panel</h1>
-            <p className="text-muted-foreground text-sm">Manage your knowledge base content</p>
+          {/* Tabs */}
+          <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit">
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
+      {/* Roadmap Tab */}
+      {activeTab === 'roadmap' && (
+        <div className="px-8 py-8 max-w-5xl mx-auto space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <p className="text-muted-foreground text-sm">{allFeatures.length} feature opportunities across {trainings.length} trainings</p>
+            <Button onClick={exportRoadmapCSV} variant="outline" size="sm" className="gap-2 text-xs">
+              <Download className="w-3.5 h-3.5" />
+              Export CSV
+            </Button>
+          </div>
+
+          {/* Priority stats */}
+          <div className="flex gap-3 flex-wrap">
+            {['High', 'Medium', 'Low'].map(p => {
+              const count = allFeatures.filter(f => f.priority === p).length;
+              return (
+                <div key={p} className={`px-4 py-2 rounded-xl border text-sm font-medium ${priorityColor[p]}`}>
+                  {count} {p}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Priority</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {['All', 'High', 'Medium', 'Low'].map(p => (
+                  <button key={p} onClick={() => setFilterPriority(p)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border ${filterPriority === p ? 'bg-primary text-white border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/50'}`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Facing</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {['All', 'Internal', 'Client-Facing', 'Both'].map(f => (
+                  <button key={f} onClick={() => setFilterFacing(f)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border ${filterFacing === f ? 'bg-primary text-white border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/50'}`}>
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Feature cards */}
+          {filteredFeatures.length === 0 ? (
+            <div className="text-center py-16">
+              <Zap className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground">No features found. Upload trainings to generate roadmap items.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredFeatures.map((feat, i) => (
+                <div key={i} className="bg-card border border-border rounded-2xl p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <h3 className="font-semibold text-foreground text-base">{feat.feature_name}</h3>
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge className={`text-xs border ${priorityColor[feat.priority] || 'bg-muted text-muted-foreground'}`}>{feat.priority} Priority</Badge>
+                      <Badge className={`text-xs border ${facingColor[feat.facing] || 'bg-muted text-muted-foreground'}`}>{feat.facing}</Badge>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1.5">
+                    <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Problem: </span>{feat.problem_solved}</p>
+                    <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Users: </span>{feat.user_type}</p>
+                    <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Inputs: </span>{feat.required_inputs}</p>
+                    <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Output: </span>{feat.output}</p>
+                  </div>
+                  <Link to={`/training/${feat.trainingId}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <ExternalLink className="w-3 h-3" />
+                    Source: {feat.trainingTitle}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Content Management Tab */}
+      {activeTab === 'content' && (
       <div className="px-8 py-8 max-w-5xl mx-auto space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
@@ -202,6 +346,7 @@ export default function Admin() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
