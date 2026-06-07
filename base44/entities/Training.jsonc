@@ -8,7 +8,35 @@
     },
     "category": {
       "type": "string",
-      "description": "Category or topic of the training"
+      "description": "Legacy category field"
+    },
+    "topic_category": {
+      "type": "string",
+      "enum": [
+        "Bookkeeping",
+        "Payroll",
+        "Tax Prep",
+        "Reconciliation",
+        "Reporting",
+        "Cash Flow",
+        "Entity Management",
+        "Client Communication",
+        "Operations",
+        "Compliance",
+        "Troubleshooting",
+        "Other"
+      ],
+      "description": "Topic classification"
+    },
+    "client_segment": {
+      "type": "string",
+      "enum": [
+        "Small Business",
+        "High-Net-Worth Household",
+        "Both",
+        "Internal Only"
+      ],
+      "description": "Who this training applies to"
     },
     "video_url": {
       "type": "string",
@@ -16,7 +44,7 @@
     },
     "transcript": {
       "type": "string",
-      "description": "Full transcript of the training session"
+      "description": "URL to the uploaded transcript file"
     },
     "summary": {
       "type": "string",
@@ -27,22 +55,109 @@
       "items": {
         "type": "string"
       },
-      "description": "AI-generated key takeaways from the training"
+      "description": "Key lessons from the training"
+    },
+    "sop_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Step-by-step standard operating procedure"
+    },
+    "decision_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "If/then decision logic extracted from the training"
+    },
+    "common_mistakes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Common errors, risks, and watchouts"
+    },
+    "required_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Information, documents, or access needed"
+    },
+    "final_output": {
+      "type": "string",
+      "description": "What the workflow produces"
+    },
+    "software_systems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Software and tools mentioned"
+    },
+    "app_feature_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_name": {
+            "type": "string"
+          },
+          "problem_solved": {
+            "type": "string"
+          },
+          "user_type": {
+            "type": "string"
+          },
+          "required_inputs": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "facing": {
+            "type": "string",
+            "enum": [
+              "Internal",
+              "Client-Facing",
+              "Both"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "High",
+              "Medium",
+              "Low"
+            ]
+          }
+        }
+      },
+      "description": "Potential features for the financial concierge AI app"
+    },
+    "ai_knowledge_entry": {
+      "type": "string",
+      "description": "Clean knowledge entry for the AI assistant"
     },
     "duration_minutes": {
       "type": "number",
-      "description": "Duration of the training in minutes"
+      "description": "Duration estimate in minutes"
     },
     "drive_file_id": {
       "type": "string",
-      "description": "Google Drive file ID for the transcript"
+      "description": "Google Drive file ID"
     },
     "tags": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Tags for additional filtering"
+      "description": "Additional tags"
+    },
+    "presenter": {
+      "type": "string",
+      "description": "Name of the presenter"
     },
     "status": {
       "type": "string",
@@ -52,11 +167,7 @@
         "error"
       ],
       "default": "processing",
-      "description": "Processing status of the training"
-    },
-    "presenter": {
-      "type": "string",
-      "description": "Name of the presenter"
+      "description": "Processing status"
     }
   },
   "required": [
