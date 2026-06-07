@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Play, User, Clock, FileText, Sparkles } from 'lucide-react';
 import TrainingDetailSections from '@/components/training/TrainingDetailSections';
+import CopyAIContext from '@/components/training/CopyAIContext';
+import ExportSOPButton from '@/components/training/ExportButtons';
 
 export default function TrainingDetail() {
   const { id } = useParams();
@@ -83,14 +85,18 @@ export default function TrainingDetail() {
                 )}
               </div>
             </div>
-            {training.video_url && (
-              <a href={training.video_url} target="_blank" rel="noopener noreferrer">
-                <Button className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/25 gap-2">
-                  <Play className="w-4 h-4" />
-                  Watch Recording
-                </Button>
-              </a>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <CopyAIContext training={training} />
+              <ExportSOPButton training={training} />
+              {training.video_url && (
+                <a href={training.video_url} target="_blank" rel="noopener noreferrer">
+                  <Button className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/25 gap-2">
+                    <Play className="w-4 h-4" />
+                    Watch Recording
+                  </Button>
+                </a>
+              )}
+            </div>
           </div>
         </div>
       </div>

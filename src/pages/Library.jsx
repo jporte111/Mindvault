@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import TrainingCard from '@/components/knowledge/TrainingCard';
 import { Input } from '@/components/ui/input';
-import { BookOpen, Search, ChevronDown } from 'lucide-react';
+import { BookOpen, Search, ChevronDown, Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const TOPIC_CATEGORIES = ['Bookkeeping', 'Payroll', 'Tax Prep', 'Reconciliation', 'Reporting', 'Cash Flow', 'Entity Management', 'Client Communication', 'Operations', 'Compliance', 'Troubleshooting', 'Other'];
 const CLIENT_SEGMENTS = ['Small Business', 'High-Net-Worth Household', 'Both', 'Internal Only'];
@@ -60,12 +61,23 @@ export default function Library() {
   const allSoftware = [...new Set(trainings.flatMap(t => t.software_systems || []))].sort();
 
   const filtered = trainings.filter(t => {
+    const q = search.toLowerCase();
     const matchesSearch = !search ||
-      t.title?.toLowerCase().includes(search.toLowerCase()) ||
-      t.summary?.toLowerCase().includes(search.toLowerCase()) ||
-      t.presenter?.toLowerCase().includes(search.toLowerCase()) ||
-      (t.key_takeaways || []).some(kt => kt.toLowerCase().includes(search.toLowerCase())) ||
-      (t.sop_steps || []).some(s => s.toLowerCase().includes(search.toLowerCase()));
+      t.title?.toLowerCase().includes(q) ||
+      t.summary?.toLowerCase().includes(q) ||
+      t.presenter?.toLowerCase().includes(q) ||
+      t.final_output?.toLowerCase().includes(q) ||
+      (t.key_takeaways || []).some(kt => kt.toLowerCase().includes(q)) ||
+      (t.sop_steps || []).some(s => s.toLowerCase().includes(q)) ||
+      (t.decision_rules || []).some(r => r.toLowerCase().includes(q)) ||
+      (t.common_mistakes || []).some(m => m.toLowerCase().includes(q)) ||
+      (t.required_inputs || []).some(i => i.toLowerCase().includes(q)) ||
+      (t.software_systems || []).some(s => s.toLowerCase().includes(q)) ||
+      (t.app_feature_opportunities || []).some(f =>
+        f.feature_name?.toLowerCase().includes(q) ||
+        f.problem_solved?.toLowerCase().includes(q) ||
+        f.output?.toLowerCase().includes(q)
+      );
 
     const matchesTopic = topicCategory === 'All' || t.topic_category === topicCategory || t.category === topicCategory;
     const matchesSegment = clientSegment === 'All' || t.client_segment === clientSegment;
@@ -88,9 +100,26 @@ export default function Library() {
             </div>
             <h1 className="font-sora text-2xl font-bold text-foreground">Training Library</h1>
           </div>
-          <p className="text-muted-foreground text-sm ml-11">
-            {trainings.length} training{trainings.length !== 1 ? 's' : ''} available
-          </p>
+          <div className="flex items-center justify-between ml-11">
+            <p className="text-muted-foreground text-sm">
+              {trainings.length} training{trainings.length !== 1 ? 's' : ''} available
+            </p>
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => {
+              const headers = ['Title', 'Topic Category', 'Client Segment', 'Presenter', 'Duration (min)', 'Software Systems', 'Final Output'];
+              const rows = trainings.map(t => [
+                t.title, t.topic_category, t.client_segment, t.presenter, t.duration_minutes,
+                (t.software_systems || []).join('; '), t.final_output
+              ].map(v => `"${(v || '').toString().replace(/"/g, '""')}"`));
+              const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+              const blob = new Blob([csv], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url; a.download = 'all-decision-rules.csv'; a.click();
+              URL.revokeObjectURL(url);
+            }}>
+              <Download className="w-3.5 h-3.5" />
+              Export Decision Rules CSV
+            </Button>
+          </div>
 
           <div className="relative mt-5">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -104,7 +133,7 @@ export default function Library() {
 
           <button
             onClick={() => setShowFilters(p => !p)}
-            className={`mt-4 flex items-center gap-1.5 text-sm font-medium transition-colors ${hasActiveFilters ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`mt-3 flex items-center gap-1.5 text-sm font-medium transition-colors ${hasActiveFilters ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
             <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             {hasActiveFilters ? 'Filters active' : 'Show filters'}

@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Library' },
+  { path: '/roadmap', icon: Zap, label: 'App Roadmap' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
 ];
 
@@ -39,7 +40,7 @@ export default function Sidebar({ user }) {
             to={path}
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-              location.pathname === path
+              location.pathname === path || (path === '/chat' && location.pathname === '/chat')
                 ? 'bg-primary text-white shadow-md shadow-primary/30'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}

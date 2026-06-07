@@ -1,128 +1,49 @@
-import { useState, useRef, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
-import ChatMessage from '@/components/chat/ChatMessage';
+import { Link } from 'react-router-dom';
+import { Sparkles, BookOpen, Zap, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Send, Lightbulb } from 'lucide-react';
-
-const SUGGESTED_QUESTIONS = [
-  'What are the key steps in our sales process?',
-  'How do we handle customer objections?',
-  'What does the onboarding process look like for new hires?',
-  'What are our core company values?',
-];
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendMessage = async (questionText) => {
-    const question = questionText || input.trim();
-    if (!question || loading) return;
-
-    setInput('');
-    setMessages(prev => [...prev,
-      { role: 'user', content: question },
-      { role: 'assistant', loading: true, content: '' }
-    ]);
-    setLoading(true);
-
-    const res = await base44.functions.invoke('askKnowledgeBase', { question });
-    const { answer, sources } = res.data;
-
-    setMessages(prev => {
-      const updated = [...prev];
-      updated[updated.length - 1] = { role: 'assistant', content: answer, sources };
-      return updated;
-    });
-    setLoading(false);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
   return (
-    <div className="h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="bg-card border-b border-border px-6 py-5 flex-shrink-0">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-md shadow-primary/25">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-sora font-semibold text-foreground">AI Knowledge Assistant</h1>
-            <p className="text-xs text-muted-foreground">Ask anything about your company trainings</p>
-          </div>
+    <div className="min-h-screen bg-background flex items-center justify-center p-8">
+      <div className="max-w-lg w-full text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+          <Sparkles className="w-8 h-8 text-primary" />
         </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
-          {messages.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="font-sora font-semibold text-foreground text-xl mb-2">Ask the Knowledge Base</h2>
-              <p className="text-muted-foreground text-sm max-w-md mx-auto mb-8 leading-relaxed">
-                I can search through all your training recordings and transcripts to answer any question instantly.
-              </p>
-
-              <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto text-left">
-                {SUGGESTED_QUESTIONS.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendMessage(q)}
-                    className="p-4 rounded-xl border border-border bg-card hover:bg-accent/50 hover:border-primary/40 transition-all text-left text-sm text-muted-foreground hover:text-foreground group"
-                  >
-                    <Lightbulb className="w-3.5 h-3.5 text-primary mb-2 group-hover:scale-110 transition-transform" />
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            messages.map((msg, i) => (
-              <ChatMessage key={i} message={msg} />
-            ))
-          )}
-          <div ref={bottomRef} />
+        <h1 className="font-sora text-2xl font-bold text-foreground mb-3">AI Assistant</h1>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
+          <p className="text-amber-800 text-sm font-medium mb-1">Requires Builder+ Subscription</p>
+          <p className="text-amber-700 text-sm leading-relaxed">
+            AI Assistant requires Builder+ backend functions. Until enabled, use Library search, App Roadmap, and Copy AI Context.
+          </p>
         </div>
-      </div>
 
-      {/* Input */}
-      <div className="bg-card border-t border-border px-6 py-4 flex-shrink-0">
-        <div className="max-w-3xl mx-auto flex gap-3 items-end">
-          <Textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask a question about your company trainings..."
-            className="resize-none min-h-[48px] max-h-32 text-sm bg-background border-border"
-            rows={1}
-          />
-          <Button
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || loading}
-            className="bg-primary hover:bg-primary/90 h-12 w-12 p-0 flex-shrink-0 shadow-md shadow-primary/25"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-        </div>
-        <p className="text-center text-xs text-muted-foreground/60 mt-2 max-w-3xl mx-auto">
-          Press Enter to send · Shift+Enter for new line
+        <p className="text-muted-foreground text-sm mb-6 leading-relaxed">
+          In the meantime, you can manually query any training by copying its AI context and pasting it into ChatGPT or another AI tool.
         </p>
+
+        <div className="flex flex-col gap-3">
+          <Link to="/library">
+            <Button variant="outline" className="w-full gap-2">
+              <BookOpen className="w-4 h-4" />
+              Browse Library &amp; Search All Trainings
+            </Button>
+          </Link>
+          <Link to="/roadmap">
+            <Button variant="outline" className="w-full gap-2">
+              <Zap className="w-4 h-4" />
+              View App Roadmap
+            </Button>
+          </Link>
+          <div className="bg-muted/50 rounded-xl p-4 text-left">
+            <div className="flex items-center gap-2 mb-1">
+              <Copy className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Copy AI Context</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Open any training in the Library and click "Copy AI Context" to get a full structured text block you can paste directly into ChatGPT.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
