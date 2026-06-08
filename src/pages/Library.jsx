@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import TrainingCard from '@/components/knowledge/TrainingCard';
 import { Input } from '@/components/ui/input';
-import { BookOpen, Search, ChevronDown, Download } from 'lucide-react';
+import { BookOpen, Search, ChevronDown, Download, Upload } from 'lucide-react';
+import SubmitRecordingModal from '@/components/knowledge/SubmitRecordingModal';
 import { Button } from '@/components/ui/button';
 
 const TOPIC_CATEGORIES = ['Bookkeeping', 'Payroll', 'Tax Prep', 'Reconciliation', 'Reporting', 'Cash Flow', 'Entity Management', 'Client Communication', 'Operations', 'Compliance', 'Troubleshooting', 'Other'];
@@ -52,6 +53,7 @@ export default function Library() {
   const [priority, setPriority] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
   const [software, setSoftware] = useState('All');
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ['trainings'],
@@ -92,6 +94,7 @@ export default function Library() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SubmitRecordingModal open={showUploadModal} onClose={() => setShowUploadModal(false)} />
       <div className="bg-card border-b border-border px-8 py-8">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-3 mb-2">
@@ -104,6 +107,11 @@ export default function Library() {
             <p className="text-muted-foreground text-sm">
               {trainings.length} training{trainings.length !== 1 ? 's' : ''} available
             </p>
+            <div className="flex gap-2">
+            <Button size="sm" className="gap-2 text-xs bg-primary hover:bg-primary/90" onClick={() => setShowUploadModal(true)}>
+              <Upload className="w-3.5 h-3.5" />
+              Submit Recording
+            </Button>
             <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => {
               const headers = ['Title', 'Topic Category', 'Client Segment', 'Presenter', 'Duration (min)', 'Software Systems', 'Final Output'];
               const rows = trainings.map(t => [
@@ -119,6 +127,7 @@ export default function Library() {
               <Download className="w-3.5 h-3.5" />
               Export Decision Rules CSV
             </Button>
+            </div>
           </div>
 
           <div className="relative mt-5">
