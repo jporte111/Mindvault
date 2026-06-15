@@ -28,37 +28,17 @@ export default function TrainingDetail() {
     setReanalyzing(true);
     toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
 
-    // If transcript is stored as raw text (not a URL), use it directly
-    let transcript = '';
-    if (!training.transcript.startsWith('http')) {
-      transcript = training.transcript;
-    } else {
-      // Get a signed URL if it's a private base44 file, then fetch it
-      let fetchUrl = training.transcript;
-      if (training.transcript.includes('base44.app')) {
-        const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({
-          file_uri: training.transcript,
-        });
-        fetchUrl = signed_url;
-      }
-      const res = await fetch(fetchUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      transcript = await res.text();
-    }
-
-    if (!transcript || transcript.trim().length < 20) {
-      toast.error('Transcript appears to be empty or too short to analyze.');
-      setReanalyzing(false);
-      return;
-    }
+    // transcript field is either raw text or a URL to a file
+    const isUrl = training.transcript.startsWith('http');
+    // We'll pass the file_url directly to InvokeLLM if it's a URL,
+    // otherwise embed the text in the prompt
 
     const aiResult = await base44.integrations.Core.InvokeLLM({
       model: 'claude_sonnet_4_6',
-      prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below to power a future AI app.
+      ...(isUrl ? { file_urls: [training.transcript] } : {}),
+      prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript${isUrl ? ' (provided as an attached file)' : ' below'} to power a future AI app.
 
-Transcript:
-${transcript.slice(0, 20000)}
-
+${!isUrl ? `Transcript:\n${training.transcript.slice(0, 20000)}\n` : ''}
 Return a JSON object with ALL of the following fields:
 - summary: A concise 2-3 sentence summary of what this training covers.
 - key_takeaways: Array of 4-7 most important lessons (strings).
