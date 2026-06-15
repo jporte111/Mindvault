@@ -28,11 +28,23 @@ export default function TrainingDetail() {
     setReanalyzing(true);
     toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
 
-    // Get transcript text - fetch if URL, use directly if raw text
+    // Get transcript text — use ExtractDataFromUploadedFile (server-side, no CORS) for URLs
     let transcriptContent = training.transcript;
     if (training.transcript.startsWith('http')) {
-      const res = await fetch(training.transcript);
-      transcriptContent = await res.text();
+      const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
+        file_url: training.transcript,
+        json_schema: {
+          type: 'object',
+          properties: { text: { type: 'string', description: 'The full text content of the transcript' } }
+        }
+      });
+      transcriptContent = extracted?.output?.text || '';
+    }
+
+    if (!transcriptContent || transcriptContent.trim().length < 20) {
+      toast.error('Could not read transcript content. Try re-uploading the file.');
+      setReanalyzing(false);
+      return;
     }
 
     const aiResult = await base44.integrations.Core.InvokeLLM({
