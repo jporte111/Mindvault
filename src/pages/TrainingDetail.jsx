@@ -28,17 +28,20 @@ export default function TrainingDetail() {
     setReanalyzing(true);
     toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
 
-    // transcript field is either raw text or a URL to a file
-    const isUrl = training.transcript.startsWith('http');
-    // We'll pass the file_url directly to InvokeLLM if it's a URL,
-    // otherwise embed the text in the prompt
+    // Get transcript text - fetch if URL, use directly if raw text
+    let transcriptContent = training.transcript;
+    if (training.transcript.startsWith('http')) {
+      const res = await fetch(training.transcript);
+      transcriptContent = await res.text();
+    }
 
     const aiResult = await base44.integrations.Core.InvokeLLM({
       model: 'claude_sonnet_4_6',
-      ...(isUrl ? { file_urls: [training.transcript] } : {}),
-      prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript${isUrl ? ' (provided as an attached file)' : ' below'} to power a future AI app.
+      prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below to power a future AI app.
 
-${!isUrl ? `Transcript:\n${training.transcript.slice(0, 20000)}\n` : ''}
+Transcript:
+${transcriptContent.slice(0, 25000)}
+
 Return a JSON object with ALL of the following fields:
 - summary: A concise 2-3 sentence summary of what this training covers.
 - key_takeaways: Array of 4-7 most important lessons (strings).
