@@ -26,19 +26,27 @@ export default function TrainingDetail() {
 
   const handleReanalyze = async () => {
     setReanalyzing(true);
-    toast('Analyzing transcript with AI — this may take 30–60 seconds...');
+    toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
+
+    // If transcript is stored as raw text (not a URL), use it directly
     let transcript = '';
-    try {
-      const res = await fetch(training.transcript);
-      if (!res.ok) throw new Error('fetch failed');
-      transcript = await res.text();
-    } catch (e) {
-      toast.error('Could not load transcript file. Please try re-uploading the training.');
-      setReanalyzing(false);
-      return;
+    if (!training.transcript.startsWith('http')) {
+      transcript = training.transcript;
+    } else {
+      // Try to fetch the transcript URL
+      try {
+        const res = await fetch(training.transcript);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        transcript = await res.text();
+      } catch (e) {
+        toast.error(`Could not fetch transcript: ${e.message}. Try re-uploading the training.`);
+        setReanalyzing(false);
+        return;
+      }
     }
+
     if (!transcript || transcript.trim().length < 20) {
-      toast.error('Transcript file appears to be empty.');
+      toast.error('Transcript appears to be empty or too short to analyze.');
       setReanalyzing(false);
       return;
     }
@@ -112,10 +120,11 @@ Return a JSON object with ALL of the following fields:
   };
 
   const handleReanalyzeClick = async () => {
+    console.log('Transcript value:', training.transcript?.slice(0, 200));
     try {
       await handleReanalyze();
     } catch (err) {
-      console.error(err);
+      console.error('Re-analyze error:', err);
       toast.error('Something went wrong: ' + (err?.message || 'Unknown error'));
       setReanalyzing(false);
     }
