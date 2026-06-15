@@ -27,8 +27,21 @@ export default function TrainingDetail() {
   const handleReanalyze = async () => {
     setReanalyzing(true);
     toast('Analyzing transcript with AI — this may take 30–60 seconds...');
-    const res = await fetch(training.transcript);
-    const transcript = await res.text();
+    let transcript = '';
+    try {
+      const res = await fetch(training.transcript);
+      if (!res.ok) throw new Error('fetch failed');
+      transcript = await res.text();
+    } catch (e) {
+      toast.error('Could not load transcript file. Please try re-uploading the training.');
+      setReanalyzing(false);
+      return;
+    }
+    if (!transcript || transcript.trim().length < 20) {
+      toast.error('Transcript file appears to be empty.');
+      setReanalyzing(false);
+      return;
+    }
 
     const aiResult = await base44.integrations.Core.InvokeLLM({
       model: 'claude_sonnet_4_6',
@@ -96,6 +109,16 @@ Return a JSON object with ALL of the following fields:
     queryClient.invalidateQueries({ queryKey: ['trainings'] });
     toast.success('Analysis complete!');
     setReanalyzing(false);
+  };
+
+  const handleReanalyzeClick = async () => {
+    try {
+      await handleReanalyze();
+    } catch (err) {
+      console.error(err);
+      toast.error('Something went wrong: ' + (err?.message || 'Unknown error'));
+      setReanalyzing(false);
+    }
   };
 
   if (isLoading) {
@@ -168,7 +191,7 @@ Return a JSON object with ALL of the following fields:
                   variant="outline"
                   size="sm"
                   className="gap-2 text-xs border-primary/50 text-primary hover:bg-primary/10"
-                  onClick={handleReanalyze}
+                  onClick={handleReanalyzeClick}
                   disabled={reanalyzing}
                 >
                   {reanalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
