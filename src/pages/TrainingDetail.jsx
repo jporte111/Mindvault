@@ -33,16 +33,17 @@ export default function TrainingDetail() {
     if (!training.transcript.startsWith('http')) {
       transcript = training.transcript;
     } else {
-      // Try to fetch the transcript URL
-      try {
-        const res = await fetch(training.transcript);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        transcript = await res.text();
-      } catch (e) {
-        toast.error(`Could not fetch transcript: ${e.message}. Try re-uploading the training.`);
-        setReanalyzing(false);
-        return;
+      // Get a signed URL if it's a private base44 file, then fetch it
+      let fetchUrl = training.transcript;
+      if (training.transcript.includes('base44.app')) {
+        const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({
+          file_uri: training.transcript,
+        });
+        fetchUrl = signed_url;
       }
+      const res = await fetch(fetchUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      transcript = await res.text();
     }
 
     if (!transcript || transcript.trim().length < 20) {
