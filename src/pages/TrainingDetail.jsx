@@ -28,17 +28,12 @@ export default function TrainingDetail() {
     setReanalyzing(true);
     toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
 
-    // Get transcript text — use ExtractDataFromUploadedFile (server-side, no CORS) for URLs
+    // Get transcript text — fetch directly as plain text (no CORS on base44 file URLs)
     let transcriptContent = training.transcript;
     if (training.transcript.startsWith('http')) {
-      const extracted = await base44.integrations.Core.ExtractDataFromUploadedFile({
-        file_url: training.transcript,
-        json_schema: {
-          type: 'object',
-          properties: { text: { type: 'string', description: 'The full text content of the transcript' } }
-        }
-      });
-      transcriptContent = extracted?.output?.text || '';
+      const res = await fetch(training.transcript);
+      if (!res.ok) throw new Error(`Failed to fetch transcript: ${res.status}`);
+      transcriptContent = await res.text();
     }
 
     if (!transcriptContent || transcriptContent.trim().length < 20) {
@@ -191,7 +186,7 @@ Return a JSON object with ALL of the following fields:
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {training.transcript && !training.summary && (
+              {training.transcript && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -200,7 +195,7 @@ Return a JSON object with ALL of the following fields:
                   disabled={reanalyzing}
                 >
                   {reanalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  {reanalyzing ? 'Analyzing...' : 'Analyze with AI'}
+                  {reanalyzing ? 'Analyzing...' : training.summary ? 'Re-analyze with AI' : 'Analyze with AI'}
                 </Button>
               )}
               <CopyAIContext training={training} />
