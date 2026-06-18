@@ -110,7 +110,7 @@ export default function TrainingDetail() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {training.transcript && true && (
+              {training.transcript && (
                 <Button
                   variant="outline"
                   size="sm"
