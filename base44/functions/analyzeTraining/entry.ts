@@ -19,8 +19,11 @@ Deno.serve(async (req) => {
     if (!res.ok) return Response.json({ error: `Failed to fetch transcript: ${res.status}` }, { status: 500 });
     const transcript = await res.text();
 
-    if (!transcript || transcript.trim().length < 20) {
-      return Response.json({ error: 'Transcript content is empty or too short' }, { status: 400 });
+    console.log('Transcript first 200 chars:', transcript?.slice(0, 200));
+
+    if (!transcript || transcript.trim().length < 20 || transcript.trim().startsWith('<')) {
+      await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
+      return Response.json({ error: 'Transcript fetch returned empty or invalid content' }, { status: 400 });
     }
 
     const transcriptText = transcript.slice(0, 25000);
