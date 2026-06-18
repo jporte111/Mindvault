@@ -27,11 +27,27 @@ export default function TrainingDetail() {
   const handleReanalyze = async () => {
     setReanalyzing(true);
     toast.info('Analyzing transcript with AI — this may take 30–60 seconds...');
-    await base44.functions.invoke('analyzeTraining', { trainingId: id });
+
+    // Mark as processing, then kick off analysis (don't await — we poll instead)
+    await base44.entities.Training.update(id, { status: 'processing' });
     queryClient.invalidateQueries({ queryKey: ['training', id] });
-    queryClient.invalidateQueries({ queryKey: ['trainings'] });
-    toast.success('Analysis complete!');
-    setReanalyzing(false);
+    base44.functions.invoke('analyzeTraining', { trainingId: id });
+
+    // Poll every 5s until status leaves "processing"
+    const poll = setInterval(async () => {
+      const updated = await base44.entities.Training.get(id);
+      queryClient.invalidateQueries({ queryKey: ['training', id] });
+      queryClient.invalidateQueries({ queryKey: ['trainings'] });
+      if (updated.status !== 'processing') {
+        clearInterval(poll);
+        setReanalyzing(false);
+        if (updated.status === 'ready') {
+          toast.success('Analysis complete!');
+        } else if (updated.status === 'error') {
+          toast.error('Analysis failed. Please try again.');
+        }
+      }
+    }, 5000);
   };
 
   const handleReanalyzeClick = async () => {

@@ -23,13 +23,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Transcript content is empty or too short' }, { status: 400 });
     }
 
-    // 3. Invoke LLM
-    const aiResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: 'claude_sonnet_4_6',
-      prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below to power a future AI app.
+    const transcriptText = transcript.slice(0, 25000);
+
+    try {
+      // PASS 1 — core structured fields
+      const pass1 = await base44.asServiceRole.integrations.Core.InvokeLLM({
+        model: 'claude_sonnet_4_6',
+        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below.
 
 Transcript:
-${transcript.slice(0, 25000)}
+${transcriptText}
 
 Return a JSON object with ALL of the following fields:
 - summary: A concise 2-3 sentence summary of what this training covers.
@@ -42,6 +45,54 @@ Return a JSON object with ALL of the following fields:
 - client_segment: One of: "Small Business", "High-Net-Worth Household", "Both", "Internal Only".
 - topic_category: One of: "Bookkeeping", "Payroll", "Tax Prep", "Reconciliation", "Reporting", "Cash Flow", "Entity Management", "Client Communication", "Operations", "Compliance", "Troubleshooting", "Other".
 - software_systems: Array of software tools, portals, or systems mentioned (strings, e.g. "QuickBooks Online", "Excel", "ADP").
+- presenter: The presenter's name if identifiable, otherwise null.
+- duration_minutes: Estimated duration in minutes as a number.`,
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            summary: { type: 'string' },
+            key_takeaways: { type: 'array', items: { type: 'string' } },
+            sop_steps: { type: 'array', items: { type: 'string' } },
+            decision_rules: { type: 'array', items: { type: 'string' } },
+            common_mistakes: { type: 'array', items: { type: 'string' } },
+            required_inputs: { type: 'array', items: { type: 'string' } },
+            final_output: { type: 'string' },
+            client_segment: { type: 'string' },
+            topic_category: { type: 'string' },
+            software_systems: { type: 'array', items: { type: 'string' } },
+            presenter: { type: 'string' },
+            duration_minutes: { type: 'number' },
+          },
+        },
+      });
+
+      // Save Pass 1 results immediately
+      await base44.asServiceRole.entities.Training.update(trainingId, {
+        summary: pass1.summary,
+        key_takeaways: pass1.key_takeaways,
+        sop_steps: pass1.sop_steps,
+        decision_rules: pass1.decision_rules,
+        common_mistakes: pass1.common_mistakes,
+        required_inputs: pass1.required_inputs,
+        final_output: pass1.final_output,
+        client_segment: pass1.client_segment,
+        topic_category: pass1.topic_category,
+        category: pass1.topic_category,
+        software_systems: pass1.software_systems,
+        presenter: pass1.presenter || undefined,
+        duration_minutes: pass1.duration_minutes,
+      });
+
+      // PASS 2 — knowledge entry + feature opportunities
+      const pass2 = await base44.asServiceRole.integrations.Core.InvokeLLM({
+        model: 'claude_sonnet_4_6',
+        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm.
+
+Transcript:
+${transcriptText}
+
+Return a JSON object with the following fields:
+- ai_knowledge_entry: A clean, well-written knowledge base entry (2-4 paragraphs) that an AI assistant can use to answer questions about this topic accurately.
 - app_feature_opportunities: Array of objects, each with:
     - feature_name: Short name for the feature
     - problem_solved: What problem this feature solves
@@ -49,66 +100,43 @@ Return a JSON object with ALL of the following fields:
     - required_inputs: What data the feature needs
     - output: What the feature produces
     - facing: One of "Internal", "Client-Facing", "Both"
-    - priority: One of "High", "Medium", "Low"
-- ai_knowledge_entry: A clean, well-written knowledge base entry (2-4 paragraphs) that an AI assistant can use to answer questions about this topic accurately.
-- presenter: The presenter's name if identifiable, otherwise null.
-- duration_minutes: Estimated duration in minutes as a number.`,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          key_takeaways: { type: 'array', items: { type: 'string' } },
-          sop_steps: { type: 'array', items: { type: 'string' } },
-          decision_rules: { type: 'array', items: { type: 'string' } },
-          common_mistakes: { type: 'array', items: { type: 'string' } },
-          required_inputs: { type: 'array', items: { type: 'string' } },
-          final_output: { type: 'string' },
-          client_segment: { type: 'string' },
-          topic_category: { type: 'string' },
-          software_systems: { type: 'array', items: { type: 'string' } },
-          app_feature_opportunities: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                feature_name: { type: 'string' },
-                problem_solved: { type: 'string' },
-                user_type: { type: 'string' },
-                required_inputs: { type: 'string' },
-                output: { type: 'string' },
-                facing: { type: 'string' },
-                priority: { type: 'string' },
+    - priority: One of "High", "Medium", "Low"`,
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            ai_knowledge_entry: { type: 'string' },
+            app_feature_opportunities: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  feature_name: { type: 'string' },
+                  problem_solved: { type: 'string' },
+                  user_type: { type: 'string' },
+                  required_inputs: { type: 'string' },
+                  output: { type: 'string' },
+                  facing: { type: 'string' },
+                  priority: { type: 'string' },
+                },
               },
             },
           },
-          ai_knowledge_entry: { type: 'string' },
-          presenter: { type: 'string' },
-          duration_minutes: { type: 'number' },
         },
-      },
-    });
+      });
 
-    // 4. Save results back to the Training entity
-    await base44.entities.Training.update(trainingId, {
-      summary: aiResult.summary,
-      key_takeaways: aiResult.key_takeaways,
-      sop_steps: aiResult.sop_steps,
-      decision_rules: aiResult.decision_rules,
-      common_mistakes: aiResult.common_mistakes,
-      required_inputs: aiResult.required_inputs,
-      final_output: aiResult.final_output,
-      client_segment: aiResult.client_segment,
-      topic_category: aiResult.topic_category,
-      category: aiResult.topic_category,
-      software_systems: aiResult.software_systems,
-      app_feature_opportunities: aiResult.app_feature_opportunities,
-      ai_knowledge_entry: aiResult.ai_knowledge_entry,
-      presenter: aiResult.presenter || undefined,
-      duration_minutes: aiResult.duration_minutes,
-      status: 'ready',
-    });
+      // Save Pass 2 results and mark ready
+      await base44.asServiceRole.entities.Training.update(trainingId, {
+        ai_knowledge_entry: pass2.ai_knowledge_entry,
+        app_feature_opportunities: pass2.app_feature_opportunities,
+        status: 'ready',
+      });
 
-    return Response.json({ success: true });
+      return Response.json({ success: true });
+    } catch (analysisError) {
+      // Mark as error so the record does not get stuck at "processing"
+      await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
+      return Response.json({ error: analysisError.message }, { status: 500 });
+    }
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
