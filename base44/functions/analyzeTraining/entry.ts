@@ -28,9 +28,10 @@ Deno.serve(async (req) => {
 
     const transcriptText = transcript.slice(0, 25000);
 
+    // PASS 1 — core structured fields
+    let pass1;
     try {
-      // PASS 1 — core structured fields
-      const pass1 = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      pass1 = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'claude_sonnet_4_6',
         prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below.
 
@@ -85,9 +86,18 @@ Return a JSON object with ALL of the following fields:
         presenter: pass1.presenter || undefined,
         duration_minutes: pass1.duration_minutes,
       });
+      console.log('Pass 1 saved successfully');
+    } catch (pass1Error) {
+      console.log('Pass 1 error:', pass1Error.message);
+      console.log('Pass 1 raw response:', pass1);
+      await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
+      return Response.json({ error: 'Pass 1 failed: ' + pass1Error.message }, { status: 500 });
+    }
 
-      // PASS 2 — knowledge entry + feature opportunities
-      const pass2 = await base44.asServiceRole.integrations.Core.InvokeLLM({
+    // PASS 2 — knowledge entry + feature opportunities
+    let pass2;
+    try {
+      pass2 = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'claude_sonnet_4_6',
         prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm.
 
@@ -133,13 +143,15 @@ Return a JSON object with the following fields:
         app_feature_opportunities: pass2.app_feature_opportunities,
         status: 'ready',
       });
-
-      return Response.json({ success: true });
-    } catch (analysisError) {
-      // Mark as error so the record does not get stuck at "processing"
+      console.log('Pass 2 saved successfully');
+    } catch (pass2Error) {
+      console.log('Pass 2 error:', pass2Error.message);
+      console.log('Pass 2 raw response:', pass2);
       await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
-      return Response.json({ error: analysisError.message }, { status: 500 });
+      return Response.json({ error: 'Pass 2 failed: ' + pass2Error.message }, { status: 500 });
     }
+
+    return Response.json({ success: true });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
