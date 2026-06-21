@@ -36,7 +36,8 @@ export default function TrainingDetail() {
     // Poll every 5s until status leaves "processing"
     const poll = setInterval(async () => {
       const updated = await base44.entities.Training.get(id);
-      queryClient.invalidateQueries({ queryKey: ['training', id] });
+      // Directly update the cache so the UI reflects fresh data immediately
+      queryClient.setQueryData(['training', id], updated);
       queryClient.invalidateQueries({ queryKey: ['trainings'] });
       if (updated.status !== 'processing') {
         clearInterval(poll);
