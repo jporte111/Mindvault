@@ -7,10 +7,12 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { trainingId } = await req.json();
+    console.log('analyzeTraining received trainingId:', trainingId);
     if (!trainingId) return Response.json({ error: 'trainingId is required' }, { status: 400 });
 
     // 1. Fetch the training record
     const training = await base44.entities.Training.get(trainingId);
+    console.log('Fetched training record — title:', training?.title, '| id:', training?.id);
     if (!training) return Response.json({ error: 'Training not found' }, { status: 404 });
     if (!training.transcript) return Response.json({ error: 'Training has no transcript URL' }, { status: 400 });
 
@@ -72,23 +74,31 @@ Return a JSON object with ALL of the following fields:
 
       console.log('Pass 1 raw LLM response:', JSON.stringify(pass1));
 
+      // InvokeLLM wraps the JSON response in a `response` property — unwrap it
+      const pass1Data = pass1.response || pass1;
+
       // Save Pass 1 results immediately
       await base44.asServiceRole.entities.Training.update(trainingId, {
-        summary: pass1.summary,
-        key_takeaways: pass1.key_takeaways,
-        sop_steps: pass1.sop_steps,
-        decision_rules: pass1.decision_rules,
-        common_mistakes: pass1.common_mistakes,
-        required_inputs: pass1.required_inputs,
-        final_output: pass1.final_output,
-        client_segment: pass1.client_segment,
-        topic_category: pass1.topic_category,
-        category: pass1.topic_category,
-        software_systems: pass1.software_systems,
-        presenter: pass1.presenter || undefined,
-        duration_minutes: pass1.duration_minutes,
+        summary: pass1Data.summary,
+        key_takeaways: pass1Data.key_takeaways,
+        sop_steps: pass1Data.sop_steps,
+        decision_rules: pass1Data.decision_rules,
+        common_mistakes: pass1Data.common_mistakes,
+        required_inputs: pass1Data.required_inputs,
+        final_output: pass1Data.final_output,
+        client_segment: pass1Data.client_segment,
+        topic_category: pass1Data.topic_category,
+        category: pass1Data.topic_category,
+        software_systems: pass1Data.software_systems,
+        presenter: pass1Data.presenter || undefined,
+        duration_minutes: pass1Data.duration_minutes,
       });
       console.log('Pass 1 saved successfully');
+
+      // Re-fetch to confirm the write actually persisted
+      const afterPass1 = await base44.asServiceRole.entities.Training.get(trainingId);
+      console.log('After Pass 1 — saved summary:', JSON.stringify(afterPass1?.summary));
+      console.log('After Pass 1 — saved key_takeaways:', JSON.stringify(afterPass1?.key_takeaways));
     } catch (pass1Error) {
       console.log('Pass 1 error:', pass1Error.message);
       console.log('Pass 1 raw response:', pass1);
@@ -141,13 +151,21 @@ Return a JSON object with the following fields:
 
       console.log('Pass 2 raw LLM response:', JSON.stringify(pass2));
 
+      // InvokeLLM wraps the JSON response in a `response` property — unwrap it
+      const pass2Data = pass2.response || pass2;
+
       // Save Pass 2 results and mark ready
       await base44.asServiceRole.entities.Training.update(trainingId, {
-        ai_knowledge_entry: pass2.ai_knowledge_entry,
-        app_feature_opportunities: pass2.app_feature_opportunities,
+        ai_knowledge_entry: pass2Data.ai_knowledge_entry,
+        app_feature_opportunities: pass2Data.app_feature_opportunities,
         status: 'ready',
       });
       console.log('Pass 2 saved successfully');
+
+      // Re-fetch to confirm the write actually persisted
+      const afterPass2 = await base44.asServiceRole.entities.Training.get(trainingId);
+      console.log('After Pass 2 — saved ai_knowledge_entry:', JSON.stringify(afterPass2?.ai_knowledge_entry));
+      console.log('After Pass 2 — saved status:', afterPass2?.status);
     } catch (pass2Error) {
       console.log('Pass 2 error:', pass2Error.message);
       console.log('Pass 2 raw response:', pass2);
