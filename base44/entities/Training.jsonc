@@ -131,6 +131,26 @@
               "Medium",
               "Low"
             ]
+          },
+          "internal_need_score": {
+            "type": "number",
+            "description": "1-5: how clearly the transcript shows this solves a real workflow problem"
+          },
+          "market_demand_score": {
+            "type": "number",
+            "description": "1-5: alignment with financial services/fintech/AI trends"
+          },
+          "business_value_score": {
+            "type": "number",
+            "description": "1-5: usefulness for internal team, clients, or both"
+          },
+          "implementation_complexity_score": {
+            "type": "number",
+            "description": "1-5: 1 easy, 5 complex"
+          },
+          "priority_reason": {
+            "type": "string",
+            "description": "Plain-English explanation of the assigned priority"
           }
         }
       },

@@ -111,7 +111,7 @@ Return a JSON object with ALL of the following fields:
     try {
       pass2 = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'claude_sonnet_4_6',
-        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm.
+        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm (Hormozi).
 
 Transcript:
 ${transcriptText}
@@ -125,7 +125,19 @@ Return a JSON object with the following fields:
     - required_inputs: What data the feature needs
     - output: What the feature produces
     - facing: One of "Internal", "Client-Facing", "Both"
-    - priority: One of "High", "Medium", "Low"`,
+    - internal_need_score: Integer 1-5 based on how clearly the transcript shows this feature would solve a real workflow problem (5 = clearly solves a painful, recurring problem; 1 = vague or minor need).
+    - market_demand_score: Integer 1-5 based on whether this feature aligns with current financial services, wealth management, accounting, bookkeeping, fintech, AI automation, or client experience trends (5 = strongly aligned with multiple trends; 1 = little/no market relevance).
+    - business_value_score: Integer 1-5 based on how useful this feature would be for Hormozi's internal team, clients, or both (5 = high value for both; 1 = limited value).
+    - implementation_complexity_score: Integer 1-5 where 1 is easy to build and 5 is complex (requires integrations, heavy logic, or significant data infrastructure).
+    - priority: One of "High", "Medium", "Low" — assigned using the rules below.
+    - priority_reason: A plain-English explanation of WHY the feature was marked High, Medium, or Low, referencing the scores.
+
+PRIORITY ASSIGNMENT RULES (do not assign a priority without a matching reason):
+- High priority: Strong internal need (internal_need_score 4-5), strong market demand (market_demand_score 4-5), clear business value (business_value_score 4-5), and reasonable complexity OR very high upside that justifies the effort.
+- Medium priority: Useful feature with moderate internal need or market demand, good business value but not urgent, may be more niche or department-specific.
+- Low priority: Nice-to-have feature, weak market demand, limited business value, or high complexity compared to expected impact.
+
+Never assign High, Medium, or Low without also providing a clear priority_reason that explains the decision based on the scores.`,
         response_json_schema: {
           type: 'object',
           properties: {
@@ -141,7 +153,12 @@ Return a JSON object with the following fields:
                   required_inputs: { type: 'string' },
                   output: { type: 'string' },
                   facing: { type: 'string' },
+                  internal_need_score: { type: 'number' },
+                  market_demand_score: { type: 'number' },
+                  business_value_score: { type: 'number' },
+                  implementation_complexity_score: { type: 'number' },
                   priority: { type: 'string' },
+                  priority_reason: { type: 'string' },
                 },
               },
             },

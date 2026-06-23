@@ -89,10 +89,12 @@ export default function Admin() {
   });
 
   const exportRoadmapCSV = () => {
-    const headers = ['Feature Name', 'Problem Solved', 'User Type', 'Required Inputs', 'Output', 'Facing', 'Priority', 'Source Training'];
+    const headers = ['Feature Name', 'Problem Solved', 'User Type', 'Required Inputs', 'Output', 'Facing', 'Priority', 'Internal Need Score', 'Market Demand Score', 'Business Value Score', 'Implementation Complexity Score', 'Priority Reason', 'Source Training'];
     const rows = filteredFeatures.map(f => [
-      f.feature_name, f.problem_solved, f.user_type, f.required_inputs, f.output, f.facing, f.priority, f.trainingTitle
-    ].map(v => `"${(v || '').replace(/"/g, '""')}"`));
+      f.feature_name, f.problem_solved, f.user_type, f.required_inputs, f.output, f.facing, f.priority,
+      f.internal_need_score, f.market_demand_score, f.business_value_score, f.implementation_complexity_score,
+      f.priority_reason, f.trainingTitle
+    ].map(v => `"${(v != null ? v : '').toString().replace(/"/g, '""')}"`));
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -209,6 +211,28 @@ export default function Admin() {
                     <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Inputs: </span>{feat.required_inputs}</p>
                     <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Output: </span>{feat.output}</p>
                   </div>
+
+                  {/* Scoring */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { label: 'Internal Need', value: feat.internal_need_score },
+                      { label: 'Market Demand', value: feat.market_demand_score },
+                      { label: 'Business Value', value: feat.business_value_score },
+                      { label: 'Complexity', value: feat.implementation_complexity_score },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-muted/50 rounded-lg px-2.5 py-1.5 text-center">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</p>
+                        <p className="text-sm font-bold text-foreground">{value != null ? `${value}/5` : '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {feat.priority_reason && (
+                    <p className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2">
+                      <span className="font-medium text-foreground">Priority Reason: </span>{feat.priority_reason}
+                    </p>
+                  )}
+
                   <Link to={`/training/${feat.trainingId}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                     <ExternalLink className="w-3 h-3" />
                     Source: {feat.trainingTitle}
