@@ -70,6 +70,8 @@ Return a JSON object with ALL of the following fields:
         },
       });
 
+      console.log('Pass 1 raw LLM response:', JSON.stringify(pass1));
+
       // Save Pass 1 results immediately
       await base44.asServiceRole.entities.Training.update(trainingId, {
         summary: pass1.summary,
@@ -136,6 +138,8 @@ Return a JSON object with the following fields:
           },
         },
       });
+
+      console.log('Pass 2 raw LLM response:', JSON.stringify(pass2));
 
       // Save Pass 2 results and mark ready
       await base44.asServiceRole.entities.Training.update(trainingId, {
