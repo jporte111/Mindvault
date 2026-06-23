@@ -54,18 +54,6 @@ export default function CopyAIContext({ training }) {
       lines.push('');
     }
 
-    if (training.app_feature_opportunities?.length) {
-      lines.push('## App Feature Opportunities');
-      training.app_feature_opportunities.forEach(f => {
-        lines.push(`### ${f.feature_name} [${f.priority} Priority | ${f.facing}]`);
-        lines.push(`Problem: ${f.problem_solved}`);
-        lines.push(`Users: ${f.user_type}`);
-        lines.push(`Inputs: ${f.required_inputs}`);
-        lines.push(`Output: ${f.output}`);
-        lines.push('');
-      });
-    }
-
     if (training.ai_knowledge_entry) {
       lines.push('## AI Knowledge Entry');
       lines.push(training.ai_knowledge_entry);
