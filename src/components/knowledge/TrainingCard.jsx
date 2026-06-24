@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { User, Clock, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { User, Clock, ChevronRight, Sparkles, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import InlineText from '@/components/edit/InlineText';
+import EditableList from '@/components/edit/EditableList';
 
 const categoryColors = {
   Bookkeeping: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -24,9 +28,13 @@ const categoryColors = {
 
 export default function TrainingCard({ training }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
   const category = training.topic_category || training.category;
   const colorClass = categoryColors[category] || categoryColors.Other;
   const queryClient = useQueryClient();
+  const isAdmin = useIsAdmin();
 
   const deleteMutation = useMutation({
     mutationFn: () => base44.entities.Training.delete(training.id),
@@ -49,86 +57,195 @@ export default function TrainingCard({ training }) {
     }
   };
 
+  const startEdit = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraft({
+      title: training.title || '',
+      summary: training.summary || '',
+      presenter: training.presenter || '',
+      key_takeaways: [...(training.key_takeaways || [])],
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft(null);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      await base44.entities.Training.update(training.id, draft);
+      queryClient.invalidateQueries({ queryKey: ['trainings'] });
+      queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+      toast.success('Training updated');
+      setEditing(false);
+      setDraft(null);
+    } catch (err) {
+      toast.error('Failed to save: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="relative group h-full">
-      {/* Delete button — visible on hover */}
-      <button
-        onClick={handleDelete}
-        className={`absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border
-          ${confirmDelete
-            ? 'bg-destructive text-white border-destructive opacity-100'
-            : 'bg-background/90 text-muted-foreground border-border opacity-0 group-hover:opacity-100 hover:text-destructive hover:border-destructive/50'
-          }`}
-      >
-        <Trash2 className="w-3 h-3" />
-        {confirmDelete ? 'Confirm?' : ''}
-      </button>
+      {/* Top-right controls — visible on hover */}
+      <div className="absolute top-3 right-3 z-10 flex gap-1.5">
+        {isAdmin && !editing && (
+          <button
+            onClick={startEdit}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border bg-background/90 text-muted-foreground border-border opacity-0 group-hover:opacity-100 hover:text-primary hover:border-primary/50"
+            title="Edit"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        )}
+        {isAdmin && !editing && (
+          <button
+            onClick={handleDelete}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border
+              ${confirmDelete
+                ? 'bg-destructive text-white border-destructive opacity-100'
+                : 'bg-background/90 text-muted-foreground border-border opacity-0 group-hover:opacity-100 hover:text-destructive hover:border-destructive/50'
+              }`}
+          >
+            <Trash2 className="w-3 h-3" />
+            {confirmDelete ? 'Confirm?' : ''}
+          </button>
+        )}
+      </div>
 
-      <Link to={`/training/${training.id}`} className="h-full block">
-        <Card className="group/card hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer border border-border bg-card overflow-hidden h-full">
-          {/* Top accent bar */}
+      {editing ? (
+        <Card className="border border-primary/40 bg-card overflow-hidden h-full ring-2 ring-primary/20">
           <div className="h-1 bg-gradient-to-r from-primary to-primary/40" />
-
           <CardHeader className="pb-3 pt-5 px-5">
-            <div className="flex items-start justify-between gap-3">
-              <Badge variant="outline" className={`text-xs font-medium border ${colorClass} shrink-0`}>
-                {category || 'Other'}
-              </Badge>
-              {training.status === 'processing' && (
-                <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30 gap-1">
-                  <Sparkles className="w-3 h-3 animate-pulse" />
-                  Processing
-                </Badge>
-              )}
+            <Badge variant="outline" className={`text-xs font-medium border ${colorClass} shrink-0 w-fit`}>
+              {category || 'Other'}
+            </Badge>
+            <div className="mt-2">
+              <InlineText
+                value={draft.title}
+                onSave={(v) => setDraft((d) => ({ ...d, title: v }))}
+                isAdmin
+                className="font-sora font-semibold text-foreground text-base leading-snug w-full"
+                emptyText="Training title"
+              />
             </div>
-            <h3 className="font-sora font-semibold text-foreground text-base leading-snug group-hover/card:text-primary transition-colors mt-2 line-clamp-2">
-              {training.title}
-            </h3>
           </CardHeader>
 
           <CardContent className="px-5 pb-5 space-y-4">
-            {training.summary && (
-              <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
-                {training.summary}
-              </p>
-            )}
+            <InlineText
+              value={draft.summary}
+              onSave={(v) => setDraft((d) => ({ ...d, summary: v }))}
+              isAdmin
+              multiline
+              className="text-muted-foreground text-sm leading-relaxed w-full"
+              emptyText="Click to add a summary"
+            />
 
-            {training.key_takeaways?.length > 0 && (
-              <div className="space-y-1.5">
-                {training.key_takeaways.slice(0, 2).map((kt, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <span className="text-primary mt-0.5 flex-shrink-0">•</span>
-                    <span className="line-clamp-1">{kt}</span>
-                  </div>
-                ))}
-                {training.key_takeaways.length > 2 && (
-                  <p className="text-xs text-primary/70 font-medium">+{training.key_takeaways.length - 2} more takeaways</p>
-                )}
-              </div>
-            )}
+            <EditableList
+              items={draft.key_takeaways}
+              onSave={(arr) => setDraft((d) => ({ ...d, key_takeaways: arr }))}
+              isAdmin
+              listClassName="space-y-1.5"
+              textClassName="text-xs text-muted-foreground"
+              addLabel="Add takeaway"
+              marker={() => <span className="text-primary mt-0.5 flex-shrink-0">•</span>}
+            />
 
-            <div className="flex items-center justify-between pt-1">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                {training.presenter && (
-                  <span className="flex items-center gap-1">
-                    <User className="w-3 h-3" />
-                    {training.presenter}
-                  </span>
-                )}
-                {training.duration_minutes && (
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {training.duration_minutes}m
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-primary opacity-0 group-hover/card:opacity-100 transition-opacity">
-                View <ChevronRight className="w-3 h-3" />
-              </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <User className="w-3 h-3" />
+              <InlineText
+                value={draft.presenter}
+                onSave={(v) => setDraft((d) => ({ ...d, presenter: v }))}
+                isAdmin
+                className="text-xs text-muted-foreground"
+                emptyText="Add presenter"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" className="gap-1.5 text-xs bg-primary hover:bg-primary/90" onClick={saveEdit} disabled={saving}>
+                <Check className="w-3.5 h-3.5" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={cancelEdit} disabled={saving}>
+                <X className="w-3.5 h-3.5" />
+                Cancel
+              </Button>
             </div>
           </CardContent>
         </Card>
-      </Link>
+      ) : (
+        <Link to={`/training/${training.id}`} className="h-full block">
+          <Card className="group/card hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer border border-border bg-card overflow-hidden h-full">
+            {/* Top accent bar */}
+            <div className="h-1 bg-gradient-to-r from-primary to-primary/40" />
+
+            <CardHeader className="pb-3 pt-5 px-5">
+              <div className="flex items-start justify-between gap-3">
+                <Badge variant="outline" className={`text-xs font-medium border ${colorClass} shrink-0`}>
+                  {category || 'Other'}
+                </Badge>
+                {training.status === 'processing' && (
+                  <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30 gap-1">
+                    <Sparkles className="w-3 h-3 animate-pulse" />
+                    Processing
+                  </Badge>
+                )}
+              </div>
+              <h3 className="font-sora font-semibold text-foreground text-base leading-snug group-hover/card:text-primary transition-colors mt-2 line-clamp-2">
+                {training.title}
+              </h3>
+            </CardHeader>
+
+            <CardContent className="px-5 pb-5 space-y-4">
+              {training.summary && (
+                <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
+                  {training.summary}
+                </p>
+              )}
+
+              {training.key_takeaways?.length > 0 && (
+                <div className="space-y-1.5">
+                  {training.key_takeaways.slice(0, 2).map((kt, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <span className="text-primary mt-0.5 flex-shrink-0">•</span>
+                      <span className="line-clamp-1">{kt}</span>
+                    </div>
+                  ))}
+                  {training.key_takeaways.length > 2 && (
+                    <p className="text-xs text-primary/70 font-medium">+{training.key_takeaways.length - 2} more takeaways</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {training.presenter && (
+                    <span className="flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {training.presenter}
+                    </span>
+                  )}
+                  {training.duration_minutes && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {training.duration_minutes}m
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-xs font-medium text-primary opacity-0 group-hover/card:opacity-100 transition-opacity">
+                  View <ChevronRight className="w-3 h-3" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
     </div>
   );
 }

@@ -9,6 +9,8 @@ import { ArrowLeft, Play, User, Clock, FileText, Sparkles, Loader2 } from 'lucid
 import TrainingDetailSections from '@/components/training/TrainingDetailSections';
 import CopyAIContext from '@/components/training/CopyAIContext';
 import ExportSOPButton from '@/components/training/ExportButtons';
+import InlineText from '@/components/edit/InlineText';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { toast } from 'sonner';
 
 export default function TrainingDetail() {
@@ -18,6 +20,19 @@ export default function TrainingDetail() {
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const queryClient = useQueryClient();
+  const isAdmin = useIsAdmin();
+
+  const handleUpdate = async (field, value) => {
+    try {
+      queryClient.setQueryData(['training', id], (old) => ({ ...old, [field]: value }));
+      await base44.entities.Training.update(id, { [field]: value });
+      queryClient.invalidateQueries({ queryKey: ['trainings'] });
+      queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+    } catch (err) {
+      toast.error('Failed to save: ' + (err?.message || 'Unknown error'));
+      queryClient.invalidateQueries({ queryKey: ['training', id] });
+    }
+  };
 
   const { data: training, isLoading } = useQuery({
     queryKey: ['training', id],
@@ -110,12 +125,14 @@ export default function TrainingDetail() {
                   </Badge>
                 )}
               </div>
-              <h1 className="font-sora text-2xl md:text-3xl font-bold text-foreground leading-tight">{training.title}</h1>
+              <h1 className="font-sora text-2xl md:text-3xl font-bold text-foreground leading-tight">
+                <InlineText value={training.title} onSave={(v) => handleUpdate('title', v)} isAdmin={isAdmin} className="font-sora text-2xl md:text-3xl font-bold text-foreground leading-tight" />
+              </h1>
               <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-muted-foreground">
-                {training.presenter && (
+                {(training.presenter || isAdmin) && (
                   <span className="flex items-center gap-1.5">
                     <User className="w-4 h-4" />
-                    {training.presenter}
+                    <InlineText value={training.presenter} onSave={(v) => handleUpdate('presenter', v)} isAdmin={isAdmin} className="text-sm text-muted-foreground" emptyText="Add presenter" />
                   </span>
                 )}
                 {training.duration_minutes && (
@@ -166,7 +183,7 @@ export default function TrainingDetail() {
         )}
 
         {/* Summary */}
-        {training.summary && (
+        {(training.summary || isAdmin) && (
           <Card className="border-border bg-primary/5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -175,13 +192,15 @@ export default function TrainingDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-foreground text-sm leading-relaxed">{training.summary}</p>
+              <div className="text-foreground text-sm leading-relaxed">
+                <InlineText value={training.summary} onSave={(v) => handleUpdate('summary', v)} isAdmin={isAdmin} multiline className="text-foreground text-sm leading-relaxed" emptyText="Click to add a summary" />
+              </div>
             </CardContent>
           </Card>
         )}
 
         {/* All structured sections */}
-        <TrainingDetailSections training={training} />
+        <TrainingDetailSections training={training} onUpdate={handleUpdate} />
 
         {/* Transcript */}
         {training.transcript && (
