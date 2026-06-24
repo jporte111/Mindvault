@@ -33,6 +33,8 @@ export default function Admin() {
   const [syncResult, setSyncResult] = useState(null);
   const [filterPriority, setFilterPriority] = useState('All');
   const [filterFacing, setFilterFacing] = useState('All');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -87,6 +89,43 @@ export default function Admin() {
     const matchesFacing = filterFacing === 'All' || f.facing === filterFacing;
     return matchesPriority && matchesFacing;
   });
+
+  const handleRefreshMarketDemand = async () => {
+    setRefreshing(true);
+    setRefreshProgress('Starting market demand refresh...');
+    toast.info('Refreshing market demand — checking external trends for each feature. This may take a few minutes...');
+    try {
+      let skip = 0;
+      let totalUpdated = 0;
+      let totalErrors = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const res = await base44.functions.invoke('updateRoadmapMarketDemand', { skip, limit: 2 });
+        const data = res.data || res;
+        totalUpdated += data.features_updated || 0;
+        totalErrors += data.errors?.length || 0;
+        hasMore = data.has_more;
+        skip = data.next_skip || skip + 2;
+        setRefreshProgress(`Updated ${totalUpdated} features so far...`);
+        queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+        queryClient.invalidateQueries({ queryKey: ['trainings'] });
+      }
+
+      if (totalErrors > 0) {
+        toast.warning(`Market demand refreshed for ${totalUpdated} features (${totalErrors} errors)`);
+      } else {
+        toast.success(`Market demand refreshed for ${totalUpdated} features`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+      queryClient.invalidateQueries({ queryKey: ['trainings'] });
+    } catch (err) {
+      toast.error('Failed to refresh market demand: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setRefreshing(false);
+      setRefreshProgress('');
+    }
+  };
 
   const exportRoadmapCSV = () => {
     const headers = ['Feature Name', 'Problem Solved', 'User Type', 'Required Inputs', 'Output', 'Facing', 'Priority', 'Internal Need Score', 'Market Demand Score', 'Business Value Score', 'Implementation Complexity Score', 'Priority Reason', 'Source Training'];
@@ -144,10 +183,21 @@ export default function Admin() {
         <div className="px-8 py-8 max-w-5xl mx-auto space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <p className="text-muted-foreground text-sm">{allFeatures.length} feature opportunities across {trainings.length} trainings</p>
-            <Button onClick={exportRoadmapCSV} variant="outline" size="sm" className="gap-2 text-xs">
-              <Download className="w-3.5 h-3.5" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                onClick={handleRefreshMarketDemand}
+                disabled={refreshing || allFeatures.length === 0}
+                size="sm"
+                className="gap-2 text-xs bg-primary hover:bg-primary/90"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? (refreshProgress || 'Refreshing...') : 'Refresh Market Demand'}
+              </Button>
+              <Button onClick={exportRoadmapCSV} variant="outline" size="sm" className="gap-2 text-xs">
+                <Download className="w-3.5 h-3.5" />
+                Export CSV
+              </Button>
+            </div>
           </div>
 
           {/* Priority stats */}
