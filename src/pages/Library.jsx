@@ -9,8 +9,6 @@ import { Button } from '@/components/ui/button';
 
 const TOPIC_CATEGORIES = ['Bookkeeping', 'Payroll', 'Tax Prep', 'Reconciliation', 'Reporting', 'Cash Flow', 'Entity Management', 'Client Communication', 'Operations', 'Compliance', 'Troubleshooting', 'Other'];
 const CLIENT_SEGMENTS = ['Small Business', 'High-Net-Worth Household', 'Both', 'Internal Only'];
-const FACING_OPTIONS = ['Internal', 'Client-Facing', 'Both'];
-const PRIORITIES = ['High', 'Medium', 'Low'];
 
 function FilterBar({ label, options, value, onChange }) {
   return (
@@ -49,8 +47,6 @@ export default function Library() {
   const [search, setSearch] = useState('');
   const [topicCategory, setTopicCategory] = useState('All');
   const [clientSegment, setClientSegment] = useState('All');
-  const [facing, setFacing] = useState('All');
-  const [priority, setPriority] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
   const [software, setSoftware] = useState('All');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -84,13 +80,11 @@ export default function Library() {
     const matchesTopic = topicCategory === 'All' || t.topic_category === topicCategory || t.category === topicCategory;
     const matchesSegment = clientSegment === 'All' || t.client_segment === clientSegment;
     const matchesSoftware = software === 'All' || (t.software_systems || []).includes(software);
-    const matchesFacing = facing === 'All' || (t.app_feature_opportunities || []).some(f => f.facing === facing || f.facing === 'Both');
-    const matchesPriority = priority === 'All' || (t.app_feature_opportunities || []).some(f => f.priority === priority);
 
-    return matchesSearch && matchesTopic && matchesSegment && matchesSoftware && matchesFacing && matchesPriority;
+    return matchesSearch && matchesTopic && matchesSegment && matchesSoftware;
   });
 
-  const hasActiveFilters = topicCategory !== 'All' || clientSegment !== 'All' || software !== 'All' || facing !== 'All' || priority !== 'All';
+  const hasActiveFilters = topicCategory !== 'All' || clientSegment !== 'All' || software !== 'All';
 
   return (
     <div className="min-h-screen bg-background">
@@ -158,8 +152,6 @@ export default function Library() {
             {allSoftware.length > 0 && (
               <FilterBar label="Software / System" options={allSoftware} value={software} onChange={setSoftware} />
             )}
-            <FilterBar label="Feature Facing" options={FACING_OPTIONS} value={facing} onChange={setFacing} />
-            <FilterBar label="Feature Priority" options={PRIORITIES} value={priority} onChange={setPriority} />
           </div>
         </div>
       )}
