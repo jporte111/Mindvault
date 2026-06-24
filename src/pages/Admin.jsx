@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { 
   RefreshCw, Trash2, CheckCircle2, AlertCircle, 
-  Clock, BookOpen, Settings, Cloud, Zap, Download, ExternalLink
+  Clock, BookOpen, Settings, Cloud, Zap, Download, ExternalLink, UserPlus, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -35,6 +35,8 @@ export default function Admin() {
   const [filterFacing, setFilterFacing] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('christina@namasteresources.com');
+  const [inviting, setInviting] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -52,6 +54,20 @@ export default function Admin() {
     },
     onError: (err) => toast.error('Failed to delete: ' + err.message),
   });
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      await base44.functions.invoke('inviteUser', { email: inviteEmail.trim(), role: 'admin' });
+      toast.success(`Invitation sent to ${inviteEmail.trim()} as admin`);
+      setInviteEmail('');
+    } catch (err) {
+      toast.error('Failed to invite: ' + (err?.response?.data?.error || err?.message || 'Unknown error'));
+    } finally {
+      setInviting(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -317,6 +333,39 @@ export default function Admin() {
             </Card>
           ))}
         </div>
+
+        {/* User Management Card */}
+        <Card className="border-border">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-primary" />
+              Invite Admin User
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Invite a new user with admin access. They'll receive an email to join the app.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                type="email"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="flex-1 bg-background"
+                onKeyDown={e => { if (e.key === 'Enter' && !inviting) handleInvite(); }}
+              />
+              <Button
+                onClick={handleInvite}
+                disabled={inviting || !inviteEmail.trim()}
+                className="bg-primary hover:bg-primary/90 gap-2"
+              >
+                {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                {inviting ? 'Sending...' : 'Invite as Admin'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Upload Card */}
         <UploadTraining />
