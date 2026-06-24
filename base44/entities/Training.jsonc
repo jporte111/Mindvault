@@ -138,7 +138,7 @@
           },
           "market_demand_score": {
             "type": "number",
-            "description": "1-5: alignment with financial services/fintech/AI trends"
+            "description": "1-5: alignment with financial services/fintech/AI trends, refreshed by external market signals"
           },
           "business_value_score": {
             "type": "number",
@@ -151,6 +151,22 @@
           "priority_reason": {
             "type": "string",
             "description": "Plain-English explanation of the assigned priority"
+          },
+          "market_demand_summary": {
+            "type": "string",
+            "description": "Whether market demand is increasing, stable, or low, with trend context"
+          },
+          "market_signal_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Trends, news themes, or industry signals that informed the market demand score"
+          },
+          "last_market_check_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the market demand was last refreshed"
           }
         }
       },

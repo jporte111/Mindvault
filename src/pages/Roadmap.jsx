@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { Zap, Download, ExternalLink } from 'lucide-react';
+import { Zap, Download, ExternalLink, RefreshCw, TrendingUp, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 
 const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
 const priorityColor = {
@@ -34,11 +35,51 @@ function FilterPill({ label, active, onClick }) {
 export default function Roadmap() {
   const [filterPriority, setFilterPriority] = useState('All');
   const [filterFacing, setFilterFacing] = useState('All');
+  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ['trainings'],
     queryFn: () => base44.entities.Training.list('-created_date'),
   });
+
+  const [refreshProgress, setRefreshProgress] = useState('');
+
+  const handleRefreshMarketDemand = async () => {
+    setRefreshing(true);
+    setRefreshProgress('Starting market demand refresh...');
+    toast.info('Refreshing market demand — checking external trends for each feature. This may take a few minutes...');
+    try {
+      let skip = 0;
+      let totalUpdated = 0;
+      let totalErrors = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const res = await base44.functions.invoke('updateRoadmapMarketDemand', { skip, limit: 2 });
+        const data = res.data || res;
+        totalUpdated += data.features_updated || 0;
+        totalErrors += data.errors?.length || 0;
+        hasMore = data.has_more;
+        skip = data.next_skip || skip + 2;
+        setRefreshProgress(`Updated ${totalUpdated} features so far...`);
+        // Refresh the list as we go so progress is visible
+        queryClient.invalidateQueries({ queryKey: ['trainings'] });
+      }
+
+      if (totalErrors > 0) {
+        toast.warning(`Market demand refreshed for ${totalUpdated} features (${totalErrors} errors)`);
+      } else {
+        toast.success(`Market demand refreshed for ${totalUpdated} features`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['trainings'] });
+    } catch (err) {
+      toast.error('Failed to refresh market demand: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setRefreshing(false);
+      setRefreshProgress('');
+    }
+  };
 
   // Flatten all features with their source training
   const allFeatures = trainings.flatMap(t =>
@@ -81,10 +122,21 @@ export default function Roadmap() {
                 <p className="text-muted-foreground text-sm">{allFeatures.length} feature opportunities across {trainings.length} trainings</p>
               </div>
             </div>
-            <Button onClick={exportCSV} variant="outline" size="sm" className="gap-2 text-xs">
-              <Download className="w-3.5 h-3.5" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                onClick={handleRefreshMarketDemand}
+                disabled={refreshing || allFeatures.length === 0}
+                size="sm"
+                className="gap-2 text-xs bg-primary hover:bg-primary/90"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? (refreshProgress || 'Refreshing...') : 'Refresh Market Demand'}
+              </Button>
+              <Button onClick={exportCSV} variant="outline" size="sm" className="gap-2 text-xs">
+                <Download className="w-3.5 h-3.5" />
+                Export CSV
+              </Button>
+            </div>
           </div>
 
           {/* Stats */}
@@ -151,6 +203,51 @@ export default function Roadmap() {
                   <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Inputs: </span>{feat.required_inputs}</p>
                   <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Output: </span>{feat.output}</p>
                 </div>
+
+                {/* Scoring */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {[
+                    { label: 'Internal Need', value: feat.internal_need_score },
+                    { label: 'Market Demand', value: feat.market_demand_score },
+                    { label: 'Business Value', value: feat.business_value_score },
+                    { label: 'Complexity', value: feat.implementation_complexity_score },
+                  ].map(s => (
+                    <span key={s.label} className="px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground border border-border">
+                      {s.label}: <span className="font-semibold text-foreground">{s.value ?? '—'}/5</span>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Market demand analysis */}
+                {feat.market_demand_summary && (
+                  <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      Market Demand Analysis
+                    </div>
+                    <p className="text-xs text-foreground leading-relaxed">{feat.market_demand_summary}</p>
+                    {feat.market_signal_sources?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {feat.market_signal_sources.map((src, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] border border-primary/20">
+                            {src}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {feat.last_market_check_date && (
+                      <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        Last checked {new Date(feat.last_market_check_date).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {feat.priority_reason && (
+                  <p className="text-xs text-muted-foreground italic">{feat.priority_reason}</p>
+                )}
+
                 <Link
                   to={`/training/${feat.trainingId}`}
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
