@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 
@@ -10,6 +10,7 @@ const navItems = [
 ];
 
 const adminItems = [
+  { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
   { path: '/admin', icon: Settings, label: 'Admin' },
 ];
 
