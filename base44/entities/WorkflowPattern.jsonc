@@ -1,0 +1,54 @@
+{
+  "name": "WorkflowPattern",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the repeated workflow"
+    },
+    "description": {
+      "type": "string",
+      "description": "What the workflow involves and why it is done manually"
+    },
+    "workflow_type": {
+      "type": "string",
+      "description": "Category e.g. Bookkeeping, Reconciliation, Reporting, Client Communication, CFO Advisory"
+    },
+    "client_segment": {
+      "type": "string",
+      "enum": [
+        "Small Business",
+        "High-Net-Worth Household",
+        "Both",
+        "Internal Only"
+      ],
+      "description": "Which segment this workflow serves"
+    },
+    "related_training_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of trainings where this workflow appears"
+    },
+    "frequency_count": {
+      "type": "number",
+      "description": "Number of trainings where this appears"
+    },
+    "automation_potential_score": {
+      "type": "number",
+      "description": "1-5: how easily this could be automated"
+    },
+    "complexity_score": {
+      "type": "number",
+      "description": "1-5: how complex the workflow is"
+    },
+    "supporting_evidence_summary": {
+      "type": "string",
+      "description": "Summary of evidence from trainings supporting this pattern"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

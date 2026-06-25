@@ -1,0 +1,50 @@
+{
+  "name": "DecisionRulePattern",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the judgment-based rule"
+    },
+    "rule_description": {
+      "type": "string",
+      "description": "What the rule governs and when it applies"
+    },
+    "example_if_then_rule": {
+      "type": "string",
+      "description": "A concrete if/then example of the rule in action"
+    },
+    "client_segment": {
+      "type": "string",
+      "enum": [
+        "Small Business",
+        "High-Net-Worth Household",
+        "Both",
+        "Internal Only"
+      ],
+      "description": "Which segment this rule applies to"
+    },
+    "related_training_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of trainings where this rule appears"
+    },
+    "frequency_count": {
+      "type": "number",
+      "description": "Number of trainings where this appears"
+    },
+    "judgment_dependency_score": {
+      "type": "number",
+      "description": "1-5: how much human judgment is required"
+    },
+    "supporting_evidence_summary": {
+      "type": "string",
+      "description": "Summary of evidence from trainings supporting this rule"
+    }
+  },
+  "required": [
+    "rule_name"
+  ]
+}

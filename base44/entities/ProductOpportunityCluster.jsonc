@@ -1,0 +1,121 @@
+{
+  "name": "ProductOpportunityCluster",
+  "type": "object",
+  "properties": {
+    "cluster_name": {
+      "type": "string",
+      "description": "Name of the product opportunity cluster"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this cluster represents and why it matters"
+    },
+    "related_feature_ideas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Feature idea names grouped into this cluster"
+    },
+    "related_pain_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Pain point names related to this cluster"
+    },
+    "related_workflow_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Workflow pattern names related to this cluster"
+    },
+    "related_decision_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Decision rule names related to this cluster"
+    },
+    "client_segment": {
+      "type": "string",
+      "enum": [
+        "Small Business",
+        "High-Net-Worth Household",
+        "Both",
+        "Internal Only"
+      ],
+      "description": "Which segment this cluster serves"
+    },
+    "facing": {
+      "type": "string",
+      "enum": [
+        "Internal",
+        "Client-Facing",
+        "Both"
+      ],
+      "description": "Whether this is internal, client-facing, or both"
+    },
+    "internal_need_score": {
+      "type": "number",
+      "description": "1-5: strength of internal need"
+    },
+    "AI_estimated_market_demand_score": {
+      "type": "number",
+      "description": "1-5: AI-estimated alignment with market demand in financial services, fintech, AI automation"
+    },
+    "business_fit_score": {
+      "type": "number",
+      "description": "1-5: how well it fits our boutique service model"
+    },
+    "defensibility_score": {
+      "type": "number",
+      "description": "1-5: how hard for competitors to copy"
+    },
+    "implementation_complexity_score": {
+      "type": "number",
+      "description": "1-5: 1 easy, 5 complex"
+    },
+    "overall_opportunity_score": {
+      "type": "number",
+      "description": "1-5: composite opportunity score"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "High",
+        "Medium",
+        "Low"
+      ],
+      "description": "Priority ranking"
+    },
+    "priority_reason": {
+      "type": "string",
+      "description": "Plain-English explanation of the priority"
+    },
+    "related_training_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of trainings contributing to this cluster"
+    },
+    "frequency_count": {
+      "type": "number",
+      "description": "Number of trainings contributing"
+    },
+    "supporting_evidence_summary": {
+      "type": "string",
+      "description": "Which trainings and features support this cluster and why"
+    },
+    "last_updated_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this cluster was last updated"
+    }
+  },
+  "required": [
+    "cluster_name"
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "name": "RecurringPainPoint",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the recurring pain point"
+    },
+    "description": {
+      "type": "string",
+      "description": "What the problem is and why it recurs"
+    },
+    "client_segment": {
+      "type": "string",
+      "enum": [
+        "Small Business",
+        "High-Net-Worth Household",
+        "Both",
+        "Internal Only"
+      ],
+      "description": "Which segment this pain point affects"
+    },
+    "related_training_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of trainings where this pain point appears"
+    },
+    "frequency_count": {
+      "type": "number",
+      "description": "Number of trainings where this appears"
+    },
+    "severity_score": {
+      "type": "number",
+      "description": "1-5: how painful or impactful this problem is"
+    },
+    "first_seen_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this pain point was first identified"
+    },
+    "last_seen_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this pain point was last seen"
+    },
+    "supporting_evidence_summary": {
+      "type": "string",
+      "description": "Summary of evidence from trainings supporting this pain point"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
