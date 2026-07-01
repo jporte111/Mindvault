@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass } from 'lucide-react';
+import { BookOpen, MessageSquare, Home, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 
@@ -9,10 +9,7 @@ const navItems = [
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
 ];
 
-const adminItems = [
-  { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
-  { path: '/admin', icon: Settings, label: 'Admin' },
-];
+
 
 export default function Sidebar({ user }) {
   const location = useLocation();
@@ -50,28 +47,7 @@ export default function Sidebar({ user }) {
           </Link>
         ))}
 
-        {user?.role === 'admin' && (
-          <>
-            <div className="pt-4 pb-2 px-3">
-              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Admin</p>
-            </div>
-            {adminItems.map(({ path, icon: Icon, label }) => (
-              <Link
-                key={path}
-                to={path}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-                  location.pathname === path
-                    ? 'bg-primary text-white shadow-md shadow-primary/30'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </Link>
-            ))}
-          </>
-        )}
+
       </nav>
 
       {/* User */}
