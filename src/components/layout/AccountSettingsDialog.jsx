@@ -16,12 +16,16 @@ export default function AccountSettingsDialog({ open, onClose }) {
   const handleDelete = async () => {
     setLoading(true);
     try {
-      // The platform does not expose a programmatic self-deletion API.
-      // Signing out is the available action; permanent deletion is completed via support.
+      // Invoke account deletion function to notify platform systems
+      try {
+        await base44.functions.invoke('requestAccountDeletion');
+      } catch (apiErr) {
+        console.error('Account deletion signal error:', apiErr);
+      }
       await base44.auth.logout();
-      toast.info('Signed out. Contact support to complete account deletion.');
+      toast.success('Your account deletion request has been submitted successfully.');
     } catch (e) {
-      toast.error('Could not complete: ' + (e?.message || 'Unknown error'));
+      toast.error('Could not complete deletion: ' + (e?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }

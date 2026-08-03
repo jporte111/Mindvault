@@ -17,8 +17,6 @@ export default function MobileNav({ user }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const isRoot = rootTabs.includes(location.pathname);
-
   const tabs = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/library', icon: BookOpen, label: 'Library' },
@@ -28,6 +26,8 @@ export default function MobileNav({ user }) {
       { path: '/admin', icon: Settings, label: 'Admin' },
     ] : []),
   ];
+
+  const isRoot = tabs.some(tab => tab.path === location.pathname);
 
   return (
     <>
