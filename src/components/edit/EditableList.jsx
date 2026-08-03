@@ -40,10 +40,10 @@ export default function EditableList({
                   e.stopPropagation();
                   remove(i);
                 }}
-                className="md:opacity-0 md:group-hover/el:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 mt-0.5"
+                className="md:opacity-0 md:group-hover/el:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-destructive/10"
                 title="Remove"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </li>

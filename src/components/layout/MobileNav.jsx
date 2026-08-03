@@ -1,6 +1,8 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AccountSettingsDialog from './AccountSettingsDialog';
 
 const tabs = [
   { path: '/', icon: Home, label: 'Home' },
@@ -8,15 +10,45 @@ const tabs = [
   { path: '/chat', icon: MessageSquare, label: 'Chat' },
 ];
 
+const rootTabs = ['/', '/library', '/chat'];
+
+function titleFor(pathname) {
+  if (pathname.startsWith('/training/')) return 'Training Details';
+  if (pathname === '/roadmap') return 'Strategy Engine';
+  if (pathname === '/admin') return 'Admin';
+  return 'Knowledge Base';
+}
+
 export default function MobileNav() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const isRoot = rootTabs.includes(location.pathname);
 
   return (
     <>
       {/* Top bar — mobile only */}
       <header className="md:hidden fixed top-0 inset-x-0 z-50 bg-card border-b border-border pt-[env(safe-area-inset-top)]">
-        <div className="h-14 flex items-center px-4">
-          <span className="font-sora font-semibold text-foreground">Knowledge Base</span>
+        <div className="h-14 flex items-center px-3 gap-2">
+          {!isRoot && (
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center justify-center w-11 h-11 -ml-1 rounded-lg text-foreground hover:bg-accent transition-colors"
+              aria-label="Back"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          <span className="flex-1 font-sora font-semibold text-foreground text-base truncate">
+            {titleFor(location.pathname)}
+          </span>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center justify-center w-11 h-11 -mr-1 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            aria-label="Account settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
@@ -30,7 +62,7 @@ export default function MobileNav() {
                 key={path}
                 to={path}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-medium transition-colors',
+                  'flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[56px] text-xs font-medium transition-colors',
                   active ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
@@ -41,6 +73,8 @@ export default function MobileNav() {
           })}
         </div>
       </nav>
+
+      <AccountSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   );
 }

@@ -97,7 +97,7 @@ export default function TrainingCard({ training }) {
         {isAdmin && !editing && (
           <button
             onClick={startEdit}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border bg-background/90 text-muted-foreground border-border md:opacity-0 md:group-hover:opacity-100 hover:text-primary hover:border-primary/50"
+            className="flex items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border bg-background/90 text-muted-foreground border-border md:opacity-0 md:group-hover:opacity-100 hover:text-primary hover:border-primary/50"
             title="Edit"
           >
             <Pencil className="w-3 h-3" />
@@ -106,8 +106,8 @@ export default function TrainingCard({ training }) {
         {isAdmin && !editing && (
           <button
             onClick={handleDelete}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border
-              ${confirmDelete
+            className={`flex items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border
+            ${confirmDelete
                 ? 'bg-destructive text-white border-destructive opacity-100'
                 : 'bg-background/90 text-muted-foreground border-border md:opacity-0 md:group-hover:opacity-100 hover:text-destructive hover:border-destructive/50'
               }`}
@@ -168,11 +168,11 @@ export default function TrainingCard({ training }) {
             </div>
 
             <div className="flex gap-2 pt-1">
-              <Button size="sm" className="gap-1.5 text-xs bg-primary hover:bg-primary/90" onClick={saveEdit} disabled={saving}>
+              <Button size="sm" className="gap-1.5 text-xs h-11 bg-primary hover:bg-primary/90" onClick={saveEdit} disabled={saving}>
                 <Check className="w-3.5 h-3.5" />
                 {saving ? 'Saving...' : 'Save'}
               </Button>
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={cancelEdit} disabled={saving}>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs h-11" onClick={cancelEdit} disabled={saving}>
                 <X className="w-3.5 h-3.5" />
                 Cancel
               </Button>

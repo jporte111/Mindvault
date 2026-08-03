@@ -88,7 +88,7 @@ export default function InlineText({
         e.stopPropagation();
         setEditing(true);
       }}
-      className={`${className} group/edit relative cursor-text rounded px-1 -mx-1 transition-colors hover:bg-primary/5 hover:ring-1 hover:ring-primary/30`}
+      className={`${className} group/edit relative cursor-text rounded px-1 py-1.5 -mx-1 transition-colors hover:bg-primary/5 hover:ring-1 hover:ring-primary/30`}
       title="Click to edit"
     >
       {value ? (

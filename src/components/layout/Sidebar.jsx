@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
+import AccountSettingsDialog from './AccountSettingsDialog';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -16,6 +18,7 @@ const adminItems = [
 
 export default function Sidebar({ user }) {
   const location = useLocation();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
@@ -39,7 +42,7 @@ export default function Sidebar({ user }) {
             key={path}
             to={path}
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
+              'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
               location.pathname === path || (path === '/chat' && location.pathname === '/chat')
                 ? 'bg-primary text-white shadow-md shadow-primary/30'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -60,7 +63,7 @@ export default function Sidebar({ user }) {
                 key={path}
                 to={path}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
+                  'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
                   location.pathname === path
                     ? 'bg-primary text-white shadow-md shadow-primary/30'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -86,14 +89,25 @@ export default function Sidebar({ user }) {
             <p className="text-sidebar-foreground text-xs font-medium truncate">{user?.full_name || 'User'}</p>
             <p className="text-sidebar-foreground/40 text-xs truncate">{user?.role || 'user'}</p>
           </div>
-          <button
-            onClick={() => base44.auth.logout()}
-            className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              aria-label="Account settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => base44.auth.logout()}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              aria-label="Log out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
+      <AccountSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </aside>
   );
 }

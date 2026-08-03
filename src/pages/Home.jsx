@@ -2,11 +2,13 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { BookOpen, MessageSquare, ArrowRight, Sparkles, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import PullToRefresh from '@/components/layout/PullToRefresh';
 
 export default function Home() {
   const { user } = useOutletContext() || {};
+  const queryClient = useQueryClient();
 
   const { data: trainings = [] } = useQuery({
     queryKey: ['trainings-count'],
@@ -18,6 +20,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['trainings-count'] })}>
       {/* Hero */}
       <div className="relative overflow-hidden bg-gradient-to-br from-sidebar via-sidebar to-primary/20 px-8 py-20">
         <div className="absolute inset-0 opacity-5">
@@ -109,6 +112,7 @@ export default function Home() {
           </Link>
         </div>
       </div>
+      </PullToRefresh>
     </div>
   );
 }
