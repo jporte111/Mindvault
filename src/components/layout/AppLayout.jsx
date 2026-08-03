@@ -20,8 +20,8 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar user={user} />
-      <MobileNav />
-      <main className="flex-1 md:ml-64 min-h-screen pt-14 md:pt-0 pb-16 md:pb-0">
+      <MobileNav user={user} />
+      <main className="flex-1 md:ml-64 min-h-screen pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-0 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

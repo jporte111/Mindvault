@@ -1,14 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
-
-const tabs = [
-  { path: '/', icon: Home, label: 'Home' },
-  { path: '/library', icon: BookOpen, label: 'Library' },
-  { path: '/chat', icon: MessageSquare, label: 'Chat' },
-];
 
 const rootTabs = ['/', '/library', '/chat'];
 
@@ -19,11 +13,21 @@ function titleFor(pathname) {
   return 'Knowledge Base';
 }
 
-export default function MobileNav() {
+export default function MobileNav({ user }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isRoot = rootTabs.includes(location.pathname);
+
+  const tabs = [
+    { path: '/', icon: Home, label: 'Home' },
+    { path: '/library', icon: BookOpen, label: 'Library' },
+    { path: '/chat', icon: MessageSquare, label: 'Chat' },
+    ...(user?.role === 'admin' ? [
+      { path: '/roadmap', icon: Compass, label: 'Strategy' },
+      { path: '/admin', icon: Settings, label: 'Admin' },
+    ] : []),
+  ];
 
   return (
     <>

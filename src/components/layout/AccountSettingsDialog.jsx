@@ -3,6 +3,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -10,6 +11,7 @@ import { toast } from 'sonner';
 export default function AccountSettingsDialog({ open, onClose }) {
   const [confirm, setConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
   const handleDelete = async () => {
     setLoading(true);
@@ -57,9 +59,25 @@ export default function AccountSettingsDialog({ open, onClose }) {
             <p className="text-sm text-foreground">
               This will permanently delete your account. This action cannot be undone.
             </p>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Type <span className="font-semibold text-foreground">DELETE</span> to confirm
+              </label>
+              <Input
+                value={deleteConfirmationText}
+                onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                placeholder="DELETE"
+                className="h-11"
+              />
+            </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirm(false)} disabled={loading}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={loading} className="gap-1.5">
+              <Button variant="outline" onClick={() => { setConfirm(false); setDeleteConfirmationText(''); }} disabled={loading}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={loading || deleteConfirmationText !== 'DELETE'}
+                className="gap-1.5"
+              >
                 {loading ? 'Deleting...' : (<><Trash2 className="w-3.5 h-3.5" /> Delete Account</>)}
               </Button>
             </DialogFooter>
