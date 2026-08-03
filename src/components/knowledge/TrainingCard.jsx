@@ -97,7 +97,7 @@ export default function TrainingCard({ training }) {
         {isAdmin && !editing && (
           <button
             onClick={startEdit}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border bg-background/90 text-muted-foreground border-border opacity-0 group-hover:opacity-100 hover:text-primary hover:border-primary/50"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border bg-background/90 text-muted-foreground border-border md:opacity-0 md:group-hover:opacity-100 hover:text-primary hover:border-primary/50"
             title="Edit"
           >
             <Pencil className="w-3 h-3" />
@@ -109,7 +109,7 @@ export default function TrainingCard({ training }) {
             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border
               ${confirmDelete
                 ? 'bg-destructive text-white border-destructive opacity-100'
-                : 'bg-background/90 text-muted-foreground border-border opacity-0 group-hover:opacity-100 hover:text-destructive hover:border-destructive/50'
+                : 'bg-background/90 text-muted-foreground border-border md:opacity-0 md:group-hover:opacity-100 hover:text-destructive hover:border-destructive/50'
               }`}
           >
             <Trash2 className="w-3 h-3" />

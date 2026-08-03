@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import MobileNav from './MobileNav';
 import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 
@@ -11,9 +12,10 @@ export default function AppLayout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background">
       <Sidebar user={user} />
-      <main className="flex-1 ml-64 min-h-screen">
+      <MobileNav />
+      <main className="flex-1 md:ml-64 min-h-screen pt-14 md:pt-0 pb-16 md:pb-0">
         <Outlet context={{ user }} />
       </main>
     </div>

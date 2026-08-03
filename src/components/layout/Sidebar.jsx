@@ -18,7 +18,7 @@ export default function Sidebar({ user }) {
   const location = useLocation();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar flex flex-col z-50 border-r border-sidebar-border">
+    <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
       {/* Logo */}
       <div className="px-6 py-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">

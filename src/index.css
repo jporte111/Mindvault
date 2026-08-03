@@ -80,4 +80,19 @@
   body {
     @apply bg-background text-foreground font-inter;
   }
+
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  button,
+  [role="tab"],
+  [role="button"],
+  nav,
+  header,
+  aside {
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }

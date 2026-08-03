@@ -40,7 +40,7 @@ export default function EditableList({
                   e.stopPropagation();
                   remove(i);
                 }}
-                className="opacity-0 group-hover/el:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 mt-0.5"
+                className="md:opacity-0 md:group-hover/el:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0 mt-0.5"
                 title="Remove"
               >
                 <X className="w-3.5 h-3.5" />

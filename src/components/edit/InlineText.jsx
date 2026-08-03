@@ -96,7 +96,7 @@ export default function InlineText({
       ) : (
         <span className="text-muted-foreground/50 italic">{emptyText}</span>
       )}
-      <Pencil className="inline-block w-3 h-3 ml-1 text-primary/50 opacity-0 group-hover/edit:opacity-100 transition-opacity align-text-bottom" />
+      <Pencil className="inline-block w-3 h-3 ml-1 text-primary/50 md:opacity-0 md:group-hover/edit:opacity-100 transition-opacity align-text-bottom" />
     </span>
   );
 }
