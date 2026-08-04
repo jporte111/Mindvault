@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
+import Footer from './Footer';
 import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -33,6 +34,7 @@ export default function AppLayout() {
             <Outlet context={{ user }} />
           </motion.div>
         </AnimatePresence>
+        <Footer />
       </main>
     </div>
   );

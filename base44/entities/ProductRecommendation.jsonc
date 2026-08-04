@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Proposed product name"
     },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional freeform description (up to 1000 characters)"
+    },
     "positioning_statement": {
       "type": "string",
       "description": "One-sentence positioning statement"

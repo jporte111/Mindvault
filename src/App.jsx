@@ -17,6 +17,8 @@ import Chat from './pages/Chat';
 import Admin from './pages/Admin';
 import TrainingDetail from './pages/TrainingDetail';
 import Roadmap from './pages/Roadmap';
+import About from './pages/About';
+import Contact from './pages/Contact';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -47,6 +49,8 @@ const AuthenticatedApp = () => {
         <Route path="/admin" element={<Admin />} />
         <Route path="/training/:id" element={<TrainingDetail />} />
         <Route path="/roadmap" element={<Roadmap />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contact" element={<Contact />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
