@@ -3,14 +3,39 @@ import { Sparkles, Send, Database, AlertCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import ChatMessage from '@/components/chat/ChatMessage';
+import ClientSelect from '@/components/knowledge/ClientSelect';
+import { useAuth } from '@/lib/AuthContext';
+import { useChatConfig } from '@/components/admin/ChatEngineToggle';
+import { CLIENT_PREFIX, SCOPE_GENERAL } from '@/lib/knowledgeScope';
+
+// Stable 0-99 bucket for a user id, for canary rollout.
+function bucketFor(id) {
+  let h = 0;
+  for (let i = 0; i < String(id || '').length; i++) h = (h * 31 + String(id).charCodeAt(i)) >>> 0;
+  return h % 100;
+}
+
+const CLIENT_STORAGE_KEY = 'mindvault:chatClientScope';
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasContent, setHasContent] = useState(true);
+  const [clientScope, setClientScope] = useState(() => {
+    try { return localStorage.getItem(CLIENT_STORAGE_KEY) || SCOPE_GENERAL; } catch { return SCOPE_GENERAL; }
+  });
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  const { user } = useAuth();
+  const { chatEngine, ragRolloutPct } = useChatConfig();
+  const engine = chatEngine === 'rag' || bucketFor(user?.id) < ragRolloutPct ? 'rag' : 'legacy';
+  const clientId = clientScope.startsWith(CLIENT_PREFIX) ? clientScope.slice(CLIENT_PREFIX.length) : null;
+
+  useEffect(() => {
+    try { localStorage.setItem(CLIENT_STORAGE_KEY, clientScope); } catch { /* ignore */ }
+  }, [clientScope]);
 
   useEffect(() => {
     base44.entities.Training.filter({ status: 'ready' })
@@ -29,12 +54,17 @@ export default function Chat() {
 
     const userMsg = { role: 'user', content: question };
     const pendingMsg = { role: 'assistant', content: '', loading: true };
+    const history = messages
+      .filter((m) => !m.loading && !m.error && m.content)
+      .map((m) => ({ role: m.role, content: m.content }));
     setMessages((m) => [...m, userMsg, pendingMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const res = await base44.functions.invoke('askKnowledgeBase', { question });
+      const res = engine === 'rag'
+        ? await base44.functions.invoke('askKnowledgeBaseV2', { question, clientId, conversation: history })
+        : await base44.functions.invoke('askKnowledgeBase', { question });
       const data = res?.data ?? res;
       setMessages((m) => {
         const next = [...m];
@@ -99,6 +129,22 @@ export default function Chat() {
       </div>
 
       <div className="border-t border-border bg-background/95 backdrop-blur px-4 md:px-6 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        {engine === 'rag' && (
+          <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground flex-shrink-0">Answering about:</span>
+            <div className="w-56">
+              <ClientSelect
+                value={clientScope}
+                onChange={setClientScope}
+                includeNeedsReview={false}
+                className="h-9"
+              />
+            </div>
+            <span className="text-[11px] text-muted-foreground/70 hidden sm:inline">
+              Only this context + firm-wide knowledge is searched.
+            </span>
+          </div>
+        )}
         <form onSubmit={ask} className="max-w-3xl mx-auto flex items-center gap-2">
           <input
             ref={inputRef}
