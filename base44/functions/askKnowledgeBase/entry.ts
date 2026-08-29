@@ -80,13 +80,36 @@ Provide:
       model: 'claude_sonnet_4_6'
     });
 
-    // Find which trainings are most relevant (simple keyword matching on the question)
-    const keywords = question.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
-    const sources = trainings
-      .filter(t => {
-        const text = `${t.title} ${t.category} ${t.summary} ${(t.key_takeaways || []).join(' ')}`.toLowerCase();
-        return keywords.some(kw => text.includes(kw));
-      })
+    // Resolve source cards from the trainings the LLM actually cited.
+    // The LLM may cite by [Training N] (matching context order) or by [Training Title].
+    const answerText = typeof result === 'string' ? result : (result?.answer || JSON.stringify(result));
+    const citedIds = new Set();
+
+    // (1) [Training N] numeric citations — index matches contextParts order.
+    const indexMatches = [...answerText.matchAll(/\[Training\s+(\d+)\]/gi)];
+    for (const m of indexMatches) {
+      const idx = parseInt(m[1], 10) - 1;
+      if (idx >= 0 && idx < trainings.length) citedIds.add(trainings[idx].id);
+    }
+
+    // (2) [Training Title] citations — match by normalized substring.
+    const bracketMatches = [...answerText.matchAll(/\[([^\]]+)\]/g)]
+      .map(m => m[1].trim())
+      .filter(s => !/^Training\s+\d+$/i.test(s));
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (bracketMatches.length) {
+      for (const t of trainings) {
+        const tn = norm(t.title);
+        if (!tn) continue;
+        if (bracketMatches.some(b => tn.includes(norm(b)) || norm(b).includes(tn))) {
+          citedIds.add(t.id);
+        }
+      }
+    }
+
+    // (3) Build sources from citations, capped at 3.
+    let sources = trainings
+      .filter(t => citedIds.has(t.id))
       .slice(0, 3)
       .map(t => ({
         id: t.id,
@@ -95,6 +118,24 @@ Provide:
         video_url: t.video_url,
         presenter: t.presenter
       }));
+
+    // (4) Fallback: keyword overlap on the question if no citations were parsed.
+    if (sources.length === 0) {
+      const keywords = question.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+      sources = trainings
+        .filter(t => {
+          const text = `${t.title} ${t.category} ${t.summary} ${(t.key_takeaways || []).join(' ')}`.toLowerCase();
+          return keywords.some(kw => text.includes(kw));
+        })
+        .slice(0, 3)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          category: t.category,
+          video_url: t.video_url,
+          presenter: t.presenter
+        }));
+    }
 
     return Response.json({ answer: result, sources });
   } catch (error) {
