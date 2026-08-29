@@ -35,7 +35,26 @@ export default function ChatMessage({ message }) {
             </div>
           ) : (
             <ReactMarkdown
-              className="text-sm prose prose-sm max-w-none text-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 prose-p:leading-relaxed prose-strong:text-foreground prose-a:text-primary"
+              className="text-sm max-w-none text-foreground leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              components={{
+                h1: ({ node, ...p }) => <h1 className="text-base font-bold mt-4 mb-2 text-foreground" {...p} />,
+                h2: ({ node, ...p }) => <h2 className="text-base font-bold mt-4 mb-2 text-foreground flex items-center gap-2" {...p} />,
+                h3: ({ node, ...p }) => <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground" {...p} />,
+                p: ({ node, ...p }) => <p className="my-2 leading-relaxed" {...p} />,
+                ul: ({ node, ...p }) => <ul className="my-2 list-disc pl-5 space-y-1.5 marker:text-primary/60" {...p} />,
+                ol: ({ node, ...p }) => <ol className="my-2 list-decimal pl-5 space-y-1.5 marker:text-primary/60 font-medium" {...p} />,
+                li: ({ node, ...p }) => <li className="leading-relaxed pl-1" {...p} />,
+                strong: ({ node, ...p }) => <strong className="font-semibold text-foreground" {...p} />,
+                em: ({ node, ...p }) => <em className="italic text-foreground" {...p} />,
+                blockquote: ({ node, ...p }) => <blockquote className="my-2.5 border-l-2 border-primary/50 pl-3 italic text-muted-foreground" {...p} />,
+                hr: ({ node, ...p }) => <hr className="my-3 border-border" {...p} />,
+                a: ({ node, ...p }) => <a className="text-primary underline underline-offset-2" target="_blank" rel="noreferrer" {...p} />,
+                code: ({ node, ...p }) => <code className="bg-muted px-1.5 py-0.5 rounded text-[0.85em] font-mono" {...p} />,
+                pre: ({ node, ...p }) => <pre className="my-2.5 bg-muted p-3 rounded-lg overflow-x-auto text-xs" {...p} />,
+                table: ({ node, ...p }) => <div className="my-3 overflow-x-auto"><table className="w-full text-xs border border-border rounded-lg" {...p} /></div>,
+                th: ({ node, ...p }) => <th className="bg-muted px-3 py-2 text-left font-semibold border-b border-border" {...p} />,
+                td: ({ node, ...p }) => <td className="px-3 py-2 border-b border-border/60 align-top" {...p} />,
+              }}
             >
               {message.content}
             </ReactMarkdown>
