@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import ClientSelect from '@/components/knowledge/ClientSelect';
+import { isClassified, resolveScopeFields, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
 export default function UploadTraining() {
   const [title, setTitle] = useState('');
@@ -15,8 +17,10 @@ export default function UploadTraining() {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [done, setDone] = useState(false);
+  const [scopeValue, setScopeValue] = useState(SCOPE_UNCLASSIFIED);
   const fileInputRef = useRef();
   const queryClient = useQueryClient();
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -77,6 +81,7 @@ export default function UploadTraining() {
       transcript: transcriptFileUrl,
       video_url: videoUrl.trim() || undefined,
       status: 'processing',
+      ...resolveScopeFields(scopeValue, clients),
     });
 
     // 5. Kick off backend analysis (non-blocking — resolves in background)
@@ -85,11 +90,16 @@ export default function UploadTraining() {
 
     queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
     queryClient.invalidateQueries({ queryKey: ['trainings'] });
-    toast.success('Training uploaded and fully processed!');
+    if (isClassified(scopeValue)) {
+      toast.success('Training uploaded. Index it for chat from "All Trainings" once analysis finishes.');
+    } else {
+      toast.success('Training uploaded. Classify it under "Needs review" to make it searchable.');
+    }
     setDone(true);
     setTitle('');
     setVideoUrl('');
     setTranscriptFile(null);
+    setScopeValue(SCOPE_UNCLASSIFIED);
     setStatusMsg('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setUploading(false);
@@ -151,6 +161,14 @@ export default function UploadTraining() {
             placeholder="https://meet.google.com/recording/..."
             className="bg-background"
           />
+        </div>
+
+        <div>
+          <Label className="text-sm text-muted-foreground mb-2 block">Knowledge scope</Label>
+          <ClientSelect value={scopeValue} onChange={setScopeValue} disabled={uploading} />
+          <p className="text-xs text-muted-foreground/70 mt-1.5">
+            Controls which chat contexts can retrieve this training. Left as "Needs review", it stays out of the chatbot until classified.
+          </p>
         </div>
 
         <Button

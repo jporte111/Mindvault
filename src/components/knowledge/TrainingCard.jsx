@@ -4,12 +4,14 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { User, Clock, ChevronRight, Sparkles, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import InlineText from '@/components/edit/InlineText';
 import EditableList from '@/components/edit/EditableList';
+import ClientSelect from '@/components/knowledge/ClientSelect';
+import { classifyTraining, isClassified, scopeValueOf, SCOPE_GENERAL } from '@/lib/knowledgeScope';
 
 const categoryColors = {
   Bookkeeping: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -33,8 +35,22 @@ export default function TrainingCard({ training }) {
   const [saving, setSaving] = useState(false);
   const category = training.topic_category || training.category;
   const colorClass = categoryColors[category] || categoryColors.Other;
+  const scopeVal = scopeValueOf(training);
+  const scopeText = scopeVal === SCOPE_GENERAL
+    ? 'General'
+    : scopeVal.startsWith('client:')
+      ? (training.client_name || 'Client-specific')
+      : 'Needs review';
+  const scopeBadgeClass = isClassified(scopeVal)
+    ? 'text-muted-foreground border-border'
+    : 'bg-amber-100 text-amber-700 border-amber-200';
   const queryClient = useQueryClient();
   const isAdmin = useIsAdmin();
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => base44.entities.Client.list('name'),
+    enabled: isAdmin,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => base44.entities.Training.delete(training.id),
@@ -65,6 +81,7 @@ export default function TrainingCard({ training }) {
       summary: training.summary || '',
       presenter: training.presenter || '',
       key_takeaways: [...(training.key_takeaways || [])],
+      scopeValue: scopeValueOf(training),
     });
     setEditing(true);
   };
@@ -77,7 +94,11 @@ export default function TrainingCard({ training }) {
   const saveEdit = async () => {
     setSaving(true);
     try {
-      await base44.entities.Training.update(training.id, draft);
+      const { scopeValue, ...fields } = draft;
+      await base44.entities.Training.update(training.id, fields);
+      if (scopeValue !== scopeValueOf(training)) {
+        await classifyTraining(training.id, scopeValue, clients);
+      }
       queryClient.invalidateQueries({ queryKey: ['trainings'] });
       queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
       toast.success('Training updated');
@@ -132,6 +153,14 @@ export default function TrainingCard({ training }) {
                 isAdmin
                 className="font-sora font-semibold text-foreground text-base leading-snug w-full"
                 emptyText="Training title"
+              />
+            </div>
+            <div className="mt-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Knowledge scope</p>
+              <ClientSelect
+                value={draft.scopeValue}
+                onChange={(v) => setDraft((d) => ({ ...d, scopeValue: v }))}
+                disabled={saving}
               />
             </div>
           </CardHeader>
@@ -190,12 +219,19 @@ export default function TrainingCard({ training }) {
                 <Badge variant="outline" className={`text-xs font-medium border ${colorClass} shrink-0`}>
                   {category || 'Other'}
                 </Badge>
-                {training.status === 'processing' && (
-                  <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30 gap-1">
-                    <Sparkles className="w-3 h-3 animate-pulse" />
-                    Processing
-                  </Badge>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {isAdmin && (
+                    <Badge variant="outline" className={`text-xs border ${scopeBadgeClass}`}>
+                      {scopeText}
+                    </Badge>
+                  )}
+                  {training.status === 'processing' && (
+                    <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30 gap-1">
+                      <Sparkles className="w-3 h-3 animate-pulse" />
+                      Processing
+                    </Badge>
+                  )}
+                </div>
               </div>
               <h3 className="font-sora font-semibold text-foreground text-base leading-snug group-hover/card:text-primary transition-colors mt-2 line-clamp-2">
                 {training.title}

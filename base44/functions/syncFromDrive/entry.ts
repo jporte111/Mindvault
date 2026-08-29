@@ -10,7 +10,22 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { folderId } = body;
+    const { folderId, clientId, scope } = body;
+
+    // Optional RAG scope for everything synced in this run. Defaults to
+    // unclassified (nothing is set), so synced trainings stay out of the
+    // chatbot until an admin classifies them.
+    let scopeFields: Record<string, unknown> = {};
+    if (clientId) {
+      const client = await base44.asServiceRole.entities.Client.get(clientId).catch(() => null);
+      scopeFields = {
+        knowledge_scope: 'client-specific',
+        client_id: clientId,
+        client_name: client?.name ?? null,
+      };
+    } else if (scope === 'general') {
+      scopeFields = { knowledge_scope: 'general' };
+    }
 
     const { accessToken } = await base44.asServiceRole.connectors.getConnection('googledrive');
     const authHeader = { Authorization: `Bearer ${accessToken}` };
@@ -100,7 +115,8 @@ Deno.serve(async (req) => {
         transcript: transcriptUrl,
         drive_file_id: file.id,
         status: 'processing',
-        video_url: file.webViewLink || ''
+        video_url: file.webViewLink || '',
+        ...scopeFields
       });
 
       results.push({ id: training.id, title, status: 'created' });

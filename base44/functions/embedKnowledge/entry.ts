@@ -76,7 +76,20 @@ async function indexOne(base44: any, trainingId: string) {
 
   const scope = training.knowledge_scope || 'unclassified';
   if (scope === 'unclassified') {
-    return { trainingId, skipped: true, reason: 'unclassified — classify it before indexing' };
+    // Never retrievable -> make sure no stale chunks linger (e.g. after an
+    // admin moves a training back from general/client-specific to unclassified).
+    const stale: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
+      { training_id: trainingId },
+      null,
+      5000,
+    );
+    for (const c of stale) await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
+    return {
+      trainingId,
+      skipped: true,
+      reason: 'unclassified — classify it before indexing',
+      deleted: stale.length,
+    };
   }
   if (scope === 'client-specific' && !training.client_id) {
     return { trainingId, error: 'client-specific training is missing client_id', status: 400 };
