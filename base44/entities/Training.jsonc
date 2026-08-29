@@ -222,6 +222,10 @@
     "client_name": {
       "type": "string",
       "description": "Denormalized Client name, for display and filtering."
+    },
+    "is_eval_fixture": {
+      "type": "boolean",
+      "description": "True only for records created by the RAG evaluation harness. Never set on real data."
     }
   },
   "required": [

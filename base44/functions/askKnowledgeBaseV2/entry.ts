@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed } from '../../shared/embeddings.ts';
-import { type Intent, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
+import { type Intent, parseCitations, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
 
 // RAG chatbot backend. Runs strictly in parallel to askKnowledgeBase (which is
 // untouched and remains the production default). Selected per request by the
@@ -225,10 +225,8 @@ Keep it concise. If the sources are thin, say what's missing.`,
       : (answerRes?.response || answerRes?.output || '').toString();
 
     // Map [S#] citations actually used back to source trainings.
-    const citedIdx = new Set(
-      [...answerText.matchAll(/\[S(\d+)\]/g)].map((m) => Number(m[1]) - 1).filter((n) => n >= 0 && n < ranked.length),
-    );
-    const chosen = citedIdx.size ? [...citedIdx].sort((a, b) => a - b).map((i) => ranked[i]) : ranked.slice(0, 3);
+    const citedIdx = parseCitations(answerText, ranked.length);
+    const chosen = citedIdx.length ? citedIdx.map((i) => ranked[i]) : ranked.slice(0, 3);
 
     const sources: any[] = [];
     const seenTraining = new Set<string>();

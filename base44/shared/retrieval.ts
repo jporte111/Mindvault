@@ -234,3 +234,16 @@ export function pickConfidence(
   if (top.score >= thresholds.highIfFinalAbove) return "high";
   return "medium";
 }
+
+/**
+ * Which [S#] markers an answer actually used, as 0-based indices into the
+ * ranked list. Out-of-range markers are ignored.
+ */
+export function parseCitations(answerText: string, rankedCount: number): number[] {
+  const seen = new Set<number>();
+  for (const m of (answerText || "").matchAll(/\[S(\d+)\]/g)) {
+    const idx = Number(m[1]) - 1;
+    if (idx >= 0 && idx < rankedCount) seen.add(idx);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
