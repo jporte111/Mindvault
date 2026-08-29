@@ -1,0 +1,27 @@
+{
+  "name": "AppConfig",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Config key. A single row with key 'chat' holds the chatbot engine settings."
+    },
+    "chat_engine": {
+      "type": "string",
+      "enum": [
+        "legacy",
+        "rag"
+      ],
+      "default": "legacy",
+      "description": "Which chatbot backend the Chat page uses. 'legacy' = askKnowledgeBase (production default). 'rag' = askKnowledgeBaseV2."
+    },
+    "rag_rollout_pct": {
+      "type": "number",
+      "default": 0,
+      "description": "0-100. While chat_engine is 'legacy', this fraction of users (by stable hash of user id) is routed to the RAG engine for canary testing."
+    }
+  },
+  "required": [
+    "key"
+  ]
+}
