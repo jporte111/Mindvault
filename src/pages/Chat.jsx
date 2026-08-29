@@ -39,7 +39,7 @@ export default function Chat() {
         const next = [...m];
         next[next.length - 1] = {
           role: 'assistant',
-          content: res.answer || 'No answer returned.',
+          content: res.answer || "I couldn't find anything in the training library that addresses this. The trainings may not cover this topic, or your question may need rephrasing. Try using more specific terms (e.g., a client name, a software, a workflow step), or check the Library to confirm the relevant training has been synced and analyzed.",
           sources: res.sources || [],
         };
         return next;
