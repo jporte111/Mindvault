@@ -39,13 +39,25 @@ Deno.serve(async (req) => {
           transcriptExcerpt = `Transcript excerpt: ${t.transcript.substring(0, 1500)}`;
         }
       }
+      const sop = (t.sop_steps || []).length ? (t.sop_steps || []).map((s, j) => `${j + 1}. ${s}`).join('\n') : 'None recorded';
+      const rules = (t.decision_rules || []).length ? (t.decision_rules || []).join('\n- ') : 'None recorded';
+      const mistakes = (t.common_mistakes || []).length ? (t.common_mistakes || []).join('\n- ') : 'None recorded';
+      const inputs = (t.required_inputs || []).length ? (t.required_inputs || []).join('; ') : 'None recorded';
       return `[Training ${i + 1}]: ${t.title}
-Category: ${t.category || 'General'}
-Presenter: ${t.presenter || 'Unknown'}
-Summary: ${t.summary || 'No summary available'}
-Key Takeaways: ${(t.key_takeaways || []).join('; ')}
-${transcriptExcerpt}
----`;
+      Category: ${t.category || 'General'}
+      Presenter: ${t.presenter || 'Unknown'}
+      Summary: ${t.summary || 'No summary available'}
+      Key Takeaways: ${(t.key_takeaways || []).join('; ')}
+      SOP Steps:
+      ${sop}
+      Decision Rules:
+      - ${rules}
+      Common Mistakes:
+      - ${mistakes}
+      Required Inputs: ${inputs}
+      Final Output: ${t.final_output || 'Not specified'}
+      ${transcriptExcerpt}
+      ---`;
     }));
     const context = contextParts.join('\n');
 
@@ -69,7 +81,7 @@ Provide:
     });
 
     // Find which trainings are most relevant (simple keyword matching on the question)
-    const keywords = question.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const keywords = question.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
     const sources = trainings
       .filter(t => {
         const text = `${t.title} ${t.category} ${t.summary} ${(t.key_takeaways || []).join(' ')}`.toLowerCase();
