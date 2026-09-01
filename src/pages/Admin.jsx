@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import UploadTraining from '@/components/admin/UploadTraining';
 import KnowledgeScopeManager from '@/components/admin/KnowledgeScopeManager';
+import OperationalProcessManager from '@/components/admin/OperationalProcessManager';
 import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
@@ -379,6 +380,9 @@ export default function Admin() {
 
         {/* Upload Card */}
         <UploadTraining />
+
+        {/* Operational processes: governance owner of knowledge sources */}
+        <OperationalProcessManager />
 
         {/* RAG knowledge scope: clients, needs-review queue, re-index */}
         <KnowledgeScopeManager />

@@ -1,0 +1,106 @@
+{
+  "name": "OperationalProcess",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the operational process (e.g. 'Monthly bank reconciliation')."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the process is and when it runs."
+    },
+    "department": {
+      "type": "string",
+      "description": "Owning department."
+    },
+    "process_owner": {
+      "type": "string",
+      "description": "Base44 user ID of the process owner (stable ID only, never a name). Resolve the display name separately from user data."
+    },
+    "subject_matter_expert": {
+      "type": "string",
+      "description": "Base44 user ID of the primary SME (stable ID only)."
+    },
+    "backup_sme": {
+      "type": "string",
+      "description": "Base44 user ID of the backup SME (stable ID only)."
+    },
+    "review_interval_days": {
+      "type": "number",
+      "minimum": 1,
+      "description": "How often this process should be reviewed, in days (e.g. 7, 30, 60, 90, 180, 365, or a custom value). No global default — set per process."
+    },
+    "last_reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this process was last reviewed. Managed by the review lifecycle in a later phase."
+    },
+    "next_review_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this process is next due for review. Computed from last_reviewed_at + review_interval_days by a later phase."
+    },
+    "freshness_status": {
+      "type": "string",
+      "enum": [
+        "unreviewed",
+        "current",
+        "due_soon",
+        "stale",
+        "review_requested"
+      ],
+      "description": "Review-freshness state. Computed by a later phase; missing/uninitialized = treated as 'unreviewed'. Archival is represented separately by the `status` field."
+    },
+    "knowledge_scope": {
+      "type": "string",
+      "enum": [
+        "unclassified",
+        "general",
+        "client-specific"
+      ],
+      "default": "unclassified",
+      "description": "Isolation scope, mirroring the Training/KnowledgeChunk model. New processes are 'unclassified' until a human deliberately sets 'general' (organization-wide) or 'client-specific'. 'client-specific' processes are only ever surfaced in that client's context."
+    },
+    "client_id": {
+      "type": "string",
+      "description": "Set only when knowledge_scope is 'client-specific'. References a Client record."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active",
+      "description": "Whether this process is active."
+    },
+    "criticality": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "mission_critical"
+      ],
+      "description": "Business criticality. Used later to prioritize reviews, gaps, and dashboard risk — never to affect retrieval accuracy."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Free-form tags."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}
