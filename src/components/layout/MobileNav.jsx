@@ -7,7 +7,7 @@ import AccountSettingsDialog from './AccountSettingsDialog';
 const rootTabs = ['/', '/library', '/chat'];
 
 function titleFor(pathname) {
-  if (pathname.startsWith('/training/')) return 'Training Details';
+  if (pathname.startsWith('/training/')) return 'Knowledge Source';
   if (pathname === '/roadmap') return 'Strategy Engine';
   if (pathname === '/admin') return 'Admin';
   return 'Knowledge Base';
@@ -19,7 +19,7 @@ export default function MobileNav({ user }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const tabs = [
     { path: '/', icon: Home, label: 'Home' },
-    { path: '/library', icon: BookOpen, label: 'Library' },
+    { path: '/library', icon: BookOpen, label: 'Knowledge' },
     { path: '/chat', icon: MessageSquare, label: 'Chat' },
     ...(user?.role === 'admin' ? [
       { path: '/roadmap', icon: Compass, label: 'Strategy' },

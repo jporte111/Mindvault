@@ -1,4 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import {
+  assessIngestionQuality,
+  buildPass1Prompt,
+  buildPass2Prompt,
+  NEW_PASS1_KEYS,
+  pass1JsonSchema,
+  pass2JsonSchema,
+  resolveSourceText,
+} from '../../shared/extraction.ts';
+
+// Normalize an optional string field: keep only a non-empty trimmed string.
+function optStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+// Normalize an optional array-of-strings field.
+function optArr(v: unknown): string[] | undefined {
+  return Array.isArray(v)
+    ? (v as unknown[]).filter((x): x is string => typeof x === 'string')
+    : undefined;
+}
+
+// Normalize an optional positive-number field.
+function optPosNum(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -10,66 +36,37 @@ Deno.serve(async (req) => {
     console.log('analyzeTraining received trainingId:', trainingId);
     if (!trainingId) return Response.json({ error: 'trainingId is required' }, { status: 400 });
 
-    // 1. Fetch the training record
+    // 1. Fetch the knowledge source record
     const training = await base44.entities.Training.get(trainingId);
-    console.log('Fetched training record — title:', training?.title, '| id:', training?.id);
+    console.log('Fetched record — title:', training?.title, '| id:', training?.id, '| source_type:', training?.source_type);
     if (!training) return Response.json({ error: 'Training not found' }, { status: 404 });
-    if (!training.transcript) return Response.json({ error: 'Training has no transcript URL' }, { status: 400 });
 
-    // 2. Fetch transcript content as plain text
-    const res = await fetch(training.transcript);
-    if (!res.ok) return Response.json({ error: `Failed to fetch transcript: ${res.status}` }, { status: 500 });
-    const transcript = await res.text();
-
-    console.log('Transcript first 200 chars:', transcript?.slice(0, 200));
-
-    if (!transcript || transcript.trim().length < 20 || transcript.trim().startsWith('<')) {
-      await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
-      return Response.json({ error: 'Transcript fetch returned empty or invalid content' }, { status: 400 });
+    // 2. Resolve source text. transcript is EITHER a supported http(s) URL to a
+    //    text file OR the raw source text itself (pasted text, legacy records).
+    //    Both paths are preserved. The invalid-content guard is applied after
+    //    resolution, matching the original behavior.
+    const resolution = await resolveSourceText(training.transcript);
+    if (!resolution.ok) {
+      // Only unusable *content* marks the record errored (as the original guard
+      // did). A missing field or a fetch failure returns without a status write,
+      // also matching the original.
+      if (resolution.reason === 'invalid_content') {
+        await base44.asServiceRole.entities.Training.update(trainingId, { status: 'error' });
+      }
+      return Response.json({ error: resolution.error }, { status: resolution.status });
     }
+    console.log('Source text first 200 chars:', resolution.text.slice(0, 200));
 
-    const transcriptText = transcript.slice(0, 25000);
+    const sourceText = resolution.text.slice(0, 25000);
+    const sourceType = training.source_type ?? null;
 
-    // PASS 1 — core structured fields
+    // PASS 1 — core structured fields (+ additive operational fields)
     let pass1;
     try {
       pass1 = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'claude_sonnet_4_6',
-        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm. Extract structured business logic from the transcript below.
-
-Transcript:
-${transcriptText}
-
-Return a JSON object with ALL of the following fields:
-- summary: A concise 2-3 sentence summary of what this training covers.
-- key_takeaways: Array of 4-7 most important lessons (strings).
-- sop_steps: Array of numbered step-by-step operating procedure steps (strings, e.g. "1. Log into QuickBooks and navigate to...").
-- decision_rules: Array of if/then rules extracted from the training (strings, e.g. "If a client has multiple entities, then...").
-- common_mistakes: Array of errors, risks, misclassifications, or watchouts to avoid (strings).
-- required_inputs: Array of documents, data, software access, or client info needed to complete this workflow (strings).
-- final_output: A string describing what this workflow produces (e.g. "Reconciled bank statement, journal entries, and monthly close report").
-- client_segment: One of: "Small Business", "High-Net-Worth Household", "Both", "Internal Only".
-- topic_category: One of: "Bookkeeping", "Payroll", "Tax Prep", "Reconciliation", "Reporting", "Cash Flow", "Entity Management", "Client Communication", "Operations", "Compliance", "Troubleshooting", "Other".
-- software_systems: Array of software tools, portals, or systems mentioned (strings, e.g. "QuickBooks Online", "Excel", "ADP").
-- presenter: The presenter's name if identifiable, otherwise null.
-- duration_minutes: Estimated duration in minutes as a number.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            summary: { type: 'string' },
-            key_takeaways: { type: 'array', items: { type: 'string' } },
-            sop_steps: { type: 'array', items: { type: 'string' } },
-            decision_rules: { type: 'array', items: { type: 'string' } },
-            common_mistakes: { type: 'array', items: { type: 'string' } },
-            required_inputs: { type: 'array', items: { type: 'string' } },
-            final_output: { type: 'string' },
-            client_segment: { type: 'string' },
-            topic_category: { type: 'string' },
-            software_systems: { type: 'array', items: { type: 'string' } },
-            presenter: { type: 'string' },
-            duration_minutes: { type: 'number' },
-          },
-        },
+        prompt: buildPass1Prompt({ sourceText, sourceType }),
+        response_json_schema: pass1JsonSchema,
       });
 
       console.log('Pass 1 raw LLM response:', JSON.stringify(pass1));
@@ -77,7 +74,21 @@ Return a JSON object with ALL of the following fields:
       // InvokeLLM wraps the JSON response in a `response` property — unwrap it
       const pass1Data = pass1.response || pass1;
 
-      // Save Pass 1 results immediately
+      // Thin-but-valid extraction -> flag for review; does NOT block ingestion.
+      const ingestion_quality = assessIngestionQuality(pass1Data);
+      console.log('Ingestion quality:', ingestion_quality);
+
+      // Additive operational fields — written only when present.
+      const operational: Record<string, unknown> = {};
+      for (const k of NEW_PASS1_KEYS) {
+        const v = (k === 'process_name' || k === 'department')
+          ? optStr(pass1Data[k])
+          : optArr(pass1Data[k]);
+        if (v !== undefined) operational[k] = v;
+      }
+
+      // Legacy fields written exactly as before; presenter/duration_minutes
+      // normalized once each; ingestion_quality + operational fields additive.
       await base44.asServiceRole.entities.Training.update(trainingId, {
         summary: pass1Data.summary,
         key_takeaways: pass1Data.key_takeaways,
@@ -90,8 +101,10 @@ Return a JSON object with ALL of the following fields:
         topic_category: pass1Data.topic_category,
         category: pass1Data.topic_category,
         software_systems: pass1Data.software_systems,
-        presenter: pass1Data.presenter || undefined,
-        duration_minutes: pass1Data.duration_minutes,
+        presenter: optStr(pass1Data.presenter),
+        duration_minutes: optPosNum(pass1Data.duration_minutes),
+        ingestion_quality,
+        ...operational,
       });
       console.log('Pass 1 saved successfully');
 
@@ -106,64 +119,13 @@ Return a JSON object with ALL of the following fields:
       return Response.json({ error: 'Pass 1 failed: ' + pass1Error.message }, { status: 500 });
     }
 
-    // PASS 2 — knowledge entry + feature opportunities
+    // PASS 2 — knowledge entry + feature opportunities (Strategy Engine contract unchanged)
     let pass2;
     try {
       pass2 = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: 'claude_sonnet_4_6',
-        prompt: `You are a financial operations analyst processing a training transcript for a financial concierge firm (Hormozi).
-
-Transcript:
-${transcriptText}
-
-Return a JSON object with the following fields:
-- ai_knowledge_entry: A clean, well-written knowledge base entry (2-4 paragraphs) that an AI assistant can use to answer questions about this topic accurately.
-- app_feature_opportunities: Array of objects, each with:
-    - feature_name: Short name for the feature
-    - problem_solved: What problem this feature solves
-    - user_type: Who uses it (e.g. "Bookkeeper", "Small Business Owner", "HNW Client", "CFO", "Internal Employee")
-    - required_inputs: What data the feature needs
-    - output: What the feature produces
-    - facing: One of "Internal", "Client-Facing", "Both"
-    - internal_need_score: Integer 1-5 based on how clearly the transcript shows this feature would solve a real workflow problem (5 = clearly solves a painful, recurring problem; 1 = vague or minor need).
-    - market_demand_score: Integer 1-5 based on whether this feature aligns with current financial services, wealth management, accounting, bookkeeping, fintech, AI automation, or client experience trends (5 = strongly aligned with multiple trends; 1 = little/no market relevance).
-    - business_value_score: Integer 1-5 based on how useful this feature would be for Hormozi's internal team, clients, or both (5 = high value for both; 1 = limited value).
-    - implementation_complexity_score: Integer 1-5 where 1 is easy to build and 5 is complex (requires integrations, heavy logic, or significant data infrastructure).
-    - priority: One of "High", "Medium", "Low" — assigned using the rules below.
-    - priority_reason: A plain-English explanation of WHY the feature was marked High, Medium, or Low, referencing the scores.
-
-PRIORITY ASSIGNMENT RULES (do not assign a priority without a matching reason):
-- High priority: Strong internal need (internal_need_score 4-5), strong market demand (market_demand_score 4-5), clear business value (business_value_score 4-5), and reasonable complexity OR very high upside that justifies the effort.
-- Medium priority: Useful feature with moderate internal need or market demand, good business value but not urgent, may be more niche or department-specific.
-- Low priority: Nice-to-have feature, weak market demand, limited business value, or high complexity compared to expected impact.
-
-Never assign High, Medium, or Low without also providing a clear priority_reason that explains the decision based on the scores.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            ai_knowledge_entry: { type: 'string' },
-            app_feature_opportunities: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  feature_name: { type: 'string' },
-                  problem_solved: { type: 'string' },
-                  user_type: { type: 'string' },
-                  required_inputs: { type: 'string' },
-                  output: { type: 'string' },
-                  facing: { type: 'string' },
-                  internal_need_score: { type: 'number' },
-                  market_demand_score: { type: 'number' },
-                  business_value_score: { type: 'number' },
-                  implementation_complexity_score: { type: 'number' },
-                  priority: { type: 'string' },
-                  priority_reason: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
+        prompt: buildPass2Prompt({ sourceText, sourceType }),
+        response_json_schema: pass2JsonSchema,
       });
 
       console.log('Pass 2 raw LLM response:', JSON.stringify(pass2));
@@ -171,7 +133,7 @@ Never assign High, Medium, or Low without also providing a clear priority_reason
       // InvokeLLM wraps the JSON response in a `response` property — unwrap it
       const pass2Data = pass2.response || pass2;
 
-      // Save Pass 2 results and mark ready
+      // Save Pass 2 results and mark ready (unchanged behavior).
       await base44.asServiceRole.entities.Training.update(trainingId, {
         ai_knowledge_entry: pass2Data.ai_knowledge_entry,
         app_feature_opportunities: pass2Data.app_feature_opportunities,

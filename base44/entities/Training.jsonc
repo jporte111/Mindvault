@@ -226,6 +226,115 @@
     "is_eval_fixture": {
       "type": "boolean",
       "description": "True only for records created by the RAG evaluation harness. Never set on real data."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "recording",
+        "transcript",
+        "sop",
+        "process_doc",
+        "policy",
+        "checklist",
+        "reference",
+        "legacy_unspecified",
+        "other"
+      ],
+      "description": "What kind of knowledge source this is. Not defaulted for legacy records — set from the Add Knowledge picker, or reliably inferred at ingestion. Never manufactured as 'recording' for records that lack real source metadata."
+    },
+    "source_format": {
+      "type": "string",
+      "enum": [
+        "gdoc",
+        "docx",
+        "txt",
+        "md",
+        "vtt",
+        "srt",
+        "pasted",
+        "url",
+        "other"
+      ],
+      "description": "The format the source was ingested from."
+    },
+    "source_filename": {
+      "type": "string",
+      "description": "Original filename of the uploaded source, if any."
+    },
+    "source_url": {
+      "type": "string",
+      "description": "Canonical URL of the source (Google Doc, SharePoint, etc.), distinct from the extracted-transcript file URL."
+    },
+    "department": {
+      "type": "string",
+      "description": "Owning department, when known at the source level. Governance ownership lives on the linked OperationalProcess."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "Optional link to an OperationalProcess. Governance (owner, SME, review cadence, freshness, criticality) is authoritative on that process, not duplicated here."
+    },
+    "source_authority": {
+      "type": "string",
+      "enum": [
+        "policy",
+        "approved_sop",
+        "approved_procedure",
+        "training",
+        "reference",
+        "notes"
+      ],
+      "description": "Authority level of this source. Used later as a retrieval rerank signal; never used to silently hide a genuine contradiction."
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "unverified",
+        "verified",
+        "rejected"
+      ],
+      "default": "unverified",
+      "description": "Human verification state. Retrieval does not gate on this until a later phase, and only when the require_verification_for_retrieval flag is on."
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Base44 user ID of the verifier (stable ID only, never a name). Resolve the display name separately from user data."
+    },
+    "verified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this source was verified."
+    },
+    "version_number": {
+      "type": "number",
+      "default": 1,
+      "description": "Version of this logical knowledge source. Missing = treated as 1."
+    },
+    "supersedes_source_id": {
+      "type": "string",
+      "description": "The prior Training record this version replaces, if any."
+    },
+    "is_active_version": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this is the currently active version. Missing = treated as active. Only active versions are retrieved (enforced in a later phase)."
+    },
+    "effective_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date this knowledge becomes effective. Missing = always effective."
+    },
+    "effective_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date this knowledge stops being effective. Missing = no expiry."
+    },
+    "ingestion_quality": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "needs_review"
+      ],
+      "description": "Set by analyzeTraining. 'needs_review' means extraction succeeded on real text but looks thin and should be reviewed before being trusted as operational knowledge. Missing = treated as 'ok'. A later phase adds a flag-gated retrieval/indexing gate on this; it does not affect retrieval in Phase 1."
     }
   },
   "required": [

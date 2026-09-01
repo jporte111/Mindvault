@@ -37,8 +37,8 @@ export default function Home() {
             <span className="text-primary">learn & grow</span>
           </h1>
           <p className="text-white/60 text-lg max-w-xl mb-8 leading-relaxed">
-            Access all company training recordings, transcripts, and insights in one place. 
-            Ask the AI assistant any question and get instant answers from your team's knowledge.
+            All of your company's operational knowledge — SOPs, processes, policies, training, and recordings — in one place.
+            Ask the AI assistant any question and get instant answers grounded in your team's knowledge.
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild size="lg" className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30 font-medium">
@@ -62,7 +62,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-3 gap-6">
           <div className="text-center">
             <p className="text-3xl font-sora font-bold text-primary">{readyCount}</p>
-            <p className="text-muted-foreground text-sm mt-1">Trainings Available</p>
+            <p className="text-muted-foreground text-sm mt-1">Knowledge Sources</p>
           </div>
           <div className="text-center">
             <p className="text-3xl font-sora font-bold text-primary">{categories.length}</p>
@@ -85,9 +85,9 @@ export default function Home() {
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                 <BookOpen className="w-6 h-6 text-primary" />
               </div>
-              <h3 className="font-sora font-semibold text-foreground text-lg mb-2 group-hover:text-primary transition-colors">Training Library</h3>
+              <h3 className="font-sora font-semibold text-foreground text-lg mb-2 group-hover:text-primary transition-colors">Knowledge Library</h3>
               <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                Browse all recordings organized by category. View summaries, key takeaways, and watch the full recording.
+                Browse every knowledge source by category. View summaries, procedures, decision rules, and open the original.
               </p>
               <div className="flex items-center gap-1 text-primary text-sm font-medium">
                 Explore <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -103,7 +103,7 @@ export default function Home() {
               </div>
               <h3 className="font-sora font-semibold text-foreground text-lg mb-2 group-hover:text-primary transition-colors">AI Assistant</h3>
               <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                Ask any question in plain English. The AI searches all transcripts and gives you a precise answer with references.
+                Ask any question in plain English. The AI searches your approved knowledge and gives you a precise answer with references.
               </p>
               <div className="flex items-center gap-1 text-primary text-sm font-medium">
                 Ask a question <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />

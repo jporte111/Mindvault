@@ -7,7 +7,7 @@ import AccountSettingsDialog from './AccountSettingsDialog';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
-  { path: '/library', icon: BookOpen, label: 'Library' },
+  { path: '/library', icon: BookOpen, label: 'Knowledge' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
 ];
 
