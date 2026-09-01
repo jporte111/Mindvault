@@ -11,7 +11,8 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import InlineText from '@/components/edit/InlineText';
 import EditableList from '@/components/edit/EditableList';
 import ClientSelect from '@/components/knowledge/ClientSelect';
-import { classifyTraining, isClassified, scopeValueOf, SCOPE_GENERAL } from '@/lib/knowledgeScope';
+import ProcessSelect from '@/components/knowledge/ProcessSelect';
+import { classifyTraining, isClassified, resolveScopeFields, scopeValueOf, SCOPE_GENERAL } from '@/lib/knowledgeScope';
 
 const categoryColors = {
   Bookkeeping: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -82,6 +83,7 @@ export default function TrainingCard({ training }) {
       presenter: training.presenter || '',
       key_takeaways: [...(training.key_takeaways || [])],
       scopeValue: scopeValueOf(training),
+      operational_process_id: training.operational_process_id || '',
     });
     setEditing(true);
   };
@@ -95,6 +97,7 @@ export default function TrainingCard({ training }) {
     setSaving(true);
     try {
       const { scopeValue, ...fields } = draft;
+      fields.operational_process_id = fields.operational_process_id || null;
       await base44.entities.Training.update(training.id, fields);
       if (scopeValue !== scopeValueOf(training)) {
         await classifyTraining(training.id, scopeValue, clients);
@@ -160,6 +163,15 @@ export default function TrainingCard({ training }) {
               <ClientSelect
                 value={draft.scopeValue}
                 onChange={(v) => setDraft((d) => ({ ...d, scopeValue: v }))}
+                disabled={saving}
+              />
+            </div>
+            <div className="mt-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Operational process</p>
+              <ProcessSelect
+                source={resolveScopeFields(draft.scopeValue, clients)}
+                value={draft.operational_process_id}
+                onChange={(v) => setDraft((d) => ({ ...d, operational_process_id: v }))}
                 disabled={saving}
               />
             </div>

@@ -10,7 +10,9 @@ import TrainingDetailSections from '@/components/training/TrainingDetailSections
 import CopyAIContext from '@/components/training/CopyAIContext';
 import ExportSOPButton from '@/components/training/ExportButtons';
 import InlineText from '@/components/edit/InlineText';
+import ProcessSelect from '@/components/knowledge/ProcessSelect';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { Workflow } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TrainingDetail() {
@@ -37,6 +39,14 @@ export default function TrainingDetail() {
   const { data: training, isLoading } = useQuery({
     queryKey: ['training', id],
     queryFn: () => base44.entities.Training.get(id),
+  });
+
+  const { data: processes = [] } = useQuery({
+    queryKey: ['operational-processes'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('listOperationalProcesses');
+      return res?.data?.processes ?? res?.processes ?? [];
+    },
   });
 
   const handleReanalyze = async () => {
@@ -142,6 +152,25 @@ export default function TrainingDetail() {
                   </span>
                 )}
               </div>
+              {(training.operational_process_id || isAdmin) && (
+                <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+                  <Workflow className="w-4 h-4 flex-shrink-0" />
+                  {isAdmin ? (
+                    <div className="w-72 max-w-full">
+                      <ProcessSelect
+                        source={{ knowledge_scope: training.knowledge_scope, client_id: training.client_id }}
+                        value={training.operational_process_id || ''}
+                        onChange={(v) => handleUpdate('operational_process_id', v || null)}
+                        className="h-9"
+                      />
+                    </div>
+                  ) : (
+                    <span>
+                      {processes.find((p) => p.id === training.operational_process_id)?.name || 'Linked process'}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {training.transcript && (
