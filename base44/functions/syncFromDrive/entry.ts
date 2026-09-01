@@ -10,7 +10,35 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { folderId, clientId, scope } = body;
+    const { folderId, clientId, scope, sourceType: sourceTypeArg } = body;
+
+    const KNOWN_SOURCE_TYPES = ['recording', 'transcript', 'sop', 'process_doc', 'policy', 'checklist', 'reference', 'legacy_unspecified', 'other'];
+    if (sourceTypeArg != null && !KNOWN_SOURCE_TYPES.includes(sourceTypeArg)) {
+      return Response.json(
+        { error: `Invalid sourceType "${sourceTypeArg}". Expected one of: ${KNOWN_SOURCE_TYPES.join(', ')}.` },
+        { status: 400 },
+      );
+    }
+    const explicitSourceType: string | null = sourceTypeArg ?? null;
+
+    // Reliably infer source_format from a Drive file; never guess source_type.
+    const sourceFieldsFor = (file: { name?: string; mimeType?: string }) => {
+      const name = file.name || '';
+      let source_format = 'other';
+      if (file.mimeType === 'application/vnd.google-apps.document') source_format = 'gdoc';
+      else if (file.mimeType === 'text/vtt' || /\.vtt$/i.test(name)) source_format = 'vtt';
+      else if (/\.srt$/i.test(name)) source_format = 'srt';
+      else if (/\.md$/i.test(name)) source_format = 'md';
+      else if (file.mimeType === 'text/plain' || /\.txt$/i.test(name)) source_format = 'txt';
+
+      // source_type only when we actually know it: an explicit arg, or a
+      // filename that literally says "transcript". Otherwise leave it unset.
+      const source_type = explicitSourceType || (/transcript/i.test(name) ? 'transcript' : undefined);
+
+      const out: Record<string, unknown> = { source_format, source_filename: name };
+      if (source_type) out.source_type = source_type;
+      return out;
+    };
 
     // Optional RAG scope for everything synced in this run. Defaults to
     // unclassified (nothing is set), so synced trainings stay out of the
@@ -116,6 +144,8 @@ Deno.serve(async (req) => {
         drive_file_id: file.id,
         status: 'processing',
         video_url: file.webViewLink || '',
+        source_url: file.webViewLink || undefined,
+        ...sourceFieldsFor(file),
         ...scopeFields
       });
 

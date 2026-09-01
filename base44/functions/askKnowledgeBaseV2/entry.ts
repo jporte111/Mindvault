@@ -125,6 +125,12 @@ Deno.serve(async (req) => {
     }
 
     // --- Retrieve candidates. DB query is scoped; assertInScope is the backstop. ---
+    // FUTURE GATE (Phase 3): additional pre-generation filters land here —
+    // is_active_version, effective-date window, archived exclusion, and (behind
+    // a `require_verification_for_retrieval` / `require_ingestion_review` flag)
+    // verification_status and ingestion_quality. All default-off or
+    // default-pass so existing production knowledge keeps answering. No such
+    // filter in Phase 1; the scope gate below is unchanged.
     const scopeOr: Record<string, unknown>[] = [{ knowledge_scope: 'general' }];
     if (clientId) scopeOr.push({ knowledge_scope: 'client-specific', client_id: clientId });
 

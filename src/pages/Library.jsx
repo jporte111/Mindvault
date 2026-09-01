@@ -98,16 +98,16 @@ export default function Library() {
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary" />
               </div>
-              <h1 className="font-sora text-2xl font-bold text-foreground">Training Library</h1>
+              <h1 className="font-sora text-2xl font-bold text-foreground">Knowledge Library</h1>
             </div>
             <div className="flex items-center justify-between ml-11">
               <p className="text-muted-foreground text-sm">
-                {trainings.length} training{trainings.length !== 1 ? 's' : ''} available
+                {trainings.length} knowledge source{trainings.length !== 1 ? 's' : ''}
               </p>
               <div className="flex gap-2">
                 <Button size="sm" className="gap-2 text-xs bg-primary hover:bg-primary/90" onClick={() => setShowUploadModal(true)}>
                   <Upload className="w-3.5 h-3.5" />
-                  Submit Recording
+                  Add Knowledge
                 </Button>
                 <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => {
                   const headers = ['Title', 'Topic Category', 'Client Segment', 'Presenter', 'Duration (min)', 'Software Systems', 'Final Output'];
@@ -130,7 +130,7 @@ export default function Library() {
             <div className="relative mt-5">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search trainings, SOPs, topics, or takeaways..."
+                placeholder="Search knowledge, SOPs, topics, or takeaways..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-10 bg-background border-border h-11 text-sm"
@@ -169,9 +169,9 @@ export default function Library() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-20">
               <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground font-medium">No trainings found</p>
+              <p className="text-muted-foreground font-medium">No knowledge found</p>
               <p className="text-muted-foreground/60 text-sm mt-1">
-                {search || hasActiveFilters ? 'Try adjusting your search or filters' : 'Upload a transcript to get started'}
+                {search || hasActiveFilters ? 'Try adjusting your search or filters' : 'Add a knowledge source to get started'}
               </p>
             </div>
           ) : (

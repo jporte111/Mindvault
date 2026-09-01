@@ -6,7 +6,8 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { Plus, X } from 'lucide-react';
 import {
   CheckCircle2, ListOrdered, GitBranch, AlertTriangle,
-  Package, Target, Cpu, BookOpen
+  Package, Target, Cpu, BookOpen, Split, Ban, ShieldCheck,
+  Users, Stamp, ArrowUpRight, CalendarClock, ClipboardList,
 } from 'lucide-react';
 
 const Section = ({ icon: Icon, title, children, color = 'text-primary' }) => (
@@ -19,6 +20,19 @@ const Section = ({ icon: Icon, title, children, color = 'text-primary' }) => (
     </CardHeader>
     <CardContent>{children}</CardContent>
   </Card>
+);
+
+// Read-only bullet list for the additive operational fields (no inline editing
+// of these in this phase).
+const SimpleList = ({ items, markerClass = 'bg-primary/50' }) => (
+  <ul className="space-y-2">
+    {items.map((item, i) => (
+      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-2 ${markerClass}`} />
+        <span>{item}</span>
+      </li>
+    ))}
+  </ul>
 );
 
 export default function TrainingDetailSections({ training, onUpdate }) {
@@ -48,6 +62,13 @@ export default function TrainingDetailSections({ training, onUpdate }) {
               </span>
             )}
           />
+        </Section>
+      )}
+
+      {/* Prerequisites */}
+      {training.prerequisites?.length > 0 && (
+        <Section icon={ClipboardList} title="Prerequisites" color="text-blue-500">
+          <SimpleList items={training.prerequisites} markerClass="bg-blue-400" />
         </Section>
       )}
 
@@ -86,6 +107,13 @@ export default function TrainingDetailSections({ training, onUpdate }) {
         </Section>
       )}
 
+      {/* Exceptions */}
+      {training.exceptions?.length > 0 && (
+        <Section icon={Split} title="Exceptions" color="text-amber-500">
+          <SimpleList items={training.exceptions} markerClass="bg-amber-400" />
+        </Section>
+      )}
+
       {/* Common Mistakes */}
       {training.common_mistakes?.length > 0 && (
         <Section icon={AlertTriangle} title="Common Mistakes & Watchouts" color="text-orange-500">
@@ -102,6 +130,13 @@ export default function TrainingDetailSections({ training, onUpdate }) {
         </Section>
       )}
 
+      {/* Do Not */}
+      {training.prohibited_actions?.length > 0 && (
+        <Section icon={Ban} title="Do Not" color="text-red-500">
+          <SimpleList items={training.prohibited_actions} markerClass="bg-red-400" />
+        </Section>
+      )}
+
       {/* Required Inputs */}
       {training.required_inputs?.length > 0 && (
         <Section icon={Package} title="Required Inputs" color="text-blue-500">
@@ -113,6 +148,41 @@ export default function TrainingDetailSections({ training, onUpdate }) {
             textClassName="text-sm text-foreground"
             marker={() => <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0 mt-2" />}
           />
+        </Section>
+      )}
+
+      {/* Roles Involved */}
+      {training.roles_involved?.length > 0 && (
+        <Section icon={Users} title="Roles Involved" color="text-slate-500">
+          <SimpleList items={training.roles_involved} markerClass="bg-slate-400" />
+        </Section>
+      )}
+
+      {/* Approvals */}
+      {training.approvers?.length > 0 && (
+        <Section icon={Stamp} title="Approvals" color="text-emerald-600">
+          <SimpleList items={training.approvers} markerClass="bg-emerald-400" />
+        </Section>
+      )}
+
+      {/* Escalation */}
+      {training.escalation_paths?.length > 0 && (
+        <Section icon={ArrowUpRight} title="Escalation" color="text-rose-500">
+          <SimpleList items={training.escalation_paths} markerClass="bg-rose-400" />
+        </Section>
+      )}
+
+      {/* Deadlines */}
+      {training.deadlines?.length > 0 && (
+        <Section icon={CalendarClock} title="Deadlines & Timing" color="text-cyan-600">
+          <SimpleList items={training.deadlines} markerClass="bg-cyan-400" />
+        </Section>
+      )}
+
+      {/* Verification Checkpoints */}
+      {training.verification_checkpoints?.length > 0 && (
+        <Section icon={ShieldCheck} title="Verification Checkpoints" color="text-green-600">
+          <SimpleList items={training.verification_checkpoints} markerClass="bg-green-400" />
         </Section>
       )}
 

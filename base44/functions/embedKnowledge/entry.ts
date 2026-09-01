@@ -95,6 +95,13 @@ async function indexOne(base44: any, trainingId: string) {
     return { trainingId, error: 'client-specific training is missing client_id', status: 400 };
   }
 
+  // FUTURE GATE (Phase 3): when a `require_ingestion_review` AppConfig flag is
+  // on, a training with `ingestion_quality === 'needs_review'` should be
+  // skipped here (or its chunks marked low-trust) so questionable extractions
+  // are not indexed as trusted operational knowledge until reviewed. No gate in
+  // Phase 1 — legacy/production records have no `ingestion_quality` and are
+  // treated as trusted; only newly ingested material can be flagged.
+
   const model = getEmbeddingModelName();
   const transcript = await fetchTranscript(training);
   const drafts = buildDraftChunks(training, transcript);

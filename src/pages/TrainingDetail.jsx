@@ -93,7 +93,7 @@ export default function TrainingDetail() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground">Training not found.</p>
+          <p className="text-muted-foreground">Knowledge source not found.</p>
           <Link to="/library" className="text-primary text-sm mt-2 inline-block hover:underline">← Back to Library</Link>
         </div>
       </div>
@@ -177,7 +177,7 @@ export default function TrainingDetail() {
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="py-4 flex items-center gap-3">
               <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-              <p className="text-sm text-primary font-medium">AI is analyzing this transcript — results will appear here shortly. Refresh the page in a minute to see them.</p>
+              <p className="text-sm text-primary font-medium">AI is analyzing this source — results will appear here shortly. Refresh the page in a minute to see them.</p>
             </CardContent>
           </Card>
         )}
@@ -188,7 +188,7 @@ export default function TrainingDetail() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
-                Training Summary
+                Summary
               </CardTitle>
             </CardHeader>
             <CardContent>
