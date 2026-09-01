@@ -1,0 +1,91 @@
+{
+  "name": "KnowledgeChunk",
+  "type": "object",
+  "properties": {
+    "training_id": {
+      "type": "string",
+      "description": "ID of the source Training record"
+    },
+    "chunk_index": {
+      "type": "number",
+      "description": "Ordinal position of this chunk within its source training"
+    },
+    "content": {
+      "type": "string",
+      "description": "The passage text that gets embedded and retrieved"
+    },
+    "chunk_type": {
+      "type": "string",
+      "enum": [
+        "summary",
+        "key_takeaway",
+        "sop_step",
+        "decision_rule",
+        "common_mistake",
+        "ai_knowledge_entry",
+        "transcript"
+      ],
+      "description": "Which part of the source training this chunk came from"
+    },
+    "title": {
+      "type": "string",
+      "description": "Denormalized source training title, for display"
+    },
+    "topic_category": {
+      "type": "string",
+      "description": "Denormalized from the source training"
+    },
+    "client_segment": {
+      "type": "string",
+      "description": "Denormalized from the source training"
+    },
+    "knowledge_scope": {
+      "type": "string",
+      "enum": [
+        "unclassified",
+        "general",
+        "client-specific"
+      ],
+      "default": "unclassified",
+      "description": "Retrieval scoping gate, denormalized from the source training. 'unclassified' chunks are never retrieved in any context."
+    },
+    "client_id": {
+      "type": "string",
+      "description": "Set only when knowledge_scope is 'client-specific'. Retrieval requires an exact match with the active client context."
+    },
+    "embedding": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Embedding vector for the content"
+    },
+    "embedding_model": {
+      "type": "string",
+      "description": "Model that produced the embedding, e.g. voyage-3-large"
+    },
+    "token_count": {
+      "type": "number",
+      "description": "Approximate token count of the content"
+    },
+    "content_hash": {
+      "type": "string",
+      "description": "Hash of the content, used to skip re-embedding unchanged chunks"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Lowercased salient terms for the lexical half of hybrid search"
+    },
+    "is_eval_fixture": {
+      "type": "boolean",
+      "description": "True only for records created by the RAG evaluation harness. Never set on real data."
+    }
+  },
+  "required": [
+    "training_id",
+    "content"
+  ]
+}

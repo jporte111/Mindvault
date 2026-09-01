@@ -204,6 +204,28 @@
       ],
       "default": "processing",
       "description": "Processing status"
+    },
+    "knowledge_scope": {
+      "type": "string",
+      "enum": [
+        "unclassified",
+        "general",
+        "client-specific"
+      ],
+      "default": "unclassified",
+      "description": "RAG retrieval scope. 'unclassified' (default for legacy and new records) is never retrieved until a human deliberately classifies it as 'general' (firm-wide) or 'client-specific'."
+    },
+    "client_id": {
+      "type": "string",
+      "description": "Set only when knowledge_scope is 'client-specific'. References a Client record; retrieval requires an exact match with the active client context."
+    },
+    "client_name": {
+      "type": "string",
+      "description": "Denormalized Client name, for display and filtering."
+    },
+    "is_eval_fixture": {
+      "type": "boolean",
+      "description": "True only for records created by the RAG evaluation harness. Never set on real data."
     }
   },
   "required": [

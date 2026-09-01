@@ -13,6 +13,10 @@ import {
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import UploadTraining from '@/components/admin/UploadTraining';
+import KnowledgeScopeManager from '@/components/admin/KnowledgeScopeManager';
+import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
+import ClientSelect from '@/components/knowledge/ClientSelect';
+import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
 const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
 const priorityColor = {
@@ -29,6 +33,7 @@ const facingColor = {
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('content');
   const [folderId, setFolderId] = useState('');
+  const [syncScope, setSyncScope] = useState(SCOPE_UNCLASSIFIED);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [filterPriority, setFilterPriority] = useState('All');
@@ -72,7 +77,12 @@ export default function Admin() {
   const handleSync = async () => {
     setSyncing(true);
     setSyncResult(null);
-    const res = await base44.functions.invoke('syncFromDrive', { folderId: folderId.trim() || undefined });
+    const scopeArg = syncScope === SCOPE_GENERAL
+      ? { scope: 'general' }
+      : syncScope.startsWith('client:')
+        ? { clientId: syncScope.slice('client:'.length) }
+        : {};
+    const res = await base44.functions.invoke('syncFromDrive', { folderId: folderId.trim() || undefined, ...scopeArg });
     setSyncResult(res.data);
     setSyncing(false);
     if (res.data.synced > 0) {
@@ -370,6 +380,12 @@ export default function Admin() {
         {/* Upload Card */}
         <UploadTraining />
 
+        {/* RAG knowledge scope: clients, needs-review queue, re-index */}
+        <KnowledgeScopeManager />
+
+        {/* Chatbot engine flag (legacy vs RAG) + rollout */}
+        <ChatEngineToggle />
+
         {/* Sync Card */}
         <Card className="border-border">
           <CardHeader className="pb-4">
@@ -391,6 +407,16 @@ export default function Admin() {
               />
               <p className="text-xs text-muted-foreground/70 mt-1.5">
                 Find your folder ID in the Google Drive URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong>
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-sm text-muted-foreground mb-2 block">
+                Knowledge scope for everything synced in this run
+              </Label>
+              <ClientSelect value={syncScope} onChange={setSyncScope} disabled={syncing} />
+              <p className="text-xs text-muted-foreground/70 mt-1.5">
+                "Needs review" (default) keeps synced trainings out of the chatbot until you classify them below.
               </p>
             </div>
 

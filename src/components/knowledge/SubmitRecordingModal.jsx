@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Upload, FileText, Loader2, CheckCircle2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import ClientSelect from '@/components/knowledge/ClientSelect';
+import { isClassified, resolveScopeFields, reindexTraining, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
 export default function SubmitRecordingModal({ open, onClose }) {
   const [title, setTitle] = useState('');
@@ -15,8 +17,10 @@ export default function SubmitRecordingModal({ open, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [done, setDone] = useState(false);
+  const [scopeValue, setScopeValue] = useState(SCOPE_UNCLASSIFIED);
   const fileInputRef = useRef();
   const queryClient = useQueryClient();
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -29,7 +33,7 @@ export default function SubmitRecordingModal({ open, onClose }) {
   const handleClose = () => {
     if (uploading) return;
     setTitle(''); setVideoUrl(''); setTranscriptFile(null);
-    setStatusMsg(''); setDone(false);
+    setStatusMsg(''); setDone(false); setScopeValue(SCOPE_UNCLASSIFIED);
     if (fileInputRef.current) fileInputRef.current.value = '';
     onClose();
   };
@@ -134,7 +138,8 @@ Return a JSON object with ALL of the following fields:
     });
 
     setStatusMsg('Saving to knowledge base...');
-    await base44.entities.Training.create({
+    const created = await base44.entities.Training.create({
+      ...resolveScopeFields(scopeValue, clients),
       title: title.trim(),
       transcript: transcriptFileUrl,
       video_url: videoUrl.trim() || undefined,
@@ -156,9 +161,18 @@ Return a JSON object with ALL of the following fields:
       status: 'ready',
     });
 
+    if (isClassified(scopeValue)) {
+      setStatusMsg('Indexing for chat...');
+      await reindexTraining(created.id);
+    }
+
     queryClient.invalidateQueries({ queryKey: ['trainings'] });
     queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-    toast.success('Recording submitted and processed!');
+    toast.success(
+      isClassified(scopeValue)
+        ? 'Recording submitted, processed, and indexed for chat!'
+        : 'Recording submitted. Classify it under "Needs review" to make it searchable.',
+    );
     setDone(true);
     setUploading(false);
     setStatusMsg('');
@@ -231,6 +245,14 @@ Return a JSON object with ALL of the following fields:
                 className="bg-background"
                 disabled={uploading}
               />
+            </div>
+
+            <div>
+              <Label className="text-sm text-muted-foreground mb-1.5 block">Knowledge scope</Label>
+              <ClientSelect value={scopeValue} onChange={setScopeValue} disabled={uploading} />
+              <p className="text-xs text-muted-foreground/70 mt-1.5">
+                "Needs review" keeps this recording out of the chatbot until an admin classifies it.
+              </p>
             </div>
 
             {uploading && statusMsg && (

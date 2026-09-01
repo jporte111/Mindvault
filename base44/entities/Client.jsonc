@@ -1,0 +1,37 @@
+{
+  "name": "Client",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Client / end-customer name"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Alternate names or nicknames for this client as they appear in transcripts and questions"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active",
+      "description": "Whether this client is active"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional freeform notes"
+    },
+    "is_eval_fixture": {
+      "type": "boolean",
+      "description": "True only for records created by the RAG evaluation harness. Never set on real data."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
