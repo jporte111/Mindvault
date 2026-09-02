@@ -19,9 +19,25 @@
       "type": "number",
       "default": 0,
       "description": "0-100. While chat_engine is 'legacy', this fraction of users (by stable hash of user id) is routed to the RAG engine for canary testing."
+    },
+    "retrieval_mode": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "lexical",
+        "semantic"
+      ],
+      "default": "auto",
+      "description": "How askKnowledgeBaseV2 retrieves. 'auto' (default): use semantic embeddings when the query embed() call succeeds, otherwise fall back to lexical/keyword ranking automatically. 'lexical': never call the embeddings provider. 'semantic': require embeddings and error loudly if unavailable. Embeddings are an optional enhancement — no deployment needs EMBEDDINGS_API_KEY to use the knowledge base."
     }
   },
   "required": [
     "key"
-  ]
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": true,
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
 }

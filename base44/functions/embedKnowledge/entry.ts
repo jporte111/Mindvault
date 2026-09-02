@@ -132,9 +132,6 @@ async function indexOne(base44: any, trainingId: string) {
     // Phase 1 — legacy/production records have no `ingestion_quality` and are
     // treated as trusted; only newly ingested material can be flagged.
 
-    stage = 'model_select';
-    const model = getEmbeddingModelName();
-
     stage = 'fetch_source_text';
     const transcript = await fetchTranscript(training);
 
@@ -171,6 +168,8 @@ async function indexOne(base44: any, trainingId: string) {
 
     const toCreate: any[] = [];
     const toEmbed: string[] = [];
+    // Reused chunks that still lack a vector — backfilled if embeddings work now.
+    const toBackfill: Array<{ id: string; content: string }> = [];
     const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
 
     for (const d of desired) {
@@ -185,6 +184,9 @@ async function indexOne(base44: any, trainingId: string) {
         if ((match.topic_category || '') !== scopeFields.topic_category) drift.topic_category = scopeFields.topic_category;
         if ((match.client_segment || '') !== scopeFields.client_segment) drift.client_segment = scopeFields.client_segment;
         if (Object.keys(drift).length) updates.push({ id: match.id, data: drift });
+        if (!Array.isArray(match.embedding) || match.embedding.length === 0) {
+          toBackfill.push({ id: match.id, content: d.content });
+        }
         continue;
       }
       toEmbed.push(d.content);
@@ -196,33 +198,65 @@ async function indexOne(base44: any, trainingId: string) {
         content_hash: d.content_hash,
         token_count: approxTokens(d.content),
         keywords: extractKeywords(d.content),
-        embedding_model: model,
+        embedding_model: 'lexical-only',
         ...scopeFields,
       });
     }
 
-    // One diagnostic line per invocation — provider + model + counts, no key,
-    // no content.
+    // Embeddings are OPTIONAL. Attempt them; on ANY failure (missing/invalid
+    // key, bad provider, provider outage) create lexical-only chunks and keep
+    // going. A later re-index with a working key backfills the vectors.
+    let embedded = false;
+    let embedError: string | undefined;
+    let modelUsed = 'lexical-only';
+    const wantEmbed = toEmbed.length + toBackfill.length;
+    if (wantEmbed > 0) {
+      stage = 'embed';
+      try {
+        const model = getEmbeddingModelName();
+        const inputs = [...toEmbed, ...toBackfill.map((b) => b.content)];
+        const vectors = await embed(inputs, 'document');
+        if (vectors.length !== inputs.length) {
+          throw new Error(`Embedding count mismatch: got ${vectors.length} vectors for ${inputs.length} inputs`);
+        }
+        for (let i = 0; i < toCreate.length; i++) {
+          toCreate[i].embedding = vectors[i];
+          toCreate[i].embedding_model = model;
+        }
+        for (let j = 0; j < toBackfill.length; j++) {
+          updates.push({
+            id: toBackfill[j].id,
+            data: { embedding: vectors[toEmbed.length + j], embedding_model: model },
+          });
+        }
+        embedded = true;
+        modelUsed = model;
+      } catch (err) {
+        embedError = redact((err as Error)?.message ?? String(err)).slice(0, 300);
+        console.error(JSON.stringify({
+          fn: 'embedKnowledge',
+          stage: 'embed',
+          trainingId,
+          mode: 'lexical-only',
+          name: (err as Error)?.name ?? 'Error',
+          error: embedError,
+        }));
+      }
+    }
+
+    // One diagnostic line per invocation — no key, no content.
     console.log(JSON.stringify({
       fn: 'embedKnowledge',
       trainingId,
       provider: getEmbeddingProvider(),
-      model,
+      model: modelUsed,
+      embedded,
       drafts: drafts.length,
       existing: existing.length,
       new_chunks: toEmbed.length,
+      backfilled: embedded ? toBackfill.length : 0,
       restamp: updates.length,
     }));
-
-    // Embed only the genuinely new chunks.
-    if (toEmbed.length) {
-      stage = 'embed';
-      const vectors = await embed(toEmbed, 'document');
-      if (vectors.length !== toEmbed.length) {
-        throw new Error(`Embedding count mismatch: got ${vectors.length} vectors for ${toEmbed.length} chunks`);
-      }
-      for (let i = 0; i < toCreate.length; i++) toCreate[i].embedding = vectors[i];
-    }
 
     // Orphans: existing chunks no longer in the desired set.
     const toDelete = existing.filter((c) => !desiredHashes.has(c.content_hash));
@@ -251,6 +285,9 @@ async function indexOne(base44: any, trainingId: string) {
       restamped: updates.length,
       deleted: toDelete.length,
       total: desired.length,
+      embedded,
+      lexical_only: !embedded && desired.length > 0,
+      ...(embedError ? { embed_error: embedError } : {}),
     };
   } catch (err) {
     logFailure(stage, trainingId, err);

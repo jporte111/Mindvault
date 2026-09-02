@@ -42,6 +42,15 @@ export const THRESHOLDS = {
   lowIfFinalBelow: 0.35,
   highIfFinalAbove: 0.55,
   lowIfSemBelow: 0.28,
+  // Lexical (no-embeddings) mode: confidence is gated on query-term coverage
+  // (top.lex, a 0..1 fraction of query terms present), not on cosine. These are
+  // deliberately centralized here so they can be tuned without touching logic.
+  lexical: {
+    insufficientIfLexBelow: 0.15,
+    corroborationLexAtLeast: 0.20,
+    highIfLexAtLeast: 0.40,
+    highMinChunks: 2,
+  },
 };
 export const CANDIDATE_POOL = 40;
 export const TOP_K = 10;
@@ -72,6 +81,30 @@ const STOPWORDS = new Set(
     "will with you your our we do does did not can could should would may might must about")
     .split(" "),
 );
+
+/**
+ * Decide whether askKnowledgeBaseV2 should call the embeddings provider.
+ * Pure so it can be unit-tested.
+ *
+ *   retrievalModeCfg   embeddingsConfigured   attemptEmbed   requireEmbed
+ *   'lexical'          *                     false          false
+ *   'auto'             false                 false          false   (skip -> lexical)
+ *   'auto'             true                  true           false   (try -> lexical on fail)
+ *   'semantic'         false                 false          true    (-> 502)
+ *   'semantic'         true                  true           true    (-> 502 on fail)
+ *
+ * Any unrecognized retrievalModeCfg is treated as 'auto'.
+ */
+export function planRetrieval(
+  retrievalModeCfg: string | null | undefined,
+  embeddingsConfigured: boolean,
+): { attemptEmbed: boolean; requireEmbed: boolean } {
+  if (retrievalModeCfg === "lexical") return { attemptEmbed: false, requireEmbed: false };
+  if (retrievalModeCfg === "semantic") {
+    return { attemptEmbed: embeddingsConfigured, requireEmbed: true };
+  }
+  return { attemptEmbed: embeddingsConfigured, requireEmbed: false };
+}
 
 export function tokenize(text: string): string[] {
   return (text || "")
@@ -156,9 +189,16 @@ export interface RankOptions {
 
 /**
  * Full pipeline: scope gate -> hybrid score -> dedupe -> per-training cap ->
- * top K. Returns { ranked, dropped } where `dropped` are out-of-scope chunks.
+ * top K. Returns { ranked, dropped, semanticActive }.
+ *
+ * Lexical fallback: pass `queryVectors: []` (or vectors that match nothing) and
+ * ranking is driven entirely by lexical overlap + boosts. The scope gate,
+ * dedupe, per-training cap and citation flow are IDENTICAL in both modes —
+ * only the candidate-pool ordering and the semantic term of `score` differ.
  */
-export function rankChunks(opts: RankOptions): { ranked: RankedChunk[]; dropped: Chunk[] } {
+export function rankChunks(
+  opts: RankOptions,
+): { ranked: RankedChunk[]; dropped: Chunk[]; semanticActive: boolean } {
   const {
     chunks,
     queryVectors,
@@ -195,8 +235,13 @@ export function rankChunks(opts: RankOptions): { ranked: RankedChunk[]; dropped:
     return { chunk, score, sem, lex };
   });
 
-  // Take a semantic-first candidate pool, then re-rank by hybrid score.
-  scored.sort((a, b) => b.sem - a.sem);
+  // Semantic is "active" only if query vectors exist AND some chunk actually
+  // has a comparable vector. Otherwise the pool is picked by lexical signal.
+  const semanticActive = queryVectors.length > 0 && scored.some((r) => r.sem > 1e-9);
+
+  // Candidate pool: order by whichever signal is informative, then re-rank the
+  // pool by the combined `score`.
+  scored.sort((a, b) => (semanticActive ? b.sem - a.sem : b.lex - a.lex));
   const pool = scored.slice(0, CANDIDATE_POOL);
   pool.sort((a, b) => b.score - a.score);
 
@@ -220,15 +265,30 @@ export function rankChunks(opts: RankOptions): { ranked: RankedChunk[]; dropped:
     if (ranked.length >= topK) break;
   }
 
-  return { ranked, dropped };
+  return { ranked, dropped, semanticActive };
 }
 
+/**
+ * Confidence band. In semantic mode this is the original cosine-based gate. In
+ * lexical mode (`semanticActive: false`) it is gated on query-term coverage
+ * using THRESHOLDS.lexical. Passing no options keeps the original behavior.
+ */
 export function pickConfidence(
   ranked: RankedChunk[],
-  thresholds = THRESHOLDS,
+  opts: { semanticActive?: boolean; thresholds?: typeof THRESHOLDS } = {},
 ): "low" | "medium" | "high" {
+  const { semanticActive = true, thresholds = THRESHOLDS } = opts;
   if (!ranked.length) return "low";
   const top = ranked[0];
+
+  if (!semanticActive) {
+    const L = thresholds.lexical;
+    if (top.lex < L.insufficientIfLexBelow) return "low";
+    const corroborating = ranked.filter((r) => r.lex >= L.corroborationLexAtLeast).length;
+    if (top.lex >= L.highIfLexAtLeast && corroborating >= L.highMinChunks) return "high";
+    return "medium";
+  }
+
   if (top.sem < thresholds.lowIfSemBelow) return "low";
   if (top.score < thresholds.lowIfFinalBelow) return "low";
   if (top.score >= thresholds.highIfFinalAbove) return "high";

@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { embed } from '../../shared/embeddings.ts';
-import { type Intent, parseCitations, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
+import { embed, isEmbeddingsConfigured } from '../../shared/embeddings.ts';
+import { redact } from '../../shared/redact.ts';
+import { type Intent, parseCitations, pickConfidence, planRetrieval, rankChunks } from '../../shared/retrieval.ts';
 
 // RAG chatbot backend. Runs strictly in parallel to askKnowledgeBase (which is
 // untouched and remains the production default). Selected per request by the
@@ -149,18 +150,56 @@ Deno.serve(async (req) => {
         used_chunk_ids: [],
         client_context: clientId ? { id: clientId, name: clientName } : null,
         scope_notice: scopeNotice,
+        retrieval_mode: 'lexical',
       });
     }
 
-    const queryVectors = await embed(understanding.search_queries, 'query');
+    // --- Retrieval mode. Embeddings are OPTIONAL. ---
+    // 'lexical'  : never call the provider.
+    // 'semantic' : require it (error loudly if unavailable).
+    // 'auto'     : call embed() ONLY if a key is configured; on any runtime
+    //              failure (bad key, quota, outage) fall back to lexical.
+    const cfgRow = (await base44.asServiceRole.entities.AppConfig
+      .filter({ key: 'chat' }).catch(() => []))?.[0];
+    const retrievalModeCfg: string = cfgRow?.retrieval_mode || 'auto';
+    const plan = planRetrieval(retrievalModeCfg, isEmbeddingsConfigured());
 
-    const { ranked, dropped } = rankChunks({
+    let queryVectors: number[][] = [];
+    if (plan.requireEmbed && !plan.attemptEmbed) {
+      return Response.json(
+        { error: "Semantic retrieval is required (retrieval_mode='semantic') but no EMBEDDINGS_API_KEY is configured.", retrieval_mode: 'semantic' },
+        { status: 502 },
+      );
+    }
+    if (plan.attemptEmbed) {
+      try {
+        queryVectors = await embed(understanding.search_queries, 'query');
+      } catch (embedErr) {
+        const msg = redact((embedErr as Error)?.message ?? String(embedErr));
+        if (plan.requireEmbed) {
+          return Response.json(
+            { error: `Semantic retrieval is required (retrieval_mode='semantic') but embeddings failed: ${msg}`, retrieval_mode: 'semantic' },
+            { status: 502 },
+          );
+        }
+        console.error(JSON.stringify({
+          fn: 'askKnowledgeBaseV2', stage: 'embed_query', mode: 'lexical-fallback',
+          name: (embedErr as Error)?.name ?? 'Error', error: msg.slice(0, 300),
+        }));
+        queryVectors = [];
+      }
+    }
+    // else: retrieval_mode='lexical', OR 'auto' with no key -> skip embed(),
+    //       go straight to lexical (no wasted provider round-trip).
+
+    const { ranked, dropped, semanticActive } = rankChunks({
       chunks: candidates,
       queryVectors,
       standaloneQuery: understanding.standalone_query,
       intent: understanding.intent,
       clientId,
     });
+    const retrievalMode: 'semantic' | 'lexical' = semanticActive ? 'semantic' : 'lexical';
 
     if (dropped.length) {
       // Should be impossible given the scoped query — log loudly if it happens.
@@ -170,7 +209,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const confidence = pickConfidence(ranked);
+    const confidence = pickConfidence(ranked, { semanticActive });
 
     if (confidence === 'low' || ranked.length === 0) {
       const maybe = ranked.slice(0, 3).map((r) => r.chunk.title).filter(Boolean);
@@ -188,6 +227,7 @@ Deno.serve(async (req) => {
         used_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
         client_context: clientId ? { id: clientId, name: clientName } : null,
         scope_notice: scopeNotice,
+        retrieval_mode: retrievalMode,
       });
     }
 
@@ -253,6 +293,7 @@ Keep it concise. If the sources are thin, say what's missing.`,
       used_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
       client_context: clientId ? { id: clientId, name: clientName } : null,
       scope_notice: scopeNotice,
+      retrieval_mode: retrievalMode,
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });

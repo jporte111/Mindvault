@@ -31,13 +31,24 @@ export function getEmbeddingProvider(): string {
   return RAW_PROVIDER;
 }
 
+/**
+ * Whether an embeddings API key is present. Callers still wrap embed() in
+ * try/catch — this is only a cheap pre-check for logging / mode selection.
+ * Embeddings are OPTIONAL: absence just means lexical retrieval.
+ */
+export function isEmbeddingsConfigured(): boolean {
+  return Boolean(Deno.env.get("EMBEDDINGS_API_KEY")?.trim());
+}
+
 export function getEmbeddingModelName(): string {
   const override = Deno.env.get("EMBEDDINGS_MODEL");
   if (override && override.trim()) return override.trim();
   const model = DEFAULT_MODEL[RAW_PROVIDER];
   if (!model) {
+    // redact(): RAW_PROVIDER is env-supplied — if someone pasted a key into
+    // EMBEDDINGS_PROVIDER it must not survive into an error message.
     throw new Error(
-      `EMBEDDINGS_PROVIDER "${RAW_PROVIDER}" is not supported — use "voyage" or "openai", or set EMBEDDINGS_MODEL.`,
+      redact(`EMBEDDINGS_PROVIDER "${RAW_PROVIDER}" is not supported — use "voyage" or "openai", or set EMBEDDINGS_MODEL.`),
     );
   }
   return model;
@@ -70,23 +81,27 @@ async function postWithRetry(url: string, body: unknown): Promise<any> {
       if (res.ok) return await res.json();
       const text = await res.text();
       if (!RETRYABLE_STATUS.has(res.status) || attempt === MAX_ATTEMPTS - 1) {
-        throw new Error(`Embeddings API ${res.status}: ${redact(text).slice(0, 500)}`);
+        throw new Error(redact(`Embeddings API ${res.status}: ${text}`).slice(0, 500));
       }
-      lastErr = new Error(`Embeddings API ${res.status}: ${redact(text).slice(0, 200)}`);
+      lastErr = new Error(redact(`Embeddings API ${res.status}: ${text}`).slice(0, 200));
     } catch (err) {
       lastErr = err;
       if (attempt === MAX_ATTEMPTS - 1) break;
     }
     await sleep(500 * 2 ** attempt);
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  if (lastErr instanceof Error) {
+    lastErr.message = redact(lastErr.message);
+    throw lastErr;
+  }
+  throw new Error(redact(String(lastErr)));
 }
 
 function parseEmbeddings(json: any, model: string, expected: number): number[][] {
   if (!json || !Array.isArray(json.data)) {
     const shape = json && typeof json === "object" ? Object.keys(json).join(",") : typeof json;
     throw new Error(
-      `Embeddings API (provider=${RAW_PROVIDER} model=${model}): response had no "data" array (keys: ${shape}).`,
+      redact(`Embeddings API (provider=${RAW_PROVIDER} model=${model}): response had no "data" array (keys: ${shape}).`),
     );
   }
   const vectors = (json.data as Array<{ embedding: number[]; index: number }>)
@@ -95,7 +110,7 @@ function parseEmbeddings(json: any, model: string, expected: number): number[][]
     .map((d) => d.embedding);
   if (vectors.length !== expected || vectors.some((v) => !Array.isArray(v) || v.length === 0)) {
     throw new Error(
-      `Embeddings API (provider=${RAW_PROVIDER} model=${model}): got ${vectors.length} vectors for ${expected} inputs.`,
+      redact(`Embeddings API (provider=${RAW_PROVIDER} model=${model}): got ${vectors.length} vectors for ${expected} inputs.`),
     );
   }
   return vectors;

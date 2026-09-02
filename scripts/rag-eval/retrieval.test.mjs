@@ -8,7 +8,9 @@ import {
   assertInScope,
   parseCitations,
   pickConfidence,
+  planRetrieval,
   rankChunks,
+  THRESHOLDS,
 } from '../../base44/shared/retrieval.ts';
 
 // --- Deterministic fixture pool. Vectors are hand-set so cosine order is
@@ -107,4 +109,131 @@ test('dedupe + per-training cap', () => {
 test('parseCitations extracts used, in-range markers only', () => {
   assert.deepEqual(parseCitations('see [S1] and [S3], ignore [S9]', 4), [0, 2]);
   assert.deepEqual(parseCitations('no citations here', 4), []);
+});
+
+test('semanticActive is true only when vectors exist AND match something', () => {
+  const withVec = rankChunks({
+    chunks: POOL, queryVectors: Q_RECON, standaloneQuery: 'reconcile bank statement', clientId: null,
+  });
+  assert.equal(withVec.semanticActive, true);
+});
+
+// --- Lexical fallback (no embeddings) --------------------------------------
+
+const lex = (o) => ({
+  chunk_index: 0, chunk_type: 'decision_rule', title: o.id, content_hash: o.id, ...o,
+});
+
+const LEX_POOL = [
+  lex({ id: 'L1', training_id: 't-recon', knowledge_scope: 'general',
+    content: 'To reconcile a bank statement, match every transaction to the ledger and note discrepancies.',
+    keywords: ['reconcile', 'bank', 'statement', 'ledger'] }),
+  lex({ id: 'L2', training_id: 't-recon2', knowledge_scope: 'general',
+    content: 'Bank reconciliation runs monthly once the statement arrives.',
+    keywords: ['bank', 'reconciliation', 'monthly', 'statement'] }),
+  lex({ id: 'L3', training_id: 't-payroll', knowledge_scope: 'general',
+    content: 'Payroll runs are approved by the controller before submission.',
+    keywords: ['payroll', 'approve', 'controller'] }),
+  lex({ id: 'LA', training_id: 't-acme', knowledge_scope: 'client-specific', client_id: 'clientA',
+    content: 'Acme reconcile bank statement on the fifth business day.',
+    keywords: ['acme', 'reconcile', 'bank', 'statement'] }),
+  lex({ id: 'LB', training_id: 't-beta', knowledge_scope: 'client-specific', client_id: 'clientB',
+    content: 'Beta reconcile bank statement on the twelfth business day.',
+    keywords: ['beta', 'reconcile', 'bank', 'statement'] }),
+  lex({ id: 'LU', training_id: 't-unclass', knowledge_scope: 'unclassified',
+    content: 'Draft reconcile bank statement note, not yet classified.',
+    keywords: ['reconcile', 'bank', 'statement'] }),
+];
+
+test('lexical mode: no queryVectors -> semanticActive false, ranked by term overlap', () => {
+  const { ranked, semanticActive } = rankChunks({
+    chunks: LEX_POOL, queryVectors: [], standaloneQuery: 'reconcile bank statement ledger', clientId: null,
+  });
+  assert.equal(semanticActive, false);
+  const ids = ranked.map((r) => r.chunk.id);
+  assert.equal(ids[0], 'L1', 'best term overlap should rank first');
+  assert.ok(ids.indexOf('L1') < ids.indexOf('L3'), 'off-topic chunk should rank below on-topic');
+});
+
+test('lexical mode: scope isolation is identical (client A context)', () => {
+  const { ranked, dropped } = rankChunks({
+    chunks: LEX_POOL, queryVectors: [], standaloneQuery: 'reconcile bank statement', clientId: 'clientA',
+  });
+  const ids = ranked.map((r) => r.chunk.id);
+  assert.ok(ids.includes('LA'));
+  assert.ok(!ids.includes('LB'), 'other client leaked in lexical mode');
+  assert.ok(!ids.includes('LU'), 'unclassified leaked in lexical mode');
+  const droppedIds = dropped.map((d) => d.id).sort();
+  assert.deepEqual(droppedIds, ['LB', 'LU']);
+});
+
+test('lexical mode: a client name in the query never widens scope', () => {
+  const { ranked } = rankChunks({
+    chunks: LEX_POOL, queryVectors: [],
+    standaloneQuery: 'what is Beta reconcile bank statement day for Beta',
+    clientId: 'clientA',
+  });
+  assert.ok(!ranked.map((r) => r.chunk.id).includes('LB'));
+});
+
+test('lexical mode: vectors present but no chunk has an embedding -> semanticActive false', () => {
+  const { semanticActive } = rankChunks({
+    chunks: LEX_POOL, queryVectors: [[1, 0, 0, 0]], standaloneQuery: 'reconcile bank', clientId: null,
+  });
+  assert.equal(semanticActive, false);
+});
+
+test('lexical mode: chunks without an embedding field do not crash ranking', () => {
+  assert.doesNotThrow(() => rankChunks({
+    chunks: LEX_POOL, queryVectors: [], standaloneQuery: 'bank', clientId: null,
+  }));
+});
+
+test('THRESHOLDS.lexical is centralized and complete', () => {
+  const L = THRESHOLDS.lexical;
+  for (const k of ['insufficientIfLexBelow', 'corroborationLexAtLeast', 'highIfLexAtLeast', 'highMinChunks']) {
+    assert.equal(typeof L[k], 'number', `missing THRESHOLDS.lexical.${k}`);
+  }
+});
+
+test('pickConfidence lexical: coverage-gated bands', () => {
+  const opt = { semanticActive: false };
+  assert.equal(pickConfidence([], opt), 'low');
+  assert.equal(pickConfidence([{ lex: 0.10 }], opt), 'low', 'below insufficient floor');
+  assert.equal(pickConfidence([{ lex: 0.30 }], opt), 'medium', 'partial coverage, no corroboration');
+  assert.equal(pickConfidence([{ lex: 0.80 }, { lex: 0.50 }, { lex: 0.10 }], opt), 'high', 'strong + corroborated');
+  assert.equal(pickConfidence([{ lex: 0.80 }, { lex: 0.05 }], opt), 'medium', 'strong top but only 1 corroborating');
+});
+
+test('pickConfidence default (no opts) keeps the original semantic behavior', () => {
+  const { ranked } = rankChunks({
+    chunks: POOL, queryVectors: Q_OFFTOPIC, standaloneQuery: 'company holiday policy', clientId: null,
+  });
+  assert.equal(pickConfidence(ranked), 'low');
+});
+
+// --- planRetrieval: whether askKnowledgeBaseV2 should call the provider -----
+
+test('planRetrieval: lexical mode never calls the provider', () => {
+  assert.deepEqual(planRetrieval('lexical', true), { attemptEmbed: false, requireEmbed: false });
+  assert.deepEqual(planRetrieval('lexical', false), { attemptEmbed: false, requireEmbed: false });
+});
+
+test('planRetrieval: auto with NO key skips embed() entirely -> lexical', () => {
+  assert.deepEqual(planRetrieval('auto', false), { attemptEmbed: false, requireEmbed: false });
+});
+
+test('planRetrieval: auto WITH key attempts embed(), still soft-fails', () => {
+  assert.deepEqual(planRetrieval('auto', true), { attemptEmbed: true, requireEmbed: false });
+});
+
+test('planRetrieval: semantic hard-requires embeddings', () => {
+  assert.deepEqual(planRetrieval('semantic', false), { attemptEmbed: false, requireEmbed: true });
+  assert.deepEqual(planRetrieval('semantic', true), { attemptEmbed: true, requireEmbed: true });
+});
+
+test('planRetrieval: unknown / missing mode behaves as auto', () => {
+  assert.deepEqual(planRetrieval('garbage', true), { attemptEmbed: true, requireEmbed: false });
+  assert.deepEqual(planRetrieval(undefined, false), { attemptEmbed: false, requireEmbed: false });
+  assert.deepEqual(planRetrieval(null, true), { attemptEmbed: true, requireEmbed: false });
 });
