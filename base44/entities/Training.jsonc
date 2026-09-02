@@ -334,7 +334,60 @@
         "ok",
         "needs_review"
       ],
-      "description": "Set by analyzeTraining. 'needs_review' means extraction succeeded on real text but looks thin and should be reviewed before being trusted as operational knowledge. Missing = treated as 'ok'. A later phase adds a flag-gated retrieval/indexing gate on this; it does not affect retrieval in Phase 1."
+      "description": "Set by analyzeTraining. 'needs_review' means extraction succeeded on real text but looks thin and should be reviewed before being trusted as operational knowledge. Missing = treated as 'ok'. Phase 3 adds a flag-gated retrieval gate on this (require_ingestion_review, default off); with the flag off it does not affect retrieval."
+    },
+    "is_archived": {
+      "type": "boolean",
+      "description": "Phase 3 field, populated by the Phase 6 review lifecycle. When true, this source's KnowledgeChunks are excluded from retrieval and embedKnowledge stops building chunks for it. Missing = treated as not archived. Phase 3 only reads this; nothing in Phase 3 sets it."
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this source was archived. Audit only."
+    },
+    "exceptions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): situations where the normal procedure changes. Additive; empty when unsupported."
+    },
+    "roles_involved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): job roles or titles that participate. Additive."
+    },
+    "approvers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): roles or titles who must approve or sign off, and what they approve. Additive."
+    },
+    "escalation_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): 'if X then escalate to Y' statements. Additive."
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): conditions or steps required before the process can start. Additive."
+    },
+    "deadlines": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): timing constraints and due dates. Additive."
+    },
+    "verification_checkpoints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): checks that confirm a step was done correctly. Additive."
+    },
+    "prohibited_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extracted by analyzeTraining (Phase 1): things that must not be done. Additive."
+    },
+    "process_name": {
+      "type": "string",
+      "description": "Extracted by analyzeTraining (Phase 1): the canonical name of the operational process this source documents, when stated. Additive."
     }
   },
   "required": [

@@ -237,3 +237,31 @@ test('planRetrieval: unknown / missing mode behaves as auto', () => {
   assert.deepEqual(planRetrieval(undefined, false), { attemptEmbed: false, requireEmbed: false });
   assert.deepEqual(planRetrieval(null, true), { attemptEmbed: true, requireEmbed: false });
 });
+
+// --- Phase 3: rankChunks return shape stays backward compatible -------------
+// (full governance-filter behavior is covered in governance-filters.test.mjs)
+
+test('rankChunks still returns dropped as scope-violations-only, plus a filteredOut array', () => {
+  const { dropped, filteredOut } = rankChunks({
+    chunks: POOL, queryVectors: Q_RECON, standaloneQuery: 'reconcile bank statement', clientId: null,
+  });
+  // dropped = the scope channel, unchanged from PR #1
+  assert.deepEqual(dropped.map((d) => d.id).sort(), ['A1', 'B1', 'U1']);
+  // filteredOut = the new governance channel; empty for a pool with no lifecycle metadata
+  assert.ok(Array.isArray(filteredOut));
+  assert.equal(filteredOut.length, 0);
+});
+
+test('rankChunks with no governance option still drops a superseded chunk into filteredOut', () => {
+  const pool = [
+    ...POOL,
+    chunk({ id: 'OLD', training_id: 't-recon', knowledge_scope: 'general',
+      chunk_type: 'sop_step', content: 'Superseded reconciliation steps from an old version.',
+      is_active_version: false, embedding: [0.98, 0.10, 0, 0] }),
+  ];
+  const { ranked, filteredOut } = rankChunks({
+    chunks: pool, queryVectors: Q_RECON, standaloneQuery: 'reconcile bank statement', clientId: null,
+  });
+  assert.ok(!ranked.map((r) => r.chunk.id).includes('OLD'));
+  assert.deepEqual(filteredOut, [{ id: 'OLD', training_id: 't-recon', reason: 'superseded' }]);
+});

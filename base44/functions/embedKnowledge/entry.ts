@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed, getEmbeddingModelName, getEmbeddingProvider } from '../../shared/embeddings.ts';
 import { approxTokens, chunkText, contentHash, extractKeywords } from '../../shared/text.ts';
+import { buildGovFields, lifecycleSkipReason } from '../../shared/governance.ts';
 import { redact } from '../../shared/redact.ts';
 
 // TEMP DIAGNOSTIC (remove once the embedKnowledge 500 is root-caused):
@@ -69,6 +70,18 @@ function buildDraftChunks(training: any, transcript: string | null): DraftChunk[
   for (const r of training.decision_rules || []) push('decision_rule', r);
   for (const m of training.common_mistakes || []) push('common_mistake', m);
 
+  // Phase 3: operational facets extracted by analyzeTraining (Phase 1). Each is
+  // an optional array; absent/empty on legacy records, so those chunk sets are
+  // unchanged. Additive chunk_type values only.
+  for (const x of training.exceptions || []) push('exception', x);
+  for (const x of training.approvers || []) push('approval', x);
+  for (const x of training.escalation_paths || []) push('escalation', x);
+  for (const x of training.prerequisites || []) push('required_input', x);
+  for (const x of training.prohibited_actions || []) push('prohibited_action', x);
+  for (const x of training.verification_checkpoints || []) push('verification', x);
+  for (const x of training.roles_involved || []) push('role', x);
+  for (const x of training.deadlines || []) push('deadline', x);
+
   if (transcript) {
     for (const part of chunkText(transcript.slice(0, MAX_TRANSCRIPT_CHARS), {
       targetTokens: CHUNK_TARGET_TOKENS,
@@ -125,12 +138,29 @@ async function indexOne(base44: any, trainingId: string) {
       return { trainingId, error: 'client-specific training is missing client_id', stage, status: 400 };
     }
 
-    // FUTURE GATE (Phase 3): when a `require_ingestion_review` AppConfig flag is
-    // on, a training with `ingestion_quality === 'needs_review'` should be
-    // skipped here (or its chunks marked low-trust) so questionable extractions
-    // are not indexed as trusted operational knowledge until reviewed. No gate in
-    // Phase 1 — legacy/production records have no `ingestion_quality` and are
-    // treated as trusted; only newly ingested material can be flagged.
+    // Phase 3 lifecycle gate: a source that is superseded, rejected, or archived
+    // holds NO chunks. Delete any that linger (e.g. it was just archived) and
+    // stop. This is the primary enforcement; askKnowledgeBaseV2 also filters at
+    // retrieval time as a backstop. (ingestion_quality === 'needs_review' is NOT
+    // gated here — it is a retrieval-time flag only, so a later review can make
+    // it retrievable without a re-index.)
+    stage = 'lifecycle_guard';
+    const lifecycleSkip = lifecycleSkipReason(training);
+    if (lifecycleSkip) {
+      stage = 'lifecycle_cleanup';
+      const stale: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
+        { training_id: trainingId },
+        null,
+        5000,
+      );
+      for (const c of stale) await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
+      return {
+        trainingId,
+        skipped: true,
+        reason: `${lifecycleSkip} — no chunks indexed for this source`,
+        deleted: stale.length,
+      };
+    }
 
     stage = 'fetch_source_text';
     const transcript = await fetchTranscript(training);
@@ -156,6 +186,19 @@ async function indexOne(base44: any, trainingId: string) {
       topic_category: training.topic_category || training.category || '',
       client_segment: training.client_segment || '',
     };
+
+    // Phase 3: governance metadata denormalized onto every chunk so retrieval
+    // reads a last-indexed copy and never a live join. `undefined` = "leave
+    // unset" (missing means pass/neutral at retrieval time). Freshness comes
+    // from the linked OperationalProcess with a single guarded lookup.
+    stage = 'process_lookup';
+    let processFreshness = '';
+    if (training.operational_process_id) {
+      const proc = await base44.asServiceRole.entities.OperationalProcess
+        .get(training.operational_process_id).catch(() => null);
+      processFreshness = proc?.freshness_status || '';
+    }
+    const govFields = buildGovFields(training, processFreshness);
 
     stage = 'load_existing_chunks';
     const existing: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
@@ -183,6 +226,13 @@ async function indexOne(base44: any, trainingId: string) {
         if ((match.title || '') !== scopeFields.title) drift.title = scopeFields.title;
         if ((match.topic_category || '') !== scopeFields.topic_category) drift.topic_category = scopeFields.topic_category;
         if ((match.client_segment || '') !== scopeFields.client_segment) drift.client_segment = scopeFields.client_segment;
+        // Phase 3: re-stamp governance metadata when the source changed (e.g.
+        // verified, effective dates edited, process freshness recomputed).
+        // `undefined` on our side clears the chunk field (-> null).
+        for (const [k, v] of Object.entries(govFields)) {
+          const cur = (match as Record<string, unknown>)[k] ?? undefined;
+          if (cur !== (v ?? undefined)) drift[k] = v ?? null;
+        }
         if (Object.keys(drift).length) updates.push({ id: match.id, data: drift });
         if (!Array.isArray(match.embedding) || match.embedding.length === 0) {
           toBackfill.push({ id: match.id, content: d.content });
@@ -200,6 +250,7 @@ async function indexOne(base44: any, trainingId: string) {
         keywords: extractKeywords(d.content),
         embedding_model: 'lexical-only',
         ...scopeFields,
+        ...govFields,
       });
     }
 

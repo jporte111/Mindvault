@@ -1,0 +1,79 @@
+{
+  "name": "AnswerLog",
+  "type": "object",
+  "properties": {
+    "question": {
+      "type": "string",
+      "description": "The raw user question. Stored only when the answer_logging_enabled flag is on (explicit admin opt-in)."
+    },
+    "standalone_query": {
+      "type": "string",
+      "description": "The question after conversation-aware rewriting (understandQuery)."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "'general' or 'client:<id>' — the active retrieval scope for this answer."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "OperationalProcess id denormalized from the top cited chunk, when it is linked to one."
+    },
+    "retrieved_chunk_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "KnowledgeChunk ids returned by rankChunks, in ranked order, before citation filtering."
+    },
+    "retrieval_scores": {
+      "type": "string",
+      "description": "JSON string: [{ id, sem, lex, score }] for the ranked chunks. Stored as a string to avoid nested-schema churn."
+    },
+    "reranked_chunk_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Final ranked chunk id order actually passed to answer generation."
+    },
+    "final_source_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Training ids shown to the user as sources."
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Confidence band from pickConfidence."
+    },
+    "answer_status": {
+      "type": "string",
+      "enum": ["answered", "low_confidence", "no_candidates"],
+      "description": "Which exit path produced the response."
+    },
+    "retrieval_mode": {
+      "type": "string",
+      "enum": ["semantic", "lexical"],
+      "description": "Whether semantic embeddings or lexical fallback ranking served this answer. Recorded so the lexical path is observable in both modes."
+    },
+    "latency_ms": {
+      "type": "number",
+      "description": "Wall-clock milliseconds from handler start to response."
+    },
+    "engine": {
+      "type": "string",
+      "description": "Always 'v2' for now (askKnowledgeBaseV2)."
+    },
+    "filtered_out_counts": {
+      "type": "string",
+      "description": "JSON string: { superseded, archived, rejected, not_yet_effective, expired, unverified, needs_review } counts from the governance filter, for tuning visibility."
+    },
+    "feedback_id": {
+      "type": "string",
+      "description": "Linked KnowledgeFeedback id (populated in Phase 5)."
+    }
+  },
+  "required": [],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

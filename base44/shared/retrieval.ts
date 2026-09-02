@@ -25,6 +25,23 @@ export interface Chunk {
   keywords?: string[];
   content_hash?: string;
   created_date?: string;
+  // --- Governance metadata, denormalized from the source Training (and its
+  // linked OperationalProcess) at index time by embedKnowledge. Retrieval reads
+  // ONLY these last-indexed copies — never a live join. Every field is optional;
+  // a chunk with all of them missing is treated as fully retrievable and
+  // neutrally ranked (legacy chunks keep answering unchanged).
+  source_authority?: string;
+  verification_status?: string; // "unverified" | "verified" | "rejected"
+  ingestion_quality?: string; // "ok" | "needs_review"
+  is_active_version?: boolean;
+  effective_from?: string; // ISO date-time
+  effective_until?: string; // ISO date-time
+  source_is_archived?: boolean;
+  version_number?: number;
+  operational_process_id?: string;
+  department?: string;
+  // "unreviewed" | "current" | "due_soon" | "stale" | "review_requested"
+  process_freshness_status?: string;
 }
 
 export type Intent =
@@ -55,6 +72,32 @@ export const THRESHOLDS = {
 export const CANDIDATE_POOL = 40;
 export const TOP_K = 10;
 export const MAX_PER_TRAINING = 3;
+
+// Governance rerank signals (Phase 3). Small ADDITIVE nudges on the same scale
+// as BASE_TYPE_BOOST / clientBoost / recencyBoost — deliberately too small to
+// override a real semantic or lexical relevance gap. A missing value maps to 0
+// (neutral), so legacy chunks with no governance metadata are unaffected.
+// Centralized here for tuning; applied only when the caller passes
+// governance.rankingEnabled !== false (the `governance_ranking_enabled` flag).
+// Authority is a rerank signal ONLY — it never filters and never hides a
+// contradiction.
+export const GOVERNANCE_WEIGHTS = {
+  authority: {
+    policy: 0.05,
+    approved_sop: 0.04,
+    approved_procedure: 0.03,
+    training: 0.01,
+    reference: 0,
+    notes: -0.02,
+  } as Record<string, number>,
+  freshness: {
+    current: 0,
+    unreviewed: 0,
+    due_soon: -0.02,
+    review_requested: -0.02,
+    stale: -0.05,
+  } as Record<string, number>,
+};
 
 const BASE_TYPE_BOOST: Record<string, number> = {
   ai_knowledge_entry: 0.05,
@@ -148,6 +191,93 @@ export function assertInScope(
   return { kept, dropped };
 }
 
+/**
+ * Whether `now` falls within a chunk's effective window. Missing OR unparseable
+ * bounds are NOT treated as constraints — a chunk with no dates is always
+ * effective. Kept as a standalone helper for callers/tests that only need the
+ * boolean; applyGovernanceFilters inlines the same checks to name the reason.
+ */
+export function isEffective(chunk: Chunk, now: number = Date.now()): boolean {
+  const from = chunk.effective_from ? Date.parse(chunk.effective_from) : NaN;
+  if (!Number.isNaN(from) && now < from) return false;
+  const until = chunk.effective_until ? Date.parse(chunk.effective_until) : NaN;
+  if (!Number.isNaN(until) && now > until) return false;
+  return true;
+}
+
+export interface GovernanceOptions {
+  // AppConfig key:'system' require_verification_for_retrieval — when true, only
+  // verification_status === 'verified' chunks survive. 'rejected' is ALWAYS
+  // excluded regardless of this flag; this flag governs unverified content only.
+  requireVerified?: boolean;
+  // AppConfig key:'system' require_ingestion_review — when true, chunks whose
+  // source ingestion_quality === 'needs_review' are excluded.
+  requireIngestionOk?: boolean;
+  now?: number;
+}
+
+export interface GovernanceDrop {
+  id?: string;
+  training_id: string;
+  reason:
+    | "superseded"
+    | "archived"
+    | "rejected"
+    | "not_yet_effective"
+    | "expired"
+    | "unverified"
+    | "needs_review";
+}
+
+/**
+ * THE PRE-GENERATION GOVERNANCE FILTER (Phase 3). Runs AFTER assertInScope:
+ * scope is the security boundary, this is lifecycle/trust. Operates ONLY on
+ * each chunk's last-indexed denormalized metadata — no live joins.
+ *
+ * Every rule is written so a MISSING field means "keep". A legacy chunk with
+ * none of these fields set passes untouched, in both semantic and lexical mode.
+ *
+ *   ALWAYS ON (no flag):
+ *     is_active_version === false        -> superseded
+ *     source_is_archived === true        -> archived
+ *     verification_status === 'rejected' -> rejected
+ *     now < effective_from               -> not_yet_effective
+ *     now > effective_until              -> expired
+ *   FLAGGED:
+ *     requireVerified && verification_status !== 'verified'  -> unverified
+ *     requireIngestionOk && ingestion_quality === 'needs_review' -> needs_review
+ */
+export function applyGovernanceFilters(
+  chunks: Chunk[],
+  opts: GovernanceOptions = {},
+): { kept: Chunk[]; filteredOut: GovernanceDrop[] } {
+  const now = opts.now ?? Date.now();
+  const kept: Chunk[] = [];
+  const filteredOut: GovernanceDrop[] = [];
+  const drop = (c: Chunk, reason: GovernanceDrop["reason"]) =>
+    filteredOut.push({ id: c.id, training_id: c.training_id, reason });
+
+  for (const c of chunks) {
+    if (c.is_active_version === false) { drop(c, "superseded"); continue; }
+    if (c.source_is_archived === true) { drop(c, "archived"); continue; }
+    if (c.verification_status === "rejected") { drop(c, "rejected"); continue; }
+    const from = c.effective_from ? Date.parse(c.effective_from) : NaN;
+    if (!Number.isNaN(from) && now < from) { drop(c, "not_yet_effective"); continue; }
+    const until = c.effective_until ? Date.parse(c.effective_until) : NaN;
+    if (!Number.isNaN(until) && now > until) { drop(c, "expired"); continue; }
+    if (opts.requireVerified && c.verification_status !== "verified") {
+      drop(c, "unverified");
+      continue;
+    }
+    if (opts.requireIngestionOk && c.ingestion_quality === "needs_review") {
+      drop(c, "needs_review");
+      continue;
+    }
+    kept.push(c);
+  }
+  return { kept, filteredOut };
+}
+
 export function lexicalScore(queryTerms: string[], chunk: Chunk): number {
   if (!queryTerms.length) return 0;
   const hay = new Set([
@@ -185,20 +315,34 @@ export interface RankOptions {
   now?: number;
   weights?: typeof WEIGHTS;
   topK?: number;
+  // Phase 3. When present, applyGovernanceFilters runs after the scope gate and
+  // (unless rankingEnabled === false) authority/freshness rerank nudges are
+  // added to `score`. Omit entirely to keep pure PR #1 behavior.
+  governance?: GovernanceOptions & { rankingEnabled?: boolean };
 }
 
 /**
- * Full pipeline: scope gate -> hybrid score -> dedupe -> per-training cap ->
- * top K. Returns { ranked, dropped, semanticActive }.
+ * Full pipeline: scope gate -> governance filter -> hybrid score -> dedupe ->
+ * per-training cap -> top K. Returns { ranked, dropped, filteredOut,
+ * semanticActive }. `dropped` is scope violations only (should never be
+ * non-empty in production); `filteredOut` is the expected governance/lifecycle
+ * exclusions with a reason each.
  *
  * Lexical fallback: pass `queryVectors: []` (or vectors that match nothing) and
  * ranking is driven entirely by lexical overlap + boosts. The scope gate,
- * dedupe, per-training cap and citation flow are IDENTICAL in both modes —
- * only the candidate-pool ordering and the semantic term of `score` differ.
+ * governance filter, dedupe, per-training cap and citation flow are IDENTICAL
+ * in both modes — only the candidate-pool ordering and the semantic term of
+ * `score` differ. Governance filters and nudges read denormalized chunk
+ * metadata only, so they behave the same with or without vectors.
  */
 export function rankChunks(
   opts: RankOptions,
-): { ranked: RankedChunk[]; dropped: Chunk[]; semanticActive: boolean } {
+): {
+  ranked: RankedChunk[];
+  dropped: Chunk[];
+  filteredOut: GovernanceDrop[];
+  semanticActive: boolean;
+} {
   const {
     chunks,
     queryVectors,
@@ -208,9 +352,19 @@ export function rankChunks(
     now = Date.now(),
     weights = WEIGHTS,
     topK = TOP_K,
+    governance,
   } = opts;
 
-  const { kept, dropped } = assertInScope(chunks, clientId);
+  const { kept: inScope, dropped } = assertInScope(chunks, clientId);
+  // Governance / lifecycle filter — always runs; with no `governance` option it
+  // still drops superseded / archived / rejected / out-of-window chunks (all
+  // "missing = keep", so legacy chunks are untouched).
+  const { kept, filteredOut } = applyGovernanceFilters(inScope, {
+    requireVerified: governance?.requireVerified,
+    requireIngestionOk: governance?.requireIngestionOk,
+    now: governance?.now ?? now,
+  });
+  const rankingEnabled = governance?.rankingEnabled !== false;
   const queryTerms = tokenize(standaloneQuery);
   const intentBonus = INTENT_TYPE_BONUS[intent] || {};
 
@@ -226,11 +380,18 @@ export function rankChunks(
       (intentBonus[chunk.chunk_type || ""] || 0);
     const clientBoost =
       chunk.client_id && chunk.client_id === clientId ? weights.clientBoost : 0;
+    // Governance rerank nudge (Phase 3): small additive authority + freshness
+    // signal. Missing metadata -> 0. Disabled when rankingEnabled === false.
+    const governanceAdj = rankingEnabled
+      ? (GOVERNANCE_WEIGHTS.authority[chunk.source_authority || ""] ?? 0) +
+        (GOVERNANCE_WEIGHTS.freshness[chunk.process_freshness_status || ""] ?? 0)
+      : 0;
     const score =
       weights.sem * sem +
       weights.lex * lex +
       typeBoost +
       clientBoost +
+      governanceAdj +
       recencyBoost(chunk.created_date, now);
     return { chunk, score, sem, lex };
   });
@@ -265,7 +426,7 @@ export function rankChunks(
     if (ranked.length >= topK) break;
   }
 
-  return { ranked, dropped, semanticActive };
+  return { ranked, dropped, filteredOut, semanticActive };
 }
 
 /**

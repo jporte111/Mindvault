@@ -29,6 +29,26 @@
       ],
       "default": "auto",
       "description": "How askKnowledgeBaseV2 retrieves. 'auto' (default): use semantic embeddings when the query embed() call succeeds, otherwise fall back to lexical/keyword ranking automatically. 'lexical': never call the embeddings provider. 'semantic': require embeddings and error loudly if unavailable. Embeddings are an optional enhancement — no deployment needs EMBEDDINGS_API_KEY to use the knowledge base."
+    },
+    "require_verification_for_retrieval": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 3 governance flag (row key:'system'). When true, askKnowledgeBaseV2 retrieves only KnowledgeChunks whose source verification_status is 'verified'. Default false so legacy / unverified knowledge keeps answering. 'rejected' sources are always excluded regardless of this flag."
+    },
+    "require_ingestion_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 3 governance flag (row key:'system'). When true, chunks whose source ingestion_quality is 'needs_review' are excluded from retrieval. Default false; legacy sources have no value and are treated as 'ok'."
+    },
+    "governance_ranking_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Phase 3 governance flag (row key:'system'). When true (default), rankChunks applies a small additive source-authority boost and freshness penalty. Non-destructive — missing metadata is neutral. Kept as a kill-switch if eval recall regresses."
+    },
+    "answer_logging_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 3 observability flag (row key:'system'). When true, askKnowledgeBaseV2 writes one AnswerLog row per question (knowledge-quality analytics — no asking-user id is stored). Default false: logging raw employee questions is an explicit admin opt-in."
     }
   },
   "required": [
