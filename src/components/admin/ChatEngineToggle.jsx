@@ -45,6 +45,7 @@ export function useSystemConfig() {
     requireIngestionReview: data?.require_ingestion_review === true,
     governanceRanking: data?.governance_ranking_enabled !== false,
     answerLogging: data?.answer_logging_enabled === true,
+    operationalAnswerMode: data?.operational_answer_mode === true,
   };
 }
 
@@ -69,6 +70,11 @@ const SYSTEM_FLAGS = [
     key: 'answer_logging_enabled',
     label: 'Answer logging (AnswerLog)',
     hint: 'Logs each question, retrieval detail, and latency for knowledge-quality analysis. No employee identifier is stored. Off by default — logging raw questions is an explicit opt-in.',
+  },
+  {
+    key: 'operational_answer_mode',
+    label: 'Operational Answer Mode',
+    hint: 'When enabled, operational/process questions use the structured Phase 4 answer format with grounded sections, citations, authority labels, and HIGH / PARTIAL / INSUFFICIENT status. Non-operational questions continue using the normal prose answer. Default off.',
   },
 ];
 
@@ -113,6 +119,7 @@ export default function ChatEngineToggle() {
           require_ingestion_review: false,
           governance_ranking_enabled: true,
           answer_logging_enabled: false,
+          operational_answer_mode: false,
           ...patch,
         });
       }
@@ -128,6 +135,7 @@ export default function ChatEngineToggle() {
     if (key === 'require_verification_for_retrieval') return system.requireVerification;
     if (key === 'require_ingestion_review') return system.requireIngestionReview;
     if (key === 'answer_logging_enabled') return system.answerLogging;
+    if (key === 'operational_answer_mode') return system.operationalAnswerMode;
     return false;
   };
 
