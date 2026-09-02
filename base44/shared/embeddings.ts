@@ -9,12 +9,15 @@
 //   EMBEDDINGS_API_KEY   provider API key
 //   EMBEDDINGS_MODEL     optional override of the default model name
 
+import { redact } from "./redact.ts";
+
 type Provider = "voyage" | "openai";
 export type EmbeddingInputType = "document" | "query";
 
-const PROVIDER = ((Deno.env.get("EMBEDDINGS_PROVIDER") || "voyage").toLowerCase() as Provider);
+const RAW_PROVIDER = (Deno.env.get("EMBEDDINGS_PROVIDER") || "voyage").trim().toLowerCase();
+const PROVIDER = RAW_PROVIDER as Provider;
 
-const DEFAULT_MODEL: Record<Provider, string> = {
+const DEFAULT_MODEL: Record<string, string> = {
   voyage: "voyage-3-large",
   openai: "text-embedding-3-small",
 };
@@ -23,8 +26,21 @@ const BATCH_SIZE = 96;
 const MAX_ATTEMPTS = 4;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529]);
 
+/** The configured provider, for diagnostics. Never includes the key. */
+export function getEmbeddingProvider(): string {
+  return RAW_PROVIDER;
+}
+
 export function getEmbeddingModelName(): string {
-  return Deno.env.get("EMBEDDINGS_MODEL") || DEFAULT_MODEL[PROVIDER];
+  const override = Deno.env.get("EMBEDDINGS_MODEL");
+  if (override && override.trim()) return override.trim();
+  const model = DEFAULT_MODEL[RAW_PROVIDER];
+  if (!model) {
+    throw new Error(
+      `EMBEDDINGS_PROVIDER "${RAW_PROVIDER}" is not supported — use "voyage" or "openai", or set EMBEDDINGS_MODEL.`,
+    );
+  }
+  return model;
 }
 
 function apiKey(): string {
@@ -54,9 +70,9 @@ async function postWithRetry(url: string, body: unknown): Promise<any> {
       if (res.ok) return await res.json();
       const text = await res.text();
       if (!RETRYABLE_STATUS.has(res.status) || attempt === MAX_ATTEMPTS - 1) {
-        throw new Error(`Embeddings API ${res.status}: ${text.slice(0, 500)}`);
+        throw new Error(`Embeddings API ${res.status}: ${redact(text).slice(0, 500)}`);
       }
-      lastErr = new Error(`Embeddings API ${res.status}: ${text.slice(0, 200)}`);
+      lastErr = new Error(`Embeddings API ${res.status}: ${redact(text).slice(0, 200)}`);
     } catch (err) {
       lastErr = err;
       if (attempt === MAX_ATTEMPTS - 1) break;
@@ -64,6 +80,25 @@ async function postWithRetry(url: string, body: unknown): Promise<any> {
     await sleep(500 * 2 ** attempt);
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+function parseEmbeddings(json: any, model: string, expected: number): number[][] {
+  if (!json || !Array.isArray(json.data)) {
+    const shape = json && typeof json === "object" ? Object.keys(json).join(",") : typeof json;
+    throw new Error(
+      `Embeddings API (provider=${RAW_PROVIDER} model=${model}): response had no "data" array (keys: ${shape}).`,
+    );
+  }
+  const vectors = (json.data as Array<{ embedding: number[]; index: number }>)
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((d) => d.embedding);
+  if (vectors.length !== expected || vectors.some((v) => !Array.isArray(v) || v.length === 0)) {
+    throw new Error(
+      `Embeddings API (provider=${RAW_PROVIDER} model=${model}): got ${vectors.length} vectors for ${expected} inputs.`,
+    );
+  }
+  return vectors;
 }
 
 async function embedBatch(texts: string[], inputType: EmbeddingInputType): Promise<number[][]> {
@@ -75,9 +110,7 @@ async function embedBatch(texts: string[], inputType: EmbeddingInputType): Promi
       model,
       input_type: inputType,
     });
-    return (json.data as Array<{ embedding: number[]; index: number }>)
-      .sort((a, b) => a.index - b.index)
-      .map((d) => d.embedding);
+    return parseEmbeddings(json, model, texts.length);
   }
 
   // openai
@@ -85,9 +118,7 @@ async function embedBatch(texts: string[], inputType: EmbeddingInputType): Promi
     input: texts,
     model,
   });
-  return (json.data as Array<{ embedding: number[]; index: number }>)
-    .sort((a, b) => a.index - b.index)
-    .map((d) => d.embedding);
+  return parseEmbeddings(json, model, texts.length);
 }
 
 /**

@@ -1,6 +1,32 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { embed, getEmbeddingModelName } from '../../shared/embeddings.ts';
+import { embed, getEmbeddingModelName, getEmbeddingProvider } from '../../shared/embeddings.ts';
 import { approxTokens, chunkText, contentHash, extractKeywords } from '../../shared/text.ts';
+import { redact } from '../../shared/redact.ts';
+
+// TEMP DIAGNOSTIC (remove once the embedKnowledge 500 is root-caused):
+// every failure logs a single JSON line { fn, stage, trainingId, error, name }
+// and the HTTP response carries { error, stage } instead of an opaque 500.
+// The error text is run through redact() so no API key / bearer token is
+// logged or returned. No source content is logged.
+
+// Map an error message to a sensible HTTP status.
+function statusFor(message: string): number {
+  const m = (message || '').toLowerCase();
+  if (m.includes('embeddings_api_key is not set') || m.includes('is not supported')) return 400;
+  if (m.includes('embeddings api')) return 502;
+  return 500;
+}
+
+function logFailure(stage: string, trainingId: string | undefined, err: unknown) {
+  const e = err as { message?: string; name?: string };
+  console.error(JSON.stringify({
+    fn: 'embedKnowledge',
+    stage,
+    trainingId: trainingId ?? null,
+    name: e?.name ?? 'Error',
+    error: redact(e?.message ?? String(err)).slice(0, 800),
+  }));
+}
 
 // Builds and refreshes KnowledgeChunk rows for a Training record so the RAG
 // chatbot (askKnowledgeBaseV2) has something to retrieve.
@@ -71,146 +97,183 @@ async function fetchTranscript(training: any): Promise<string | null> {
 }
 
 async function indexOne(base44: any, trainingId: string) {
-  const training = await base44.asServiceRole.entities.Training.get(trainingId);
-  if (!training) return { trainingId, error: 'Training not found', status: 404 };
+  let stage = 'training_lookup';
+  try {
+    const training = await base44.asServiceRole.entities.Training.get(trainingId);
+    if (!training) return { trainingId, error: 'Training not found', stage, status: 404 };
 
-  const scope = training.knowledge_scope || 'unclassified';
-  if (scope === 'unclassified') {
-    // Never retrievable -> make sure no stale chunks linger (e.g. after an
-    // admin moves a training back from general/client-specific to unclassified).
-    const stale: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
+    stage = 'scope_guard';
+    const scope = training.knowledge_scope || 'unclassified';
+    if (scope === 'unclassified') {
+      // Never retrievable -> make sure no stale chunks linger (e.g. after an
+      // admin moves a training back from general/client-specific to unclassified).
+      stage = 'stale_cleanup';
+      const stale: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
+        { training_id: trainingId },
+        null,
+        5000,
+      );
+      for (const c of stale) await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
+      return {
+        trainingId,
+        skipped: true,
+        reason: 'unclassified — classify it before indexing',
+        deleted: stale.length,
+      };
+    }
+    if (scope === 'client-specific' && !training.client_id) {
+      return { trainingId, error: 'client-specific training is missing client_id', stage, status: 400 };
+    }
+
+    // FUTURE GATE (Phase 3): when a `require_ingestion_review` AppConfig flag is
+    // on, a training with `ingestion_quality === 'needs_review'` should be
+    // skipped here (or its chunks marked low-trust) so questionable extractions
+    // are not indexed as trusted operational knowledge until reviewed. No gate in
+    // Phase 1 — legacy/production records have no `ingestion_quality` and are
+    // treated as trusted; only newly ingested material can be flagged.
+
+    stage = 'model_select';
+    const model = getEmbeddingModelName();
+
+    stage = 'fetch_source_text';
+    const transcript = await fetchTranscript(training);
+
+    stage = 'build_chunks';
+    const drafts = buildDraftChunks(training, transcript);
+
+    stage = 'hash_chunks';
+    const desired = await Promise.all(
+      drafts.map(async (d, i) => ({
+        chunk_index: i,
+        chunk_type: d.chunk_type,
+        content: d.content,
+        content_hash: await contentHash(d.content),
+      })),
+    );
+    const desiredHashes = new Set(desired.map((d) => d.content_hash));
+
+    const scopeFields = {
+      knowledge_scope: scope,
+      client_id: scope === 'client-specific' ? training.client_id : undefined,
+      title: training.title || '',
+      topic_category: training.topic_category || training.category || '',
+      client_segment: training.client_segment || '',
+    };
+
+    stage = 'load_existing_chunks';
+    const existing: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
       { training_id: trainingId },
       null,
       5000,
     );
-    for (const c of stale) await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
+    const existingByHash = new Map<string, any>();
+    for (const c of existing) existingByHash.set(c.content_hash, c);
+
+    const toCreate: any[] = [];
+    const toEmbed: string[] = [];
+    const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
+
+    for (const d of desired) {
+      const match = existingByHash.get(d.content_hash);
+      if (match) {
+        // Re-stamp denormalized fields if they drifted (e.g. after reclassify).
+        const drift: Record<string, unknown> = {};
+        if ((match.knowledge_scope || '') !== scopeFields.knowledge_scope) drift.knowledge_scope = scopeFields.knowledge_scope;
+        if ((match.client_id || undefined) !== scopeFields.client_id) drift.client_id = scopeFields.client_id ?? null;
+        if ((match.chunk_index ?? -1) !== d.chunk_index) drift.chunk_index = d.chunk_index;
+        if ((match.title || '') !== scopeFields.title) drift.title = scopeFields.title;
+        if ((match.topic_category || '') !== scopeFields.topic_category) drift.topic_category = scopeFields.topic_category;
+        if ((match.client_segment || '') !== scopeFields.client_segment) drift.client_segment = scopeFields.client_segment;
+        if (Object.keys(drift).length) updates.push({ id: match.id, data: drift });
+        continue;
+      }
+      toEmbed.push(d.content);
+      toCreate.push({
+        training_id: trainingId,
+        chunk_index: d.chunk_index,
+        chunk_type: d.chunk_type,
+        content: d.content,
+        content_hash: d.content_hash,
+        token_count: approxTokens(d.content),
+        keywords: extractKeywords(d.content),
+        embedding_model: model,
+        ...scopeFields,
+      });
+    }
+
+    // One diagnostic line per invocation — provider + model + counts, no key,
+    // no content.
+    console.log(JSON.stringify({
+      fn: 'embedKnowledge',
+      trainingId,
+      provider: getEmbeddingProvider(),
+      model,
+      drafts: drafts.length,
+      existing: existing.length,
+      new_chunks: toEmbed.length,
+      restamp: updates.length,
+    }));
+
+    // Embed only the genuinely new chunks.
+    if (toEmbed.length) {
+      stage = 'embed';
+      const vectors = await embed(toEmbed, 'document');
+      if (vectors.length !== toEmbed.length) {
+        throw new Error(`Embedding count mismatch: got ${vectors.length} vectors for ${toEmbed.length} chunks`);
+      }
+      for (let i = 0; i < toCreate.length; i++) toCreate[i].embedding = vectors[i];
+    }
+
+    // Orphans: existing chunks no longer in the desired set.
+    const toDelete = existing.filter((c) => !desiredHashes.has(c.content_hash));
+
+    stage = 'create_chunks';
+    let created = 0;
+    for (let i = 0; i < toCreate.length; i += BULK_PAGE) {
+      const page = toCreate.slice(i, i + BULK_PAGE);
+      await base44.asServiceRole.entities.KnowledgeChunk.bulkCreate(page);
+      created += page.length;
+    }
+    stage = 'update_chunks';
+    for (const u of updates) {
+      await base44.asServiceRole.entities.KnowledgeChunk.update(u.id, u.data);
+    }
+    stage = 'delete_chunks';
+    for (const c of toDelete) {
+      await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
+    }
+
     return {
       trainingId,
-      skipped: true,
-      reason: 'unclassified — classify it before indexing',
-      deleted: stale.length,
+      knowledge_scope: scope,
+      created,
+      reused: desired.length - created,
+      restamped: updates.length,
+      deleted: toDelete.length,
+      total: desired.length,
     };
+  } catch (err) {
+    logFailure(stage, trainingId, err);
+    const message = redact((err as Error)?.message ?? String(err));
+    return { trainingId, error: message, stage, status: statusFor(message) };
   }
-  if (scope === 'client-specific' && !training.client_id) {
-    return { trainingId, error: 'client-specific training is missing client_id', status: 400 };
-  }
-
-  // FUTURE GATE (Phase 3): when a `require_ingestion_review` AppConfig flag is
-  // on, a training with `ingestion_quality === 'needs_review'` should be
-  // skipped here (or its chunks marked low-trust) so questionable extractions
-  // are not indexed as trusted operational knowledge until reviewed. No gate in
-  // Phase 1 — legacy/production records have no `ingestion_quality` and are
-  // treated as trusted; only newly ingested material can be flagged.
-
-  const model = getEmbeddingModelName();
-  const transcript = await fetchTranscript(training);
-  const drafts = buildDraftChunks(training, transcript);
-
-  // Compute hashes for the desired chunk set.
-  const desired = await Promise.all(
-    drafts.map(async (d, i) => ({
-      chunk_index: i,
-      chunk_type: d.chunk_type,
-      content: d.content,
-      content_hash: await contentHash(d.content),
-    })),
-  );
-  const desiredHashes = new Set(desired.map((d) => d.content_hash));
-
-  const scopeFields = {
-    knowledge_scope: scope,
-    client_id: scope === 'client-specific' ? training.client_id : undefined,
-    title: training.title || '',
-    topic_category: training.topic_category || training.category || '',
-    client_segment: training.client_segment || '',
-  };
-
-  // Existing chunks for this training.
-  const existing: any[] = await base44.asServiceRole.entities.KnowledgeChunk.filter(
-    { training_id: trainingId },
-    null,
-    5000,
-  );
-  const existingByHash = new Map<string, any>();
-  for (const c of existing) existingByHash.set(c.content_hash, c);
-
-  const toCreate: any[] = [];
-  const toEmbed: string[] = [];
-  const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
-
-  for (const d of desired) {
-    const match = existingByHash.get(d.content_hash);
-    if (match) {
-      // Re-stamp denormalized fields if they drifted (e.g. after reclassify).
-      const drift: Record<string, unknown> = {};
-      if ((match.knowledge_scope || '') !== scopeFields.knowledge_scope) drift.knowledge_scope = scopeFields.knowledge_scope;
-      if ((match.client_id || undefined) !== scopeFields.client_id) drift.client_id = scopeFields.client_id ?? null;
-      if ((match.chunk_index ?? -1) !== d.chunk_index) drift.chunk_index = d.chunk_index;
-      if ((match.title || '') !== scopeFields.title) drift.title = scopeFields.title;
-      if ((match.topic_category || '') !== scopeFields.topic_category) drift.topic_category = scopeFields.topic_category;
-      if ((match.client_segment || '') !== scopeFields.client_segment) drift.client_segment = scopeFields.client_segment;
-      if (Object.keys(drift).length) updates.push({ id: match.id, data: drift });
-      continue;
-    }
-    toEmbed.push(d.content);
-    toCreate.push({
-      training_id: trainingId,
-      chunk_index: d.chunk_index,
-      chunk_type: d.chunk_type,
-      content: d.content,
-      content_hash: d.content_hash,
-      token_count: approxTokens(d.content),
-      keywords: extractKeywords(d.content),
-      embedding_model: model,
-      ...scopeFields,
-    });
-  }
-
-  // Embed only the genuinely new chunks.
-  if (toEmbed.length) {
-    const vectors = await embed(toEmbed, 'document');
-    for (let i = 0; i < toCreate.length; i++) toCreate[i].embedding = vectors[i];
-  }
-
-  // Orphans: existing chunks no longer in the desired set.
-  const toDelete = existing.filter((c) => !desiredHashes.has(c.content_hash));
-
-  let created = 0;
-  for (let i = 0; i < toCreate.length; i += BULK_PAGE) {
-    const page = toCreate.slice(i, i + BULK_PAGE);
-    await base44.asServiceRole.entities.KnowledgeChunk.bulkCreate(page);
-    created += page.length;
-  }
-  for (const u of updates) {
-    await base44.asServiceRole.entities.KnowledgeChunk.update(u.id, u.data);
-  }
-  for (const c of toDelete) {
-    await base44.asServiceRole.entities.KnowledgeChunk.delete(c.id);
-  }
-
-  return {
-    trainingId,
-    knowledge_scope: scope,
-    created,
-    reused: desired.length - created,
-    restamped: updates.length,
-    deleted: toDelete.length,
-    total: desired.length,
-  };
 }
 
 Deno.serve(async (req) => {
+  let stage = 'auth';
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin') return Response.json({ error: 'Forbidden — admins only' }, { status: 403 });
+    if (!user) return Response.json({ error: 'Unauthorized', stage }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Forbidden — admins only', stage }, { status: 403 });
 
+    stage = 'parse_body';
     const body = await req.json().catch(() => ({}));
 
     if (body.all) {
       // Batch/backfill mode. Only classified, ready trainings. Paginated so the
       // caller drives it explicitly — this is never triggered automatically.
+      stage = 'batch_query';
       const skip = Number(body.skip) || 0;
       const limit = Math.min(25, Number(body.limit) || 10);
       const batch: any[] = await base44.asServiceRole.entities.Training.filter(
@@ -230,8 +293,9 @@ Deno.serve(async (req) => {
     }
 
     if (!body.trainingId) {
-      return Response.json({ error: 'trainingId is required' }, { status: 400 });
+      return Response.json({ error: 'trainingId is required', stage }, { status: 400 });
     }
+    stage = 'index_one';
     const result = await indexOne(base44, body.trainingId);
     const status = (result as any).status;
     if (status) {
@@ -240,6 +304,11 @@ Deno.serve(async (req) => {
     }
     return Response.json(result);
   } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 500 });
+    logFailure(stage, undefined, error);
+    const message = redact((error as Error)?.message ?? String(error));
+    return Response.json(
+      { error: message, stage, name: (error as Error)?.name ?? 'Error' },
+      { status: statusFor(message) },
+    );
   }
 });
