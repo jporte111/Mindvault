@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed, getEmbeddingModelName, getEmbeddingProvider } from '../../shared/embeddings.ts';
 import { approxTokens, chunkText, contentHash, extractKeywords } from '../../shared/text.ts';
-import { buildGovFields, lifecycleSkipReason } from '../../shared/governance.ts';
+import { buildGovFields, buildScopeFields, lifecycleSkipReason, scopeFieldsDrift } from '../../shared/governance.ts';
 import { redact } from '../../shared/redact.ts';
 
 // TEMP DIAGNOSTIC (remove once the embedKnowledge 500 is root-caused):
@@ -179,13 +179,7 @@ async function indexOne(base44: any, trainingId: string) {
     );
     const desiredHashes = new Set(desired.map((d) => d.content_hash));
 
-    const scopeFields = {
-      knowledge_scope: scope,
-      client_id: scope === 'client-specific' ? training.client_id : undefined,
-      title: training.title || '',
-      topic_category: training.topic_category || training.category || '',
-      client_segment: training.client_segment || '',
-    };
+    const scopeFields = buildScopeFields(training);
 
     // Phase 3: governance metadata denormalized onto every chunk so retrieval
     // reads a last-indexed copy and never a live join. `undefined` = "leave
@@ -219,13 +213,9 @@ async function indexOne(base44: any, trainingId: string) {
       const match = existingByHash.get(d.content_hash);
       if (match) {
         // Re-stamp denormalized fields if they drifted (e.g. after reclassify).
-        const drift: Record<string, unknown> = {};
-        if ((match.knowledge_scope || '') !== scopeFields.knowledge_scope) drift.knowledge_scope = scopeFields.knowledge_scope;
-        if ((match.client_id || undefined) !== scopeFields.client_id) drift.client_id = scopeFields.client_id ?? null;
-        if ((match.chunk_index ?? -1) !== d.chunk_index) drift.chunk_index = d.chunk_index;
-        if ((match.title || '') !== scopeFields.title) drift.title = scopeFields.title;
-        if ((match.topic_category || '') !== scopeFields.topic_category) drift.topic_category = scopeFields.topic_category;
-        if ((match.client_segment || '') !== scopeFields.client_segment) drift.client_segment = scopeFields.client_segment;
+        // Pure helper in shared/governance.ts — exercised by the client-scoping
+        // regression test. A blanked client_id is re-stamped, never lost.
+        const drift: Record<string, unknown> = scopeFieldsDrift(match, scopeFields, d.chunk_index);
         // Phase 3: re-stamp governance metadata when the source changed (e.g.
         // verified, effective dates edited, process freshness recomputed).
         // `undefined` on our side clears the chunk field (-> null).
