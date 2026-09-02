@@ -44,6 +44,9 @@ Deno.serve(async (req) => {
     if (cases.length === 0) {
       return Response.json({ error: 'Provide { cases: [...] }' }, { status: 400 });
     }
+    // Force lexical retrieval (no embeddings) to verify the fallback path,
+    // especially that scope isolation still holds.
+    const forceLexical = body?.mode === 'lexical';
 
     const results = [];
     let recallHits = 0, recallTotal = 0;
@@ -64,11 +67,17 @@ Deno.serve(async (req) => {
 
       const lastUser = [...(c.conversation || [])].reverse().find((t) => t.role === 'user');
       const queryText = lastUser ? `${lastUser.content}\n${c.question}` : c.question;
-      const [qv] = await embed([queryText], 'query');
+      let queryVectors: number[][] = [];
+      if (!forceLexical) {
+        try {
+          const [qv] = await embed([queryText], 'query');
+          if (qv) queryVectors = [qv];
+        } catch (_) { queryVectors = []; }
+      }
 
-      const { ranked, dropped } = rankChunks({
+      const { ranked, dropped, semanticActive } = rankChunks({
         chunks: candidates,
-        queryVectors: [qv],
+        queryVectors,
         standaloneQuery: queryText,
         clientId,
       });
@@ -80,7 +89,7 @@ Deno.serve(async (req) => {
       ).length + dropped.filter((d) => d.knowledge_scope === 'general').length;
       scopeViolations += violations;
 
-      const confidence = pickConfidence(ranked);
+      const confidence = pickConfidence(ranked, { semanticActive });
       const retrieved = ranked.map((r) => ({
         training_id: r.chunk.training_id,
         title: r.chunk.title || '',
@@ -117,6 +126,7 @@ Deno.serve(async (req) => {
       results.push({
         id: c.id || null,
         clientScope: c.clientScope || 'general',
+        retrieval_mode: semanticActive ? 'semantic' : 'lexical',
         confidence,
         candidates: candidates.length,
         retrieved,
@@ -129,6 +139,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       total_cases: cases.length,
+      mode: forceLexical ? 'lexical' : 'auto',
       total_scope_violations: scopeViolations,
       recall_at_k: recallTotal ? Number((recallHits / recallTotal).toFixed(3)) : null,
       confidence_gate_accuracy: confTotal ? Number((confHits / confTotal).toFixed(3)) : null,

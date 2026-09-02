@@ -36,6 +36,31 @@ test('leaves ordinary diagnostic text untouched', () => {
   assert.equal(redact(msg), msg);
 });
 
+test('scrubs a realistic OpenAI 401 body', () => {
+  const body = JSON.stringify({
+    error: {
+      message: 'Incorrect API key provided: sk-proj-AAAABBBBCCCCDDDDEEEEFFFF00001111. You can find your API key at https://platform.openai.com/account/api-keys.',
+      type: 'invalid_request_error', param: null, code: 'invalid_api_key',
+    },
+  });
+  const out = redact(`Embeddings API 401: ${body}`);
+  assert.ok(!out.includes('sk-proj-AAAABBBBCCCCDDDDEEEEFFFF00001111'));
+  assert.ok(out.includes('invalid_api_key'));
+});
+
+test('scrubs a realistic Voyage 401 body', () => {
+  const body = JSON.stringify({ detail: 'Provided API key pa-abcDEF0123456789ghiJKLmnop is invalid.' });
+  const out = redact(`Embeddings API 401: ${body}`);
+  assert.ok(!out.includes('pa-abcDEF0123456789ghiJKLmnop'));
+});
+
+test('scrubs a key accidentally pasted into EMBEDDINGS_PROVIDER', () => {
+  const msg = 'EMBEDDINGS_PROVIDER "sk-proj-LEAKED9999888877776666" is not supported — use "voyage" or "openai".';
+  const out = redact(msg);
+  assert.ok(!out.includes('sk-proj-LEAKED9999888877776666'));
+  assert.ok(out.includes('is not supported'));
+});
+
 test('handles non-strings without throwing', () => {
   assert.equal(redact(undefined), '');
   assert.equal(redact(null), '');

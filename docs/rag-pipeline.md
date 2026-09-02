@@ -52,10 +52,47 @@ covered by `scripts/rag-eval/retrieval.test.mjs`:
 5. `unclassified` chunks are never fetched and are dropped by `assertInScope`
    even if they somehow appear.
 
+## Embeddings are optional (lexical fallback)
+
+The knowledge base works with **no third-party API key**. `AppConfig.retrieval_mode`
+(Admin → Content → "Chatbot engine" → Retrieval mode) controls it:
+
+- `auto` (default) — if **no** `EMBEDDINGS_API_KEY` is configured, `askKnowledgeBaseV2`
+  skips `embed()` entirely and goes straight to **lexical** (token overlap over
+  `content` + `keywords`). If a key **is** configured it still calls `embed()` inside a
+  try/catch, so a bad key, quota exhaustion or provider outage falls back to lexical
+  for that request. `rankChunks` returns `semanticActive`; the scope gate, dedupe,
+  per-training cap and `[S#]` citation flow are **identical** in both modes.
+  (`planRetrieval()` in `shared/retrieval.ts` is the pure decision table.)
+- `lexical` — never contacts an embeddings provider.
+- `semantic` — requires embeddings; `askKnowledgeBaseV2` returns a 502 config error if
+  they are unavailable (so a misconfig is visible, not silently degraded).
+
+Indexing (`embedKnowledge`) is **best-effort**: if embeddings fail it still creates
+lexical-only `KnowledgeChunk` rows (`embedding_model: 'lexical-only'`, no vector) and
+returns `{ embedded: false, lexical_only: true, embed_error }` — it never fails the
+run or leaves the Admin UI spinning. Adding a key later and re-indexing (single or
+`{ all: true }`) **backfills** vectors into the lexical-only chunks; the mode
+auto-upgrades to `semantic`.
+
+Lexical confidence bands are in `shared/retrieval.ts` `THRESHOLDS.lexical`
+(coverage-gated, not cosine-gated) — centralized for tuning.
+
+`retrieval_mode` (`semantic` / `lexical`) is recorded per answer for admins /
+`AnswerLog`; there is no end-user badge.
+
+`AppConfig` (which holds `retrieval_mode`, `chat_engine`, `rag_rollout_pct`) has
+admin-only `create`/`update`/`delete` RLS and open `read` (the Chat page reads it
+for engine routing). A non-admin cannot flip `retrieval_mode` via a direct
+SDK/API call. All embeddings error text returned from `embedKnowledge` /
+`askKnowledgeBaseV2` and logged by `shared/embeddings.ts` passes through
+`redact()` — no raw provider bodies or keys reach the frontend or logs.
+
 ## One-time setup (you do this — nothing here runs automatically)
 
-1. **Embeddings secret.** In the Base44 dashboard (or `base44 secrets set`):
-   - `EMBEDDINGS_API_KEY` — required.
+1. **Embeddings secret — OPTIONAL** (semantic enhancement only; skip for lexical-only).
+   In the Base44 dashboard (or `base44 secrets set`):
+   - `EMBEDDINGS_API_KEY` — the provider key.
    - `EMBEDDINGS_PROVIDER` — `voyage` (default) or `openai`.
    - `EMBEDDINGS_MODEL` — optional override (`voyage-3-large` /
      `text-embedding-3-small` are the defaults).

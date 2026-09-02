@@ -18,16 +18,24 @@ export function useChatConfig() {
       return rows[0] || null;
     },
   });
+  const rm = data?.retrieval_mode;
   return {
     row: data || null,
     chatEngine: data?.chat_engine === 'rag' ? 'rag' : 'legacy',
     ragRolloutPct: Number(data?.rag_rollout_pct) || 0,
+    retrievalMode: rm === 'lexical' || rm === 'semantic' ? rm : 'auto',
   };
 }
 
+const RETRIEVAL_MODES = [
+  { value: 'auto', label: 'Auto', hint: 'Semantic when embeddings work, lexical otherwise.' },
+  { value: 'lexical', label: 'Lexical only', hint: 'Never calls an embeddings provider. No key needed.' },
+  { value: 'semantic', label: 'Semantic (required)', hint: 'Errors if embeddings are unavailable.' },
+];
+
 export default function ChatEngineToggle() {
   const queryClient = useQueryClient();
-  const { row, chatEngine, ragRolloutPct } = useChatConfig();
+  const { row, chatEngine, ragRolloutPct, retrievalMode } = useChatConfig();
 
   const save = async (patch) => {
     try {
@@ -61,8 +69,8 @@ export default function ChatEngineToggle() {
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>
             Legacy (<code>askKnowledgeBase</code>) is the production default. Switch to RAG
-            (<code>askKnowledgeBaseV2</code>) only after the test matrix passes. RAG needs the
-            <code> EMBEDDINGS_API_KEY</code> secret and at least some classified, indexed trainings.
+            (<code>askKnowledgeBaseV2</code>) only after the test matrix passes. RAG needs at least
+            some classified, indexed trainings — an embeddings key is optional (see Retrieval mode).
           </span>
         </div>
 
@@ -80,6 +88,32 @@ export default function ChatEngineToggle() {
               {eng === 'legacy' ? 'Legacy (production)' : 'RAG (askKnowledgeBaseV2)'}
             </button>
           ))}
+        </div>
+
+        <div>
+          <Label className="text-sm text-muted-foreground mb-2 block">
+            Retrieval mode (RAG engine)
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            {RETRIEVAL_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => save({ retrieval_mode: m.value })}
+                title={m.hint}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                  retrievalMode === m.value
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-card text-muted-foreground border-border hover:border-primary/50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground/70 mt-1.5">
+            {RETRIEVAL_MODES.find((m) => m.value === retrievalMode)?.hint}
+            {' '}Embeddings are optional — the knowledge base works without <code>EMBEDDINGS_API_KEY</code>.
+          </p>
         </div>
 
         <div>
