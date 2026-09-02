@@ -593,7 +593,7 @@ Deno.serve(async (req) => {
       }\n${c.content}`;
     });
 
-    const answerRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
+    const proseRequest = {
       model: 'claude_sonnet_4_6',
       prompt: `You are MindVault's assistant for an internal financial-operations knowledge base.
 
@@ -614,7 +614,41 @@ Respond in markdown with:
 2. Relevant steps or decision rules, if any are in the sources.
 3. Watchouts / common mistakes, if any are in the sources.
 Keep it concise. If the sources are thin, say what's missing.`,
-    });
+    };
+
+    // --- Fix 1: narrow reliability wrapper around prose generation. On failure,
+    // retry EXACTLY ONCE with the identical proseRequest (same prompt, model, and
+    // ranked context). Retrieval and understandQuery are never rerun. If the
+    // retry also fails, return a safe 200 fallback instead of a hard 500 — the
+    // employee never sees provider error text. Failure logging only; this stage
+    // never writes an AnswerLog row. ---
+    let answerRes: any;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        answerRes = await base44.asServiceRole.integrations.Core.InvokeLLM(proseRequest);
+        break;
+      } catch (genErr) {
+        console.error(JSON.stringify({
+          fn: 'askKnowledgeBaseV2',
+          stage: 'prose_generation',
+          attempt,
+          error: redact((genErr as Error)?.message ?? String(genErr)).slice(0, 300),
+        }));
+        if (attempt === 2) {
+          return Response.json({
+            answer:
+              "I found relevant knowledge for this, but couldn't complete the answer just now. Please try asking again in a moment.",
+            sources: [],
+            confidence: 'low',
+            used_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+            client_context: clientId ? { id: clientId, name: clientName } : null,
+            scope_notice: scopeNotice,
+            retrieval_mode: retrievalMode,
+            answer_log_id: null,
+          });
+        }
+      }
+    }
 
     const answerText = typeof answerRes === 'string'
       ? answerRes
