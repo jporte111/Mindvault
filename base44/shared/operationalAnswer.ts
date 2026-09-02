@@ -192,10 +192,11 @@ export function shouldKeepContradictionNote(noteCitations: number[]): boolean {
  * Grounding/coverage status. Decided here, in code — not by the answer LLM.
  *   baseBand 'low'                         -> INSUFFICIENT
  *   no citation-valid direct answer        -> INSUFFICIENT
- *   a kept contradiction note              -> capped at PARTIAL
+ *   baseBand 'medium'                      -> PARTIAL   (Phase 4.1 — HIGH needs 'high')
+ *   a kept contradiction note              -> PARTIAL
  *   a requested facet with no surviving
  *     citation-validated section           -> PARTIAL (facet listed in missing)
- *   otherwise                              -> HIGH
+ *   otherwise (baseBand 'high')            -> HIGH
  *
  * `survivingSectionKeys` MUST come from validateSections(), never from
  * buildFacetInventory(ranked).
@@ -212,6 +213,10 @@ export function deriveAnswerStatus(input: {
   }
   const covered = new Set(input.survivingSectionKeys || []);
   const missingFacets = (input.requestedFacets || []).filter((f) => !covered.has(f));
+  // Phase 4.1: a 'medium' base band may still produce an answer, but grounding
+  // confidence is not high enough for HIGH — cap at PARTIAL. HIGH now strictly
+  // requires baseBand === 'high'.
+  if (input.baseBand === "medium") return { status: "PARTIAL", missingFacets };
   if (input.contradictionNoteKept) return { status: "PARTIAL", missingFacets };
   if (missingFacets.length) return { status: "PARTIAL", missingFacets };
   return { status: "HIGH", missingFacets: [] };

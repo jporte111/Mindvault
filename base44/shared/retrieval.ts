@@ -59,14 +59,24 @@ export const THRESHOLDS = {
   lowIfFinalBelow: 0.35,
   highIfFinalAbove: 0.55,
   lowIfSemBelow: 0.28,
-  // Lexical (no-embeddings) mode: confidence is gated on query-term coverage
-  // (top.lex, a 0..1 fraction of query terms present), not on cosine. These are
-  // deliberately centralized here so they can be tuned without touching logic.
+  // Lexical (no-embeddings) mode: confidence is decided per-candidate against
+  // ONE coherent evidence tuple (lex, lexHits, lexQueryTermCount). Never mix a
+  // numerator from one query with a denominator from another; never combine
+  // maxima from different rows. No chunk-count / distinct-training requirement.
   lexical: {
-    insufficientIfLexBelow: 0.15,
-    corroborationLexAtLeast: 0.20,
-    highIfLexAtLeast: 0.40,
-    highMinChunks: 2,
+    insufficientIfLexBelow: 0.15, // no row with fractional overlap >= this -> LOW
+    minMatchedTermsToAnswer: 1, // no row matched >= this many terms -> LOW
+    highIfLexAtLeast: 0.45, // HIGH also needs one row's fractional overlap >= this
+    highMinMatchedTerms: 2, // HIGH needs that same row to match >= this many terms
+    highMinQueryTerms: 3, // HIGH needs that same row's query to carry >= this many terms
+    gateMinBestLex: 0.25, // pre-generation gate: a row clears if lex >= this ...
+    gateMinBestHits: 2, //   ... OR lexHits >= this. Reject only if NO row clears either.
+  },
+  // Phase 4.1 rewrite-drift: cap (never fail) confidence when the standalone
+  // rewrite injected the operational vocabulary the user's raw question lacked.
+  rewriteDrift: {
+    rawMaxContentTerms: 2,
+    minNewRewriteTerms: 4,
   },
 };
 export const CANDIDATE_POOL = 40;
@@ -278,15 +288,29 @@ export function applyGovernanceFilters(
   return { kept, filteredOut };
 }
 
-export function lexicalScore(queryTerms: string[], chunk: Chunk): number {
-  if (!queryTerms.length) return 0;
+/**
+ * Lexical overlap of a query's terms against one chunk, returned as a coherent
+ * pair: `hits` (distinct query terms matched) and `lex` (hits / queryTerms.length).
+ * Both come from the SAME `queryTerms` — callers must carry that query's
+ * `queryTerms.length` alongside these on the same record.
+ */
+export function lexicalScoreDetailed(
+  queryTerms: string[],
+  chunk: Chunk,
+): { lex: number; hits: number } {
+  if (!queryTerms.length) return { lex: 0, hits: 0 };
   const hay = new Set([
     ...tokenize(chunk.content),
     ...(chunk.keywords || []).map((k) => k.toLowerCase()),
   ]);
   let hits = 0;
   for (const t of queryTerms) if (hay.has(t)) hits++;
-  return hits / queryTerms.length;
+  return { lex: hits / queryTerms.length, hits };
+}
+
+/** Fractional query-term overlap (0..1). Thin wrapper over lexicalScoreDetailed. */
+export function lexicalScore(queryTerms: string[], chunk: Chunk): number {
+  return lexicalScoreDetailed(queryTerms, chunk).lex;
 }
 
 function recencyBoost(created_date?: string, now: number = Date.now()): number {
@@ -303,7 +327,15 @@ export interface RankedChunk {
   chunk: Chunk;
   score: number;
   sem: number;
+  // --- Lexical evidence tuple (Phase 4.1). `lex`, `lexHits` and
+  // `lexQueryTermCount` ALL come from the SAME query that produced `lex` (today
+  // always the standalone query). Downstream code must evaluate them together
+  // per row and never combine maxima from different rows.
+  //   invariant: lexHits === Math.round(lex * lexQueryTermCount)   (0/0 -> 0)
   lex: number;
+  lexHits: number;
+  lexQueryTermCount: number;
+  lexQuery?: string; // provenance tag; today always 'standalone'
 }
 
 export interface RankOptions {
@@ -374,7 +406,7 @@ export function rankChunks(
       const s = cosineSim(qv, chunk.embedding);
       if (s > sem) sem = s;
     }
-    const lex = lexicalScore(queryTerms, chunk);
+    const { lex, hits: lexHits } = lexicalScoreDetailed(queryTerms, chunk);
     const typeBoost =
       (BASE_TYPE_BOOST[chunk.chunk_type || ""] || 0) +
       (intentBonus[chunk.chunk_type || ""] || 0);
@@ -393,7 +425,15 @@ export function rankChunks(
       clientBoost +
       governanceAdj +
       recencyBoost(chunk.created_date, now);
-    return { chunk, score, sem, lex };
+    return {
+      chunk,
+      score,
+      sem,
+      lex,
+      lexHits,
+      lexQueryTermCount: queryTerms.length,
+      lexQuery: "standalone",
+    };
   });
 
   // Semantic is "active" only if query vectors exist AND some chunk actually
@@ -440,20 +480,81 @@ export function pickConfidence(
 ): "low" | "medium" | "high" {
   const { semanticActive = true, thresholds = THRESHOLDS } = opts;
   if (!ranked.length) return "low";
-  const top = ranked[0];
 
   if (!semanticActive) {
     const L = thresholds.lexical;
-    if (top.lex < L.insufficientIfLexBelow) return "low";
-    const corroborating = ranked.filter((r) => r.lex >= L.corroborationLexAtLeast).length;
-    if (top.lex >= L.highIfLexAtLeast && corroborating >= L.highMinChunks) return "high";
-    return "medium";
+    // LOW — no single candidate has minimal coherent overlap (its own lex AND
+    // its own hit count).
+    const anyMinimal = ranked.some((r) =>
+      r.lex >= L.insufficientIfLexBelow &&
+      (r.lexHits ?? 0) >= L.minMatchedTermsToAnswer
+    );
+    if (!anyMinimal) return "low";
+    // HIGH — ONE candidate row must clear ALL bars on its own evidence tuple.
+    // No max() across rows; the query-term denominator is that row's own.
+    const highRow = ranked.some((r) =>
+      r.lex >= L.highIfLexAtLeast &&
+      (r.lexHits ?? 0) >= L.highMinMatchedTerms &&
+      (r.lexQueryTermCount ?? 0) >= L.highMinQueryTerms
+    );
+    return highRow ? "high" : "medium";
   }
 
+  const top = ranked[0];
   if (top.sem < thresholds.lowIfSemBelow) return "low";
   if (top.score < thresholds.lowIfFinalBelow) return "low";
   if (top.score >= thresholds.highIfFinalAbove) return "high";
   return "medium";
+}
+
+/**
+ * Conservative pre-generation weak-evidence gate (Phase 4.1). Returns false
+ * (meaning: do NOT generate; return INSUFFICIENT) ONLY when every candidate row
+ * is below BOTH modest floors on its own coherent evidence tuple. A single
+ * concise authoritative source (e.g. lex 0.9 / 1 hit) passes. There is no
+ * chunk-count or distinct-training requirement. No effect in semantic mode —
+ * that path is gated by pickConfidence's semantic branch.
+ */
+export function hasMinimumEvidence(
+  ranked: RankedChunk[],
+  opts: { semanticActive?: boolean; thresholds?: typeof THRESHOLDS } = {},
+): boolean {
+  const { semanticActive = false, thresholds = THRESHOLDS } = opts;
+  if (semanticActive) return true;
+  if (!ranked.length) return false;
+  const L = thresholds.lexical;
+  return ranked.some((r) =>
+    r.lex >= L.gateMinBestLex || (r.lexHits ?? 0) >= L.gateMinBestHits
+  );
+}
+
+/**
+ * Rewrite-drift signal (Phase 4.1). True only when ALL of:
+ *   - the raw user question carried very few content terms (<= rawMaxContentTerms),
+ *   - understandQuery's standalone rewrite carried NONE of those raw terms
+ *     forward (so it is a substitution, not an elaboration), and
+ *   - the rewrite injected at least `minNewRewriteTerms` new content terms.
+ * i.e. the rewrite, not the user, supplied the operational vocabulary retrieval
+ * then matched. Callers use this ONLY to cap confidence (high -> medium); it
+ * must NEVER hard-fail a request. Query-vs-query comparison, independent of
+ * candidate scoring. A terse legitimate question ("bank reconciliation?" ->
+ * "how do I reconcile the bank statement...") is NOT flagged, because "bank" is
+ * carried forward.
+ */
+export function rewriteDriftSignal(
+  rawQuestion: string,
+  standaloneQuery: string,
+  thresholds: typeof THRESHOLDS = THRESHOLDS,
+): boolean {
+  const D = thresholds.rewriteDrift;
+  const raw = tokenize(rawQuestion);
+  if (raw.length > D.rawMaxContentTerms) return false;
+  const std = tokenize(standaloneQuery);
+  const stdSet = new Set(std);
+  if (raw.some((t) => stdSet.has(t))) return false; // rewrite elaborated the user's terms
+  const rawSet = new Set(raw);
+  const newTerms = std.filter((t) => !rawSet.has(t)).length;
+  return newTerms >= D.minNewRewriteTerms;
 }
 
 /**

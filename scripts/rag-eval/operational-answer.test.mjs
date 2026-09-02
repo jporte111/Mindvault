@@ -328,7 +328,7 @@ test('parity: validateSections / classifySectionAuthority / deriveAnswerStatus i
       directAnswerValid,
       auth: sections.map((s) => classifySectionAuthority(s.items.flatMap((i) => i.citations), ranked)),
       status: deriveAnswerStatus({
-        baseBand: 'medium',
+        baseBand: 'high',
         directAnswerValid,
         requestedFacets: ['steps', 'approvals'],
         survivingSectionKeys: sections.map((s) => s.key),
@@ -339,6 +339,26 @@ test('parity: validateSections / classifySectionAuthority / deriveAnswerStatus i
   assert.deepEqual(run(true), run(false));
   assert.deepEqual(run(false).status, { status: 'HIGH', missingFacets: [] });
   assert.deepEqual(run(false).auth, ['authoritative', 'advisory']);
+});
+
+// Phase 4.1: a 'medium' base band caps the operational status at PARTIAL.
+test('deriveAnswerStatus: base band medium -> PARTIAL, never HIGH', () => {
+  const r = deriveAnswerStatus({
+    ...baseInput,
+    baseBand: 'medium',
+    requestedFacets: ['steps'],
+    survivingSectionKeys: ['steps'], // facet fully covered
+  });
+  assert.equal(r.status, 'PARTIAL');
+  assert.deepEqual(r.missingFacets, []);
+  // still lists missing facets when a medium answer also lacks one
+  const r2 = deriveAnswerStatus({
+    ...baseInput, baseBand: 'medium', requestedFacets: ['steps', 'approvals'], survivingSectionKeys: ['steps'],
+  });
+  assert.equal(r2.status, 'PARTIAL');
+  assert.deepEqual(r2.missingFacets, ['approvals']);
+  // 'high' with the same coverage still reaches HIGH
+  assert.equal(deriveAnswerStatus({ ...baseInput, baseBand: 'high', requestedFacets: ['steps'], survivingSectionKeys: ['steps'] }).status, 'HIGH');
 });
 
 // ======================================================================
