@@ -49,6 +49,11 @@
       "type": "boolean",
       "default": false,
       "description": "Phase 3 observability flag (row key:'system'). When true, askKnowledgeBaseV2 writes one AnswerLog row per question (knowledge-quality analytics — no asking-user id is stored). Default false: logging raw employee questions is an explicit admin opt-in."
+    },
+    "operational_answer_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 4 flag (row key:'system'). When true AND the question intent is operational, askKnowledgeBaseV2 runs a structured operational answer (direct answer / steps / prerequisites / approvals / exceptions / prohibited actions / verification checkpoints / escalation / watch-outs / systems / expected result) with a HIGH/PARTIAL/INSUFFICIENT grounding status, INSTEAD OF the prose answer. Default false: prose behavior is byte-identical to today. On an operational-generation failure the request falls back to the prose path."
     }
   },
   "required": [

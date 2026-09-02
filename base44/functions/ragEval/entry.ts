@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed } from '../../shared/embeddings.ts';
 import { assertInScope, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
+import { buildFacetInventory } from '../../shared/operationalAnswer.ts';
 
 // READ-ONLY evaluation of the RAG retrieval pipeline against real indexed
 // KnowledgeChunks. Never creates, updates, or deletes anything. Admin only.
@@ -145,6 +146,10 @@ Deno.serve(async (req) => {
         out_of_scope_retrieved: outOfScope,
         filtered_out: filteredOut.map((f) => ({ id: f.id ?? null, reason: f.reason })),
         filtered_out_counts: filteredCounts,
+        // Phase 4 readiness: which operational sections the retrieved chunks
+        // could support (diagnostics only — actual coverage is proven by the
+        // citation-validated answer, which this read-only harness does not run).
+        facet_inventory: buildFacetInventory(ranked),
         recall_pass: recallPass,
         confidence_pass: confidencePass,
         forbid_answer_substring: c.forbidAnswerSubstring || null,
