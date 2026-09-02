@@ -29,6 +29,9 @@ import { dirname, join, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENTRY = resolve(HERE, '../../base44/functions/askKnowledgeBaseV2/entry.ts');
+// The handler's relative imports (../../shared/*.ts) must resolve against the
+// HANDLER's directory, not against this test's directory.
+const ENTRY_DIR = dirname(ENTRY);
 const TMP = join(HERE, '.tmp-prose-retry');
 
 // Deno shim BEFORE any module load: shared/embeddings.ts reads env at import
@@ -64,8 +67,8 @@ async function loadHandler() {
     )
     .replace('Deno.serve(async (req) => {', 'export const handler = (async (req) => {')
     .replace(
-      /from '(\.\.\/\.\.\/shared\/[a-zA-Z]+)\.ts';/g,
-      (_m, p) => `from ${JSON.stringify(pathToFileURL(resolve(HERE, p + '.ts')).href)};`,
+      /from '(\.\.\/\.\.\/shared\/[a-zA-Z0-9]+)\.ts';/g,
+      (_m, p) => `from ${JSON.stringify(pathToFileURL(resolve(ENTRY_DIR, p + '.ts')).href)};`,
     );
   mkdirSync(TMP, { recursive: true });
   const out = join(TMP, 'entry.transformed.ts');
