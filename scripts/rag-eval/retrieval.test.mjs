@@ -189,20 +189,61 @@ test('lexical mode: chunks without an embedding field do not crash ranking', () 
   }));
 });
 
-test('THRESHOLDS.lexical is centralized and complete', () => {
+test('THRESHOLDS.lexical is centralized and complete (Phase 4.1 term-based keys)', () => {
   const L = THRESHOLDS.lexical;
-  for (const k of ['insufficientIfLexBelow', 'corroborationLexAtLeast', 'highIfLexAtLeast', 'highMinChunks']) {
+  for (const k of [
+    'insufficientIfLexBelow', 'minMatchedTermsToAnswer', 'highIfLexAtLeast',
+    'highMinMatchedTerms', 'highMinQueryTerms', 'gateMinBestLex', 'gateMinBestHits',
+  ]) {
     assert.equal(typeof L[k], 'number', `missing THRESHOLDS.lexical.${k}`);
   }
+  assert.equal(typeof THRESHOLDS.rewriteDrift.rawMaxContentTerms, 'number');
+  assert.equal(typeof THRESHOLDS.rewriteDrift.minNewRewriteTerms, 'number');
+  // the old chunk-count keys are gone
+  assert.equal(L.corroborationLexAtLeast, undefined);
+  assert.equal(L.highMinChunks, undefined);
 });
 
-test('pickConfidence lexical: coverage-gated bands', () => {
+// Phase 4.1: pickConfidence evaluates ONE coherent per-row tuple
+// { lex, lexHits, lexQueryTermCount }. No max() across rows.
+const row = (lex, lexHits, lexQueryTermCount) => ({ lex, lexHits, lexQueryTermCount });
+
+test('pickConfidence lexical: LOW needs no row with minimal coherent overlap', () => {
   const opt = { semanticActive: false };
   assert.equal(pickConfidence([], opt), 'low');
-  assert.equal(pickConfidence([{ lex: 0.10 }], opt), 'low', 'below insufficient floor');
-  assert.equal(pickConfidence([{ lex: 0.30 }], opt), 'medium', 'partial coverage, no corroboration');
-  assert.equal(pickConfidence([{ lex: 0.80 }, { lex: 0.50 }, { lex: 0.10 }], opt), 'high', 'strong + corroborated');
-  assert.equal(pickConfidence([{ lex: 0.80 }, { lex: 0.05 }], opt), 'medium', 'strong top but only 1 corroborating');
+  assert.equal(pickConfidence([row(0.10, 1, 5)], opt), 'low', 'lex below insufficient floor');
+  assert.equal(pickConfidence([row(0.0, 0, 5)], opt), 'low', 'no matched terms');
+  assert.equal(pickConfidence([row(0.30, 2, 5)], opt), 'medium', 'clears LOW, not HIGH');
+});
+
+test('pickConfidence lexical: HIGH needs ONE row to clear all three bars', () => {
+  const opt = { semanticActive: false };
+  // one row satisfies lex>=0.45 AND lexHits>=2 AND lexQueryTermCount>=3
+  assert.equal(pickConfidence([row(0.60, 3, 4)], opt), 'high');
+  // same numbers SPLIT across two rows -> not HIGH (no cross-row max)
+  assert.equal(pickConfidence([row(0.60, 1, 4), row(0.20, 3, 4)], opt), 'medium',
+    'high lex on one row + high hits on another must NOT combine to HIGH');
+  // blocker-1 canonical: A(high lex / 1 hit) + B(low lex / 2 hits) -> medium
+  assert.equal(pickConfidence([row(0.80, 1, 5), row(0.20, 2, 5)], opt), 'medium');
+});
+
+test('pickConfidence lexical: short/generic queries cannot reach HIGH from fractional overlap', () => {
+  const opt = { semanticActive: false };
+  // 1-word generic query, perfect fractional overlap, 1 hit
+  assert.equal(pickConfidence([row(1.0, 1, 1)], opt), 'medium', '1-word -> never HIGH');
+  // 2-word terse valid query, both matched
+  assert.equal(pickConfidence([row(1.0, 2, 2)], opt), 'medium', 'qTC 2 < 3 -> never HIGH');
+  // 3-word query, 2 of 3 matched, strong fraction -> still not HIGH (hits 2, but only if...)
+  assert.equal(pickConfidence([row(0.67, 2, 3)], opt), 'high', '3 terms, 2 matched, lex>=0.45 -> HIGH (coherent)');
+});
+
+test('pickConfidence lexical: per-row denominator is that row\'s own', () => {
+  const opt = { semanticActive: false };
+  // a row scored against a SHORT query: lex 0.50, 1 hit, denominator 2
+  // -> fails highMinMatchedTerms (1<2) and highMinQueryTerms (2<3) despite lex>=0.45
+  assert.equal(pickConfidence([row(0.50, 1, 2)], opt), 'medium');
+  // shortening the denominator alone (1.0, 1 hit, 1 term) can't manufacture HIGH
+  assert.equal(pickConfidence([row(1.0, 1, 1)], opt), 'medium');
 });
 
 test('pickConfidence default (no opts) keeps the original semantic behavior', () => {

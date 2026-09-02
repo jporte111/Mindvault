@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed } from '../../shared/embeddings.ts';
-import { assertInScope, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
+import { assertInScope, hasMinimumEvidence, pickConfidence, rankChunks } from '../../shared/retrieval.ts';
 import { buildFacetInventory } from '../../shared/operationalAnswer.ts';
 
 // READ-ONLY evaluation of the RAG retrieval pipeline against real indexed
@@ -100,6 +100,14 @@ Deno.serve(async (req) => {
       scopeViolations += violations;
 
       const confidence = pickConfidence(ranked, { semanticActive });
+      const minEvidence = hasMinimumEvidence(ranked, { semanticActive });
+      // Phase 4.1 diagnostics: the coherent lexical evidence tuple of the row
+      // with the highest fractional overlap (the row pickConfidence would use
+      // for HIGH), not a cross-row max.
+      const bestRow = [...ranked].sort((a, b) => (b.lex ?? 0) - (a.lex ?? 0))[0];
+      const bestLexRow = bestRow
+        ? { lex: Number((bestRow.lex ?? 0).toFixed(4)), lexHits: bestRow.lexHits ?? 0, lexQueryTermCount: bestRow.lexQueryTermCount ?? 0 }
+        : null;
       const retrieved = ranked.map((r) => ({
         training_id: r.chunk.training_id,
         title: r.chunk.title || '',
@@ -107,6 +115,9 @@ Deno.serve(async (req) => {
         knowledge_scope: r.chunk.knowledge_scope,
         client_id: r.chunk.client_id ?? null,
         sem: Number(r.sem.toFixed(4)),
+        lex: Number((r.lex ?? 0).toFixed(4)),
+        lexHits: r.lexHits ?? 0,
+        lexQueryTermCount: r.lexQueryTermCount ?? 0,
         score: Number(r.score.toFixed(4)),
       }));
 
@@ -141,6 +152,9 @@ Deno.serve(async (req) => {
         clientScope: c.clientScope || 'general',
         retrieval_mode: semanticActive ? 'semantic' : 'lexical',
         confidence,
+        // Phase 4.1
+        has_minimum_evidence: minEvidence,
+        best_lex_row: bestLexRow,
         candidates: candidates.length,
         retrieved,
         out_of_scope_retrieved: outOfScope,

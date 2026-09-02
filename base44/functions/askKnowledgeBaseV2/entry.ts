@@ -1,7 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed, isEmbeddingsConfigured } from '../../shared/embeddings.ts';
 import { redact } from '../../shared/redact.ts';
-import { type Intent, parseCitations, pickConfidence, planRetrieval, rankChunks } from '../../shared/retrieval.ts';
+import {
+  hasMinimumEvidence,
+  type Intent,
+  parseCitations,
+  pickConfidence,
+  planRetrieval,
+  rankChunks,
+  rewriteDriftSignal,
+} from '../../shared/retrieval.ts';
 import {
   buildFacetInventory,
   classifySectionAuthority,
@@ -474,18 +482,31 @@ Deno.serve(async (req) => {
       }));
     }
 
-    const confidence = pickConfidence(ranked, { semanticActive });
+    let confidence = pickConfidence(ranked, { semanticActive });
+    // Phase 4.1: if understandQuery's rewrite (not the user's raw question)
+    // supplied the operational vocabulary retrieval matched, cap — never fail —
+    // confidence at 'medium'.
+    if (confidence === 'high' && rewriteDriftSignal(question, understanding.standalone_query)) {
+      confidence = 'medium';
+    }
+    // Phase 4.1: conservative per-row weak-evidence gate. Rejects (-> the
+    // INSUFFICIENT / "couldn't find" early return, no generation call) only when
+    // NO candidate row clears a modest lexical or matched-term floor on its own
+    // coherent evidence tuple. No chunk-count / distinct-training requirement.
+    const weakEvidence = !hasMinimumEvidence(ranked, { semanticActive });
     const scoresJson = JSON.stringify(
       ranked.map((r) => ({
         id: r.chunk.id,
         sem: Number(r.sem.toFixed(4)),
         lex: Number(r.lex.toFixed(4)),
+        lexHits: r.lexHits,
+        lexQTC: r.lexQueryTermCount,
         score: Number(r.score.toFixed(4)),
       })),
     );
     const topProcessId = ranked[0]?.chunk.operational_process_id || undefined;
 
-    if (confidence === 'low' || ranked.length === 0) {
+    if (confidence === 'low' || ranked.length === 0 || weakEvidence) {
       const maybe = ranked.slice(0, 3).map((r) => r.chunk.title).filter(Boolean);
       const relatedLine = maybe.length
         ? `\n\nLoosely related trainings: ${[...new Set(maybe)].join(', ')}.`
