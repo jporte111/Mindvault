@@ -72,6 +72,11 @@ export default function Chat() {
           role: 'assistant',
           content: data.answer || "I couldn't find anything in the training library that addresses this. The trainings may not cover this topic, or your question may need rephrasing. Try using more specific terms (e.g., a client name, a software, a workflow step), or check the Library to confirm the relevant training has been synced and analyzed.",
           sources: data.sources || [],
+          // Phase 4: present only when operational answer mode fired; the
+          // renderer falls back to plain markdown otherwise.
+          answerMode: data.answer_mode,
+          answerStatus: data.answer_status,
+          operationalAnswer: data.operational_answer,
         };
         return next;
       });

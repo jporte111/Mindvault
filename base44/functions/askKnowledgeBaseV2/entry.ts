@@ -2,6 +2,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed, isEmbeddingsConfigured } from '../../shared/embeddings.ts';
 import { redact } from '../../shared/redact.ts';
 import { type Intent, parseCitations, pickConfidence, planRetrieval, rankChunks } from '../../shared/retrieval.ts';
+import {
+  buildFacetInventory,
+  classifySectionAuthority,
+  deriveAnswerStatus,
+  flattenToMarkdown,
+  isOperationalIntent,
+  OPERATIONAL_SECTION_KEYS,
+  SECTION_TITLES,
+  shouldKeepContradictionNote,
+  stalenessFlags,
+  validateRequestedFacets,
+  validateSections,
+} from '../../shared/operationalAnswer.ts';
 
 // RAG chatbot backend. Runs strictly in parallel to askKnowledgeBase (which is
 // untouched and remains the production default). Selected per request by the
@@ -44,6 +57,7 @@ async function understandQuery(base44: any, question: string, conversation: Turn
     search_queries: [question],
     intent: 'other' as Intent,
     detected_client_mention: null as string | null,
+    requested_facets: [] as string[],
   };
   try {
     const historyText = conversation.length
@@ -62,7 +76,8 @@ Return JSON:
 - standalone_query: the latest message rewritten to stand alone (resolve "it"/"that"/"the step" using the conversation; keep the user's meaning; do not answer it).
 - search_queries: 1-3 short search strings covering the information need (expansions or sub-questions). The first should be the standalone query.
 - intent: one of ["procedure","decision_rule","troubleshooting","definition","overview","other"].
-- detected_client_mention: the name of a specific client/company the user names in the latest message, or null. This is only a hint; it must not be treated as authoritative.`,
+- detected_client_mention: the name of a specific client/company the user names in the latest message, or null. This is only a hint; it must not be treated as authoritative.
+- requested_facets: array of any of ["steps","prerequisites","approvals","exceptions","prohibited_actions","verification_checkpoints","escalation","watch_outs","systems","expected_result"] that the user is EXPLICITLY asking about (e.g. "who approves this" -> ["approvals"]; "what are the steps and what can go wrong" -> ["steps","watch_outs"]). Empty array if the question is general or asks for none of these specifically.`,
       response_json_schema: {
         type: 'object',
         properties: {
@@ -70,6 +85,7 @@ Return JSON:
           search_queries: { type: 'array', items: { type: 'string' } },
           intent: { type: 'string' },
           detected_client_mention: { type: ['string', 'null'] },
+          requested_facets: { type: 'array', items: { type: 'string' } },
         },
       },
     });
@@ -83,10 +99,175 @@ Return JSON:
       search_queries: queries.length ? queries : [data?.standalone_query || question],
       intent,
       detected_client_mention: data?.detected_client_mention || null,
+      // The LLM's facet DETECTION is non-deterministic; validateRequestedFacets
+      // (enum-checked, tested) is the contract everything downstream relies on.
+      requested_facets: validateRequestedFacets(data?.requested_facets),
     };
   } catch (_) {
     return fallback;
   }
+}
+
+// --- Operational answer generation (Phase 4) ------------------------------
+// Runs INSTEAD OF the prose generation call when operational_answer_mode is on
+// and the intent is operational. The LLM proposes a structured answer; the pure
+// operationalAnswer.ts helpers decide citations, status, and authority. Throws
+// on any failure so the caller can fall back to the prose path.
+async function generateOperationalAnswer(base44: any, opts: {
+  ranked: any[];
+  standaloneQuery: string;
+  requestedFacets: string[];
+  baseBand: 'low' | 'medium' | 'high';
+  clientName: string | null;
+  scopeNotice: string | null;
+  historyText: string;
+}): Promise<{
+  operational_answer: any;
+  operational_status: 'HIGH' | 'PARTIAL' | 'INSUFFICIENT';
+  answerMarkdown: string;
+  citedTrainingIds: string[];
+  missingFacets: string[];
+  hadContradiction: boolean;
+}> {
+  const { ranked, standaloneQuery, requestedFacets, baseBand, clientName, scopeNotice, historyText } = opts;
+  const rc = ranked.length;
+
+  const sourceBlocks = ranked.map((r, i) => {
+    const c = r.chunk;
+    return `[S${i + 1}] "${c.title || 'Untitled'}" | ${c.chunk_type || 'note'}${
+      c.knowledge_scope === 'client-specific' ? ` | client: ${clientName || c.client_id}` : ' | general'
+    }\n${c.content}`;
+  });
+  const inventory = buildFacetInventory(ranked);
+
+  const res = await base44.asServiceRole.integrations.Core.InvokeLLM({
+    model: 'claude_sonnet_4_6',
+    prompt: `You are MindVault's internal operations assistant. Produce a STRUCTURED operational answer using ONLY the numbered sources below. Ground every statement in a source and cite it inline as [S1], [S2], etc. Use no outside knowledge.
+
+${clientName ? `Active client context: ${clientName}. ` : 'No specific client context — general/firm-wide knowledge only. '}${scopeNotice ? `Note: ${scopeNotice} ` : ''}
+
+Conversation so far (context/tone only — still answer only from the sources):
+${historyText}
+
+Question: ${standaloneQuery}
+
+The retrieved sources appear to contain material for these facets: ${inventory.length ? inventory.join(', ') : '(none obvious)'}. Extract ONLY what the sources actually state.
+
+NEVER invent an approver, a role, a job title, a dollar or percentage threshold, a deadline or date, a system/tool name, a form or document name, an account, or an escalation target. If the sources do not state something, leave that section out entirely.
+
+If two sources give CONFLICTING values for the same fact (e.g. different approver, different threshold, different step order), do not pick one — set contradiction_note to a sentence that states both and cites each ([S1] says X; [S3] says Y).
+
+Sources:
+${sourceBlocks.join('\n\n---\n\n')}
+
+Return JSON:
+- direct_answer: { text } — 1-3 sentences answering the question, each claim cited [S#]. Omit only if the sources cannot answer it at all.
+- sections: array of { key, items: [{ text }] } where key is one of ${OPERATIONAL_SECTION_KEYS.join(', ')}. Include a section ONLY if the sources support at least one cited item for it. Order items logically. Each item text must carry at least one [S#].
+- contradiction_note: string or null.`,
+    response_json_schema: {
+      type: 'object',
+      properties: {
+        direct_answer: { type: ['object', 'null'], properties: { text: { type: 'string' } } },
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              key: { type: 'string' },
+              items: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' } } } },
+            },
+          },
+        },
+        contradiction_note: { type: ['string', 'null'] },
+      },
+    },
+  });
+
+  const data = res?.response || res;
+
+  const directRaw = data?.direct_answer;
+  const directText = directRaw && typeof directRaw.text === 'string' ? directRaw.text : '';
+  const directAnswer = directText.trim()
+    ? { text: directText, citations: parseCitations(directText, rc) }
+    : null;
+
+  const rawSections = Array.isArray(data?.sections) ? data.sections : [];
+  const enrichedSections = rawSections
+    .filter((s: any) => s && typeof s.key === 'string')
+    .map((s: any) => ({
+      key: s.key,
+      items: (Array.isArray(s.items) ? s.items : [])
+        .filter((it: any) => it && typeof it.text === 'string' && it.text.trim())
+        .map((it: any) => ({ text: String(it.text), citations: parseCitations(String(it.text), rc) })),
+    }));
+
+  const { sections: validSections, directAnswerValid } = validateSections({
+    directAnswer,
+    sections: enrichedSections,
+  });
+
+  const noteRaw = typeof data?.contradiction_note === 'string' && data.contradiction_note.trim()
+    ? data.contradiction_note.trim()
+    : null;
+  const noteCitations = noteRaw ? parseCitations(noteRaw, rc) : [];
+  const contradictionNoteKept = noteRaw != null && shouldKeepContradictionNote(noteCitations);
+  const contradictionNote = contradictionNoteKept ? noteRaw : null;
+
+  const survivingKeys = validSections.map((s) => s.key);
+  const { status, missingFacets } = deriveAnswerStatus({
+    baseBand,
+    directAnswerValid,
+    requestedFacets,
+    survivingSectionKeys: survivingKeys,
+    contradictionNoteKept,
+  });
+
+  const sectionsWithAuthority = validSections.map((s) => ({
+    key: s.key,
+    title: SECTION_TITLES[s.key] || s.key,
+    authority: classifySectionAuthority(s.items.flatMap((i) => i.citations), ranked),
+    items: s.items,
+  }));
+
+  const citedIdx = new Set<number>([
+    ...(directAnswer?.citations || []),
+    ...sectionsWithAuthority.flatMap((s) => s.items.flatMap((i) => i.citations)),
+  ]);
+  const citedChunks = [...citedIdx].map((i) => ranked[i]?.chunk).filter(Boolean);
+  const { stale_sources, unverified_used } = stalenessFlags(citedChunks);
+
+  const isInsufficient = status === 'INSUFFICIENT';
+  const operational_answer = {
+    direct_answer: !isInsufficient && directAnswer
+      ? { text: directAnswer.text, citations: directAnswer.citations, authority: classifySectionAuthority(directAnswer.citations, ranked) }
+      : null,
+    sections: isInsufficient ? [] : sectionsWithAuthority,
+    missing_facets: missingFacets,
+    contradiction_note: isInsufficient ? null : contradictionNote,
+    stale_sources,
+    unverified_used: isInsufficient ? false : unverified_used,
+  };
+
+  const answerMarkdown = flattenToMarkdown(operational_answer, status);
+
+  const citedTrainingIds: string[] = [];
+  const seen = new Set<string>();
+  for (const i of citedIdx) {
+    const tid = ranked[i]?.chunk?.training_id;
+    if (tid && !seen.has(tid)) {
+      seen.add(tid);
+      citedTrainingIds.push(tid);
+    }
+  }
+
+  return {
+    operational_answer,
+    operational_status: status,
+    answerMarkdown,
+    citedTrainingIds,
+    missingFacets,
+    hadContradiction: contradictionNoteKept,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -137,7 +318,9 @@ Deno.serve(async (req) => {
       requireIngestionOk: sysRow?.require_ingestion_review === true, // default off
       rankingEnabled: sysRow?.governance_ranking_enabled !== false, // default ON
       loggingEnabled: sysRow?.answer_logging_enabled === true, // default OFF (explicit opt-in)
+      operationalMode: sysRow?.operational_answer_mode === true, // Phase 4, default OFF
     };
+    const wantOperational = flags.operationalMode && isOperationalIntent(understanding.intent);
 
     // Best-effort AnswerLog write. Knowledge-quality analytics only: NO asking
     // user id is stored, and a failure here never affects the answer. Uses
@@ -178,6 +361,21 @@ Deno.serve(async (req) => {
       5000,
     );
 
+    // When operational mode is engaged but we can't ground an answer, the
+    // response still carries the operational shape so the UI shows the
+    // INSUFFICIENT status consistently. No operational LLM call is made here.
+    const emptyOperationalAnswer = {
+      direct_answer: null,
+      sections: [],
+      missing_facets: [] as string[],
+      contradiction_note: null,
+      stale_sources: [] as Array<{ id: string; title: string }>,
+      unverified_used: false,
+    };
+    const operationalInsufficientFields = wantOperational
+      ? { answer_mode: 'operational', answer_status: 'INSUFFICIENT', operational_answer: emptyOperationalAnswer }
+      : {};
+
     if (candidates.length === 0) {
       const answer_log_id = await logAnswer({
         answer_status: 'no_candidates',
@@ -186,6 +384,7 @@ Deno.serve(async (req) => {
         retrieved_chunk_ids: [],
         reranked_chunk_ids: [],
         final_source_ids: [],
+        ...(wantOperational ? { answer_mode: 'operational', operational_status: 'INSUFFICIENT' } : {}),
       });
       return Response.json({
         answer:
@@ -197,6 +396,7 @@ Deno.serve(async (req) => {
         scope_notice: scopeNotice,
         retrieval_mode: 'lexical',
         answer_log_id,
+        ...operationalInsufficientFields,
       });
     }
 
@@ -294,6 +494,7 @@ Deno.serve(async (req) => {
         final_source_ids: [],
         retrieval_scores: scoresJson,
         filtered_out_counts: JSON.stringify(filteredCounts),
+        ...(wantOperational ? { answer_mode: 'operational', operational_status: 'INSUFFICIENT' } : {}),
       });
       return Response.json({
         answer:
@@ -308,20 +509,89 @@ Deno.serve(async (req) => {
         scope_notice: scopeNotice,
         retrieval_mode: retrievalMode,
         answer_log_id,
+        ...operationalInsufficientFields,
       });
     }
 
-    // --- Answer generation. Only the retrieved chunks are provided. ---
+    const historyText = conversation.length
+      ? conversation.map((t) => `${t.role.toUpperCase()}: ${t.content}`).join('\n')
+      : '(no prior turns)';
+
+    // --- Phase 4: operational answer mode. When engaged, this runs INSTEAD OF
+    // the prose generation below — one answer-generation call on the normal
+    // path. On ANY failure it logs and falls through to the prose path, so an
+    // employee never sees an error because operational mode broke. ---
+    if (wantOperational) {
+      try {
+        const op = await generateOperationalAnswer(base44, {
+          ranked,
+          standaloneQuery: understanding.standalone_query,
+          requestedFacets: understanding.requested_facets,
+          baseBand: confidence,
+          clientName,
+          scopeNotice,
+          historyText,
+        });
+
+        const opSources: any[] = [];
+        const opSeen = new Set<string>();
+        for (const tid of op.citedTrainingIds) {
+          if (opSeen.has(tid)) continue;
+          const r = ranked.find((x) => x.chunk.training_id === tid);
+          if (!r) continue;
+          opSeen.add(tid);
+          opSources.push({ id: tid, title: r.chunk.title || 'Untitled training', category: r.chunk.topic_category || '' });
+        }
+
+        const answer_log_id = await logAnswer({
+          answer_status: 'answered',
+          confidence,
+          retrieval_mode: retrievalMode,
+          operational_process_id: topProcessId,
+          retrieved_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+          reranked_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+          final_source_ids: opSources.map((s) => s.id),
+          retrieval_scores: scoresJson,
+          filtered_out_counts: JSON.stringify(filteredCounts),
+          answer_mode: 'operational',
+          operational_status: op.operational_status,
+          operational_sections: JSON.stringify(
+            op.operational_answer.sections.map((s: any) => ({ key: s.key, item_count: s.items.length, authority: s.authority })),
+          ),
+          missing_facets: JSON.stringify(op.missingFacets),
+          had_contradiction: op.hadContradiction,
+        });
+
+        return Response.json({
+          answer: op.answerMarkdown + (scopeNotice ? `\n\n_${scopeNotice}_` : ''),
+          sources: opSources,
+          confidence,
+          answer_mode: 'operational',
+          answer_status: op.operational_status,
+          operational_answer: op.operational_answer,
+          used_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+          client_context: clientId ? { id: clientId, name: clientName } : null,
+          scope_notice: scopeNotice,
+          retrieval_mode: retrievalMode,
+          answer_log_id,
+        });
+      } catch (opErr) {
+        console.error(JSON.stringify({
+          fn: 'askKnowledgeBaseV2', stage: 'operational_generation',
+          name: (opErr as Error)?.name ?? 'Error',
+          error: redact((opErr as Error)?.message ?? String(opErr)).slice(0, 300),
+        }));
+        // fall through to the prose path below
+      }
+    }
+
+    // --- Answer generation (prose). Only the retrieved chunks are provided. ---
     const sourceBlocks = ranked.map((r, i) => {
       const c = r.chunk;
       return `[S${i + 1}] Training: "${c.title || 'Untitled'}" | ${c.chunk_type || 'note'}${
         c.knowledge_scope === 'client-specific' ? ` | client: ${clientName || c.client_id}` : ' | general'
       }\n${c.content}`;
     });
-
-    const historyText = conversation.length
-      ? conversation.map((t) => `${t.role.toUpperCase()}: ${t.content}`).join('\n')
-      : '(no prior turns)';
 
     const answerRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: 'claude_sonnet_4_6',
@@ -376,6 +646,11 @@ Keep it concise. If the sources are thin, say what's missing.`,
       final_source_ids: sources.map((s) => s.id),
       retrieval_scores: scoresJson,
       filtered_out_counts: JSON.stringify(filteredCounts),
+      // Reaching the prose path with wantOperational === true means operational
+      // generation was attempted and fell back — tag it so that shows in the
+      // log. A non-operational question (even with the flag on) is NOT tagged:
+      // answer_mode / answer_status appear only when wantOperational.
+      ...(wantOperational ? { answer_mode: 'prose' } : {}),
     });
 
     return Response.json({
@@ -387,6 +662,7 @@ Keep it concise. If the sources are thin, say what's missing.`,
       scope_notice: scopeNotice,
       retrieval_mode: retrievalMode,
       answer_log_id,
+      ...(wantOperational ? { answer_mode: 'prose' } : {}),
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });

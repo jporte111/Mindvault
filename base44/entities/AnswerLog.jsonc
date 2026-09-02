@@ -64,6 +64,28 @@
       "type": "string",
       "description": "JSON string: { superseded, archived, rejected, not_yet_effective, expired, unverified, needs_review } counts from the governance filter, for tuning visibility."
     },
+    "answer_mode": {
+      "type": "string",
+      "enum": ["prose", "operational"],
+      "description": "Phase 4. Which generation path produced the response. 'operational' only when operational_answer_mode is on and the intent was operational and generation succeeded; otherwise 'prose'."
+    },
+    "operational_status": {
+      "type": "string",
+      "enum": ["HIGH", "PARTIAL", "INSUFFICIENT"],
+      "description": "Phase 4. Grounding/coverage status of an operational answer (separate from the exit-path answer_status field and from source authority). Only set when answer_mode is 'operational'."
+    },
+    "operational_sections": {
+      "type": "string",
+      "description": "Phase 4. JSON string: [{ key, item_count, authority }] for the surviving citation-validated sections. Shape summary for quality analysis — never the raw answer text."
+    },
+    "missing_facets": {
+      "type": "string",
+      "description": "Phase 4. JSON string array of requested facets that had no citation-validated surviving section (the reason a status was PARTIAL)."
+    },
+    "had_contradiction": {
+      "type": "boolean",
+      "description": "Phase 4. True when a citation-valid contradiction note was kept (which caps operational_status at PARTIAL)."
+    },
     "feedback_id": {
       "type": "string",
       "description": "Linked KnowledgeFeedback id (populated in Phase 5)."
