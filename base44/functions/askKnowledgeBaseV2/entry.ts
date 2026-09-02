@@ -90,6 +90,7 @@ Return JSON:
 }
 
 Deno.serve(async (req) => {
+  const startedAt = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -125,13 +126,49 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- Retrieve candidates. DB query is scoped; assertInScope is the backstop. ---
-    // FUTURE GATE (Phase 3): additional pre-generation filters land here —
-    // is_active_version, effective-date window, archived exclusion, and (behind
-    // a `require_verification_for_retrieval` / `require_ingestion_review` flag)
-    // verification_status and ingestion_quality. All default-off or
-    // default-pass so existing production knowledge keeps answering. No such
-    // filter in Phase 1; the scope gate below is unchanged.
+    // --- Config: chat-engine row + Phase 3 system/governance row. Both reads
+    // tolerate a missing row; every flag falls back to its safe default. ---
+    const [cfgRow, sysRow] = await Promise.all([
+      base44.asServiceRole.entities.AppConfig.filter({ key: 'chat' }).catch(() => []).then((r: any[]) => r?.[0]),
+      base44.asServiceRole.entities.AppConfig.filter({ key: 'system' }).catch(() => []).then((r: any[]) => r?.[0]),
+    ]);
+    const flags = {
+      requireVerified: sysRow?.require_verification_for_retrieval === true, // default off
+      requireIngestionOk: sysRow?.require_ingestion_review === true, // default off
+      rankingEnabled: sysRow?.governance_ranking_enabled !== false, // default ON
+      loggingEnabled: sysRow?.answer_logging_enabled === true, // default OFF (explicit opt-in)
+    };
+
+    // Best-effort AnswerLog write. Knowledge-quality analytics only: NO asking
+    // user id is stored, and a failure here never affects the answer. Uses
+    // Base44's built-in created_date for ordering. No-op unless the flag is on.
+    const logAnswer = async (data: Record<string, unknown>): Promise<string | null> => {
+      if (!flags.loggingEnabled) return null;
+      try {
+        const row = await base44.asServiceRole.entities.AnswerLog.create({
+          engine: 'v2',
+          question,
+          standalone_query: understanding.standalone_query,
+          client_scope: clientId ? `client:${clientId}` : 'general',
+          latency_ms: Date.now() - startedAt,
+          ...data,
+        });
+        return row?.id ?? null;
+      } catch (logErr) {
+        console.error(JSON.stringify({
+          fn: 'askKnowledgeBaseV2',
+          stage: 'answer_log',
+          error: redact((logErr as Error)?.message ?? String(logErr)).slice(0, 200),
+        }));
+        return null;
+      }
+    };
+
+    // --- Retrieve candidates. DB query is scoped by knowledge_scope / client_id
+    // ONLY. Lifecycle + governance filtering runs in code, after assertInScope,
+    // on each chunk's denormalized last-indexed metadata (rankChunks ->
+    // applyGovernanceFilters) — no `$and` nesting, no live joins, identical in
+    // semantic and lexical mode. ---
     const scopeOr: Record<string, unknown>[] = [{ knowledge_scope: 'general' }];
     if (clientId) scopeOr.push({ knowledge_scope: 'client-specific', client_id: clientId });
 
@@ -142,6 +179,14 @@ Deno.serve(async (req) => {
     );
 
     if (candidates.length === 0) {
+      const answer_log_id = await logAnswer({
+        answer_status: 'no_candidates',
+        confidence: 'low',
+        retrieval_mode: 'lexical',
+        retrieved_chunk_ids: [],
+        reranked_chunk_ids: [],
+        final_source_ids: [],
+      });
       return Response.json({
         answer:
           "The knowledge base doesn't have any indexed training content for this context yet. An admin needs to classify and index trainings first.",
@@ -151,6 +196,7 @@ Deno.serve(async (req) => {
         client_context: clientId ? { id: clientId, name: clientName } : null,
         scope_notice: scopeNotice,
         retrieval_mode: 'lexical',
+        answer_log_id,
       });
     }
 
@@ -159,8 +205,6 @@ Deno.serve(async (req) => {
     // 'semantic' : require it (error loudly if unavailable).
     // 'auto'     : call embed() ONLY if a key is configured; on any runtime
     //              failure (bad key, quota, outage) fall back to lexical.
-    const cfgRow = (await base44.asServiceRole.entities.AppConfig
-      .filter({ key: 'chat' }).catch(() => []))?.[0];
     const retrievalModeCfg: string = cfgRow?.retrieval_mode || 'auto';
     const plan = planRetrieval(retrievalModeCfg, isEmbeddingsConfigured());
 
@@ -192,12 +236,17 @@ Deno.serve(async (req) => {
     // else: retrieval_mode='lexical', OR 'auto' with no key -> skip embed(),
     //       go straight to lexical (no wasted provider round-trip).
 
-    const { ranked, dropped, semanticActive } = rankChunks({
+    const { ranked, dropped, filteredOut, semanticActive } = rankChunks({
       chunks: candidates,
       queryVectors,
       standaloneQuery: understanding.standalone_query,
       intent: understanding.intent,
       clientId,
+      governance: {
+        requireVerified: flags.requireVerified,
+        requireIngestionOk: flags.requireIngestionOk,
+        rankingEnabled: flags.rankingEnabled,
+      },
     });
     const retrievalMode: 'semantic' | 'lexical' = semanticActive ? 'semantic' : 'lexical';
 
@@ -209,13 +258,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Governance/lifecycle exclusions are EXPECTED — one info line, not an error.
+    const filteredCounts: Record<string, number> = {};
+    for (const f of filteredOut) filteredCounts[f.reason] = (filteredCounts[f.reason] || 0) + 1;
+    if (filteredOut.length) {
+      console.log(JSON.stringify({
+        fn: 'askKnowledgeBaseV2', stage: 'governance_filter',
+        clientId, counts: filteredCounts,
+      }));
+    }
+
     const confidence = pickConfidence(ranked, { semanticActive });
+    const scoresJson = JSON.stringify(
+      ranked.map((r) => ({
+        id: r.chunk.id,
+        sem: Number(r.sem.toFixed(4)),
+        lex: Number(r.lex.toFixed(4)),
+        score: Number(r.score.toFixed(4)),
+      })),
+    );
+    const topProcessId = ranked[0]?.chunk.operational_process_id || undefined;
 
     if (confidence === 'low' || ranked.length === 0) {
       const maybe = ranked.slice(0, 3).map((r) => r.chunk.title).filter(Boolean);
       const relatedLine = maybe.length
         ? `\n\nLoosely related trainings: ${[...new Set(maybe)].join(', ')}.`
         : '';
+      const answer_log_id = await logAnswer({
+        answer_status: 'low_confidence',
+        confidence: 'low',
+        retrieval_mode: retrievalMode,
+        operational_process_id: topProcessId,
+        retrieved_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+        reranked_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+        final_source_ids: [],
+        retrieval_scores: scoresJson,
+        filtered_out_counts: JSON.stringify(filteredCounts),
+      });
       return Response.json({
         answer:
           `I couldn't find training content that clearly answers this${
@@ -228,6 +307,7 @@ Deno.serve(async (req) => {
         client_context: clientId ? { id: clientId, name: clientName } : null,
         scope_notice: scopeNotice,
         retrieval_mode: retrievalMode,
+        answer_log_id,
       });
     }
 
@@ -286,6 +366,18 @@ Keep it concise. If the sources are thin, say what's missing.`,
       });
     }
 
+    const answer_log_id = await logAnswer({
+      answer_status: 'answered',
+      confidence,
+      retrieval_mode: retrievalMode,
+      operational_process_id: topProcessId,
+      retrieved_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+      reranked_chunk_ids: ranked.map((r) => r.chunk.id).filter(Boolean),
+      final_source_ids: sources.map((s) => s.id),
+      retrieval_scores: scoresJson,
+      filtered_out_counts: JSON.stringify(filteredCounts),
+    });
+
     return Response.json({
       answer: answerText + (scopeNotice ? `\n\n_${scopeNotice}_` : ''),
       sources,
@@ -294,6 +386,7 @@ Keep it concise. If the sources are thin, say what's missing.`,
       client_context: clientId ? { id: clientId, name: clientName } : null,
       scope_notice: scopeNotice,
       retrieval_mode: retrievalMode,
+      answer_log_id,
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });

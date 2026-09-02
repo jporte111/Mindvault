@@ -16,6 +16,7 @@ import UploadTraining from '@/components/admin/UploadTraining';
 import KnowledgeScopeManager from '@/components/admin/KnowledgeScopeManager';
 import OperationalProcessManager from '@/components/admin/OperationalProcessManager';
 import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
+import AnswerLogInspector from '@/components/admin/AnswerLogInspector';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
@@ -387,8 +388,11 @@ export default function Admin() {
         {/* RAG knowledge scope: clients, needs-review queue, re-index */}
         <KnowledgeScopeManager />
 
-        {/* Chatbot engine flag (legacy vs RAG) + rollout */}
+        {/* Chatbot engine flag (legacy vs RAG) + rollout + Phase 3 governance flags */}
         <ChatEngineToggle />
+
+        {/* Phase 3 observability: read-only recent AI answers (admin only) */}
+        <AnswerLogInspector />
 
         {/* Sync Card */}
         <Card className="border-border">

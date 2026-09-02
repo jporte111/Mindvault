@@ -4,6 +4,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   LEGACY_PASS1_KEYS,
   LEGACY_PASS2_KEYS,
@@ -59,6 +62,108 @@ test('new operational keys are additive and disjoint from legacy', () => {
   for (const k of NEW_PASS1_KEYS) {
     assert.ok(p1.includes(k), `pass1 schema missing new key ${k}`);
     assert.ok(!LEGACY_PASS1_KEYS.includes(k), `${k} collides with a legacy key`);
+  }
+});
+
+// --- Operational-field contract ---------------------------------------------
+// The type of every NEW_PASS1_KEY must agree across three boundaries:
+//   1. pass1JsonSchema          (what we ask the LLM for)
+//   2. analyzeTraining/entry.ts (the optStr / optArr routing that persists it)
+//   3. Training.jsonc           (the entity schema)
+// 8 fields must be array<string>; process_name + department must be plain
+// strings. Training.jsonc is read as text and each property value is isolated
+// by brace-matching — never JSON.parse the whole (commented) file — and the
+// test fails clearly if a property cannot be located.
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const trainingJsonc = readFileSync(resolve(repoRoot, 'base44/entities/Training.jsonc'), 'utf8');
+const analyzeSrc = readFileSync(resolve(repoRoot, 'base44/functions/analyzeTraining/entry.ts'), 'utf8');
+
+const OPERATIONAL_ARRAY_FIELDS = [
+  'exceptions', 'roles_involved', 'approvers', 'escalation_paths',
+  'prerequisites', 'deadlines', 'verification_checkpoints', 'prohibited_actions',
+];
+const OPERATIONAL_STRING_FIELDS = ['process_name', 'department'];
+
+// Isolate one top-level property's `{ ... }` value object from JSONC by
+// brace-matching (respecting strings). Returns the substring, or null.
+function propertyBlock(jsonc, prop) {
+  const start = new RegExp(`(^|\\n)\\s*"${prop}"\\s*:\\s*\\{`).exec(jsonc);
+  if (!start) return null;
+  const open = start.index + start[0].length - 1; // index of the '{'
+  let depth = 0, inStr = false, esc = false;
+  for (let i = open; i < jsonc.length; i++) {
+    const ch = jsonc[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return jsonc.slice(open, i + 1);
+  }
+  return null;
+}
+
+test('operational contract: NEW_PASS1_KEYS is exactly the 8 array + 2 string fields', () => {
+  assert.deepEqual(
+    [...NEW_PASS1_KEYS].sort(),
+    [...OPERATIONAL_ARRAY_FIELDS, ...OPERATIONAL_STRING_FIELDS].sort(),
+  );
+});
+
+test('operational contract: pass1JsonSchema — 8 array<string>, process_name/department string', () => {
+  for (const f of OPERATIONAL_ARRAY_FIELDS) {
+    const s = pass1JsonSchema.properties[f];
+    assert.ok(s, `pass1JsonSchema missing ${f}`);
+    assert.equal(s.type, 'array', `${f} must be array`);
+    assert.equal(s.items?.type, 'string', `${f}.items must be string`);
+  }
+  for (const f of OPERATIONAL_STRING_FIELDS) {
+    const s = pass1JsonSchema.properties[f];
+    assert.ok(s, `pass1JsonSchema missing ${f}`);
+    assert.equal(s.type, 'string', `${f} must be string`);
+    assert.ok(!('items' in s), `${f} must not have items`);
+  }
+});
+
+test('operational contract: analyzeTraining routes only process_name + department through optStr', () => {
+  const route = analyzeSrc.match(
+    /const v = \(([^)]*)\)\s*\?\s*optStr\(pass1Data\[k\]\)\s*:\s*optArr\(pass1Data\[k\]\)/,
+  );
+  if (!route) assert.fail('Could not locate the optStr/optArr routing in analyzeTraining/entry.ts');
+  const strRouted = (route[1].match(/'([^']+)'|"([^"]+)"/g) || []).map((s) => s.slice(1, -1));
+  assert.deepEqual([...strRouted].sort(), [...OPERATIONAL_STRING_FIELDS].sort(),
+    'optStr branch must name exactly process_name + department; everything else goes through optArr');
+});
+
+test('operational contract: Training.jsonc declares the 8 fields as array<string>', () => {
+  for (const f of OPERATIONAL_ARRAY_FIELDS) {
+    const block = propertyBlock(trainingJsonc, f);
+    if (!block) assert.fail(`Could not locate "${f}" in base44/entities/Training.jsonc`);
+    assert.match(block, /"type"\s*:\s*"array"/, `${f}: not type array`);
+    assert.match(block, /"items"\s*:\s*\{\s*"type"\s*:\s*"string"\s*\}/, `${f}: items not {type:string}`);
+  }
+});
+
+test('operational contract: Training.jsonc declares process_name + department as string, not array', () => {
+  for (const f of OPERATIONAL_STRING_FIELDS) {
+    const block = propertyBlock(trainingJsonc, f);
+    if (!block) assert.fail(`Could not locate "${f}" in base44/entities/Training.jsonc`);
+    assert.match(block, /"type"\s*:\s*"string"/, `${f}: not type string`);
+    assert.doesNotMatch(block, /"type"\s*:\s*"array"/, `${f}: must not be array`);
+    assert.doesNotMatch(block, /"items"\s*:/, `${f}: must not have items`);
+  }
+});
+
+test('operational contract: every field analyzeTraining writes has a same-typed Training.jsonc declaration', () => {
+  for (const f of NEW_PASS1_KEYS) {
+    const block = propertyBlock(trainingJsonc, f);
+    if (!block) assert.fail(`Training.jsonc has no declaration for written field "${f}"`);
+    const t = pass1JsonSchema.properties[f]?.type;
+    assert.ok(t, `pass1JsonSchema missing ${f}`);
+    assert.match(block, new RegExp(`"type"\\s*:\\s*"${t}"`),
+      `${f}: Training.jsonc type disagrees with pass1JsonSchema ("${t}")`);
   }
 });
 

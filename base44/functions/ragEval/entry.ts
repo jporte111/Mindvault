@@ -47,6 +47,14 @@ Deno.serve(async (req) => {
     // Force lexical retrieval (no embeddings) to verify the fallback path,
     // especially that scope isolation still holds.
     const forceLexical = body?.mode === 'lexical';
+    // Optionally exercise the Phase 3 governance gates (default off, matching
+    // production defaults). { requireVerified?, requireIngestionOk? }.
+    const governanceOpt = body?.governance && typeof body.governance === 'object'
+      ? {
+        requireVerified: body.governance.requireVerified === true,
+        requireIngestionOk: body.governance.requireIngestionOk === true,
+      }
+      : undefined;
 
     const results = [];
     let recallHits = 0, recallTotal = 0;
@@ -75,11 +83,12 @@ Deno.serve(async (req) => {
         } catch (_) { queryVectors = []; }
       }
 
-      const { ranked, dropped, semanticActive } = rankChunks({
+      const { ranked, dropped, filteredOut, semanticActive } = rankChunks({
         chunks: candidates,
         queryVectors,
         standaloneQuery: queryText,
         clientId,
+        governance: governanceOpt,
       });
 
       // Independent backstop check.
@@ -123,6 +132,9 @@ Deno.serve(async (req) => {
         if (confidencePass) confHits++;
       }
 
+      const filteredCounts: Record<string, number> = {};
+      for (const f of filteredOut) filteredCounts[f.reason] = (filteredCounts[f.reason] || 0) + 1;
+
       results.push({
         id: c.id || null,
         clientScope: c.clientScope || 'general',
@@ -131,6 +143,8 @@ Deno.serve(async (req) => {
         candidates: candidates.length,
         retrieved,
         out_of_scope_retrieved: outOfScope,
+        filtered_out: filteredOut.map((f) => ({ id: f.id ?? null, reason: f.reason })),
+        filtered_out_counts: filteredCounts,
         recall_pass: recallPass,
         confidence_pass: confidencePass,
         forbid_answer_substring: c.forbidAnswerSubstring || null,
@@ -140,6 +154,7 @@ Deno.serve(async (req) => {
     return Response.json({
       total_cases: cases.length,
       mode: forceLexical ? 'lexical' : 'auto',
+      governance: governanceOpt || { requireVerified: false, requireIngestionOk: false },
       total_scope_violations: scopeViolations,
       recall_at_k: recallTotal ? Number((recallHits / recallTotal).toFixed(3)) : null,
       confidence_gate_accuracy: confTotal ? Number((confHits / confTotal).toFixed(3)) : null,

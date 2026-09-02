@@ -23,9 +23,19 @@
         "decision_rule",
         "common_mistake",
         "ai_knowledge_entry",
-        "transcript"
+        "transcript",
+        "exception",
+        "approval",
+        "escalation",
+        "required_input",
+        "prohibited_action",
+        "verification",
+        "role",
+        "deadline",
+        "policy",
+        "reference"
       ],
-      "description": "Which part of the source training this chunk came from"
+      "description": "Which part of the source training this chunk came from. The values after 'transcript' are Phase 3 operational facets mapped from analyzeTraining's extended extraction; all additive."
     },
     "title": {
       "type": "string",
@@ -82,6 +92,76 @@
     "is_eval_fixture": {
       "type": "boolean",
       "description": "True only for records created by the RAG evaluation harness. Never set on real data."
+    },
+    "source_authority": {
+      "type": "string",
+      "enum": [
+        "policy",
+        "approved_sop",
+        "approved_procedure",
+        "training",
+        "reference",
+        "notes"
+      ],
+      "description": "Phase 3. Denormalized from Training.source_authority at index time. Used as a small additive rerank signal only (governance_ranking_enabled); never filters, never hides a contradiction. Missing = neutral."
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "unverified",
+        "verified",
+        "rejected"
+      ],
+      "description": "Phase 3. Denormalized from Training.verification_status. 'rejected' is always excluded from retrieval; 'unverified' is excluded only when the require_verification_for_retrieval flag is on. Missing = treated as unverified (retrievable while the flag is off)."
+    },
+    "ingestion_quality": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "needs_review"
+      ],
+      "description": "Phase 3. Denormalized from Training.ingestion_quality. 'needs_review' is excluded only when the require_ingestion_review flag is on. Missing = treated as ok."
+    },
+    "is_active_version": {
+      "type": "boolean",
+      "description": "Phase 3. Denormalized from Training.is_active_version. A chunk of a superseded source (false) is always excluded from retrieval. Missing = treated as active."
+    },
+    "effective_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 3. Denormalized from Training.effective_from. Chunks are excluded before this instant. Missing / unparseable = no lower bound."
+    },
+    "effective_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 3. Denormalized from Training.effective_until. Chunks are excluded after this instant. Missing / unparseable = no upper bound."
+    },
+    "source_is_archived": {
+      "type": "boolean",
+      "description": "Phase 3. Denormalized from Training.is_archived. Archived-source chunks are always excluded from retrieval. Missing = treated as not archived."
+    },
+    "version_number": {
+      "type": "number",
+      "description": "Phase 3. Denormalized from Training.version_number. Display / audit only; does not affect retrieval on its own."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "Phase 3. Denormalized from Training.operational_process_id. Enables process-scoped answer logging and future process filters."
+    },
+    "department": {
+      "type": "string",
+      "description": "Phase 3. Denormalized from Training.department. Metadata for exact-match rerank boosts and analytics."
+    },
+    "process_freshness_status": {
+      "type": "string",
+      "enum": [
+        "unreviewed",
+        "current",
+        "due_soon",
+        "stale",
+        "review_requested"
+      ],
+      "description": "Phase 3. Denormalized at index time from the linked OperationalProcess.freshness_status (if any). Small additive rerank penalty only (stale ranks slightly lower). Missing = neutral."
     }
   },
   "required": [
