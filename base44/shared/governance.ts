@@ -68,3 +68,74 @@ export function buildGovFields(
     process_freshness_status: processFreshnessStatus || undefined,
   };
 }
+
+// --- Scope denormalization (embedKnowledge -> KnowledgeChunk) ---------------
+//
+// The RAG scope gate reads ONLY each chunk's last-indexed knowledge_scope /
+// client_id copy. These helpers build that copy from the SOURCE Training
+// record and re-stamp drifted chunks, so the source of truth is always the
+// Training entity and never the derived chunk rows. Pure — the eval harness
+// exercises them directly.
+
+export interface ScopeSourceLike {
+  knowledge_scope?: string;
+  client_id?: string | null;
+  title?: string;
+  topic_category?: string;
+  category?: string;
+  client_segment?: string;
+}
+
+/**
+ * Scope fields stamped onto every chunk built from this source. `client_id` is
+ * set ONLY for client-specific sources; `undefined` elsewhere means "leave the
+ * chunk field unset". Missing scope falls back to "unclassified" — which
+ * embedKnowledge refuses to index, and retrieval drops in every context.
+ */
+export function buildScopeFields(src: ScopeSourceLike): {
+  knowledge_scope: string;
+  client_id: string | null | undefined;
+  title: string;
+  topic_category: string;
+  client_segment: string;
+} {
+  const scope = src.knowledge_scope || "unclassified";
+  return {
+    knowledge_scope: scope,
+    client_id: scope === "client-specific" ? src.client_id : undefined,
+    title: src.title || "",
+    topic_category: src.topic_category || src.category || "",
+    client_segment: src.client_segment || "",
+  };
+}
+
+/**
+ * Fields that drifted between an existing (reused) chunk and what a re-index
+ * of the same content should carry now. Returns {} when the chunk is already
+ * correctly stamped (idempotent re-index writes nothing). A client-specific
+ * chunk whose client_id was lost/blanked is re-stamped with the source's
+ * client_id — never nulled — and a general chunk holding a stale client_id
+ * has it cleared.
+ */
+export function scopeFieldsDrift(
+  chunk: Record<string, unknown>,
+  scopeFields: ReturnType<typeof buildScopeFields>,
+  chunkIndex: number,
+): Record<string, unknown> {
+  const drift: Record<string, unknown> = {};
+  if ((chunk.knowledge_scope || "") !== scopeFields.knowledge_scope) {
+    drift.knowledge_scope = scopeFields.knowledge_scope;
+  }
+  if ((chunk.client_id || undefined) !== scopeFields.client_id) {
+    drift.client_id = scopeFields.client_id ?? null;
+  }
+  if ((chunk.chunk_index ?? -1) !== chunkIndex) drift.chunk_index = chunkIndex;
+  if ((chunk.title || "") !== scopeFields.title) drift.title = scopeFields.title;
+  if ((chunk.topic_category || "") !== scopeFields.topic_category) {
+    drift.topic_category = scopeFields.topic_category;
+  }
+  if ((chunk.client_segment || "") !== scopeFields.client_segment) {
+    drift.client_segment = scopeFields.client_segment;
+  }
+  return drift;
+}
