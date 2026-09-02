@@ -15,6 +15,9 @@ import {
   validateRequestedFacets,
   validateSections,
 } from '../../shared/operationalAnswer.ts';
+import { normalizeTopic } from '../../shared/knowledgeGap.ts';
+import { reporterHmac } from '../../shared/reporterId.ts';
+import { aggregateGap } from '../../shared/gapAggregation.ts';
 
 // RAG chatbot backend. Runs strictly in parallel to askKnowledgeBase (which is
 // untouched and remains the production default). Selected per request by the
@@ -319,6 +322,9 @@ Deno.serve(async (req) => {
       rankingEnabled: sysRow?.governance_ranking_enabled !== false, // default ON
       loggingEnabled: sysRow?.answer_logging_enabled === true, // default OFF (explicit opt-in)
       operationalMode: sysRow?.operational_answer_mode === true, // Phase 4, default OFF
+      // Phase 5: best-effort gap evidence from operational PARTIAL/INSUFFICIENT.
+      // No-op unless BOTH flags are on. Never affects the answer or its latency.
+      autoGap: sysRow?.knowledge_gaps_enabled === true && sysRow?.auto_gap_from_answer_status === true,
     };
     const wantOperational = flags.operationalMode && isOperationalIntent(understanding.intent);
 
@@ -561,6 +567,37 @@ Deno.serve(async (req) => {
           missing_facets: JSON.stringify(op.missingFacets),
           had_contradiction: op.hadContradiction,
         });
+
+        // Phase 5: accrue gap evidence from a documented deficiency. Best-effort,
+        // fully swallowed — the answer above is already committed. PARTIAL needs
+        // a specific missing facet; INSUFFICIENT needs to have retrieved
+        // something (zero-candidate INSUFFICIENT is genuinely out of scope).
+        const gapSecret = Deno.env.get('GAP_HMAC_SECRET');
+        if (
+          flags.autoGap &&
+          gapSecret && gapSecret.trim() &&
+          ((op.operational_status === 'PARTIAL' && op.missingFacets.length > 0) ||
+            (op.operational_status === 'INSUFFICIENT' && ranked.length > 0))
+        ) {
+          try {
+            const rhmac = await reporterHmac(user.id, gapSecret);
+            await aggregateGap(base44, {
+              normalizedTopic: normalizeTopic(understanding.standalone_query),
+              clientScope: clientId ? `client:${clientId}` : 'general',
+              operationalProcessId: topProcessId,
+              relatedSourceIds: opSources.map((s) => s.id),
+              missingFacets: op.missingFacets,
+              origin: op.operational_status === 'PARTIAL' ? 'answer_status_partial' : 'answer_status_insufficient',
+              reporterHmac: rhmac,
+              exampleQuestion: flags.loggingEnabled ? understanding.standalone_query : null,
+            });
+          } catch (gapErr) {
+            console.error(JSON.stringify({
+              fn: 'askKnowledgeBaseV2', stage: 'auto_gap',
+              error: redact((gapErr as Error)?.message ?? String(gapErr)).slice(0, 200),
+            }));
+          }
+        }
 
         return Response.json({
           answer: op.answerMarkdown + (scopeNotice ? `\n\n_${scopeNotice}_` : ''),

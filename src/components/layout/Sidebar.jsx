@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
+import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -19,6 +20,10 @@ const adminItems = [
 export default function Sidebar({ user }) {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { clarificationsEnabled } = useSystemConfig();
+  const items = clarificationsEnabled
+    ? [...navItems, { path: '/my-questions', icon: MessageCircleQuestion, label: 'My questions' }]
+    : navItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
@@ -37,7 +42,7 @@ export default function Sidebar({ user }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ path, icon: Icon, label }) => (
+        {items.map(({ path, icon: Icon, label }) => (
           <Link
             key={path}
             to={path}

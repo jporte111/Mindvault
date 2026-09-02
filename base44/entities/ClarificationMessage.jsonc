@@ -1,0 +1,34 @@
+{
+  "name": "ClarificationMessage",
+  "type": "object",
+  "properties": {
+    "clarification_request_id": {
+      "type": "string",
+      "description": "Parent ClarificationRequest. The multi-turn thread is the ordered set of these rows (by built-in created_date)."
+    },
+    "requester_user_id": {
+      "type": "string",
+      "description": "Denormalized from the parent for the getMyClarifications scoped-read helper. Owner-or-admin read only."
+    },
+    "sender_type": {
+      "type": "string",
+      "enum": ["employee", "sme"],
+      "description": "'employee' rows come from replyToClarification (auth me(), requester-only). 'sme' rows come from respondToClarification (admin)."
+    },
+    "sender_user_id": {
+      "type": "string",
+      "description": "Base44 user id of whoever sent this message."
+    },
+    "message": {
+      "type": "string",
+      "description": "DELIBERATELY typed content. Stored on submit regardless of the logging flag. Capped (CLARIFICATION_MESSAGE_MAX), admin + thread-owner only, NEVER retrieved, never knowledge."
+    }
+  },
+  "required": ["clarification_request_id", "sender_type", "message"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

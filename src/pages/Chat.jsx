@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { useAuth } from '@/lib/AuthContext';
-import { useChatConfig } from '@/components/admin/ChatEngineToggle';
+import { useChatConfig, useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import { CLIENT_PREFIX, SCOPE_GENERAL } from '@/lib/knowledgeScope';
 
 // Stable 0-99 bucket for a user id, for canary rollout.
@@ -30,6 +30,7 @@ export default function Chat() {
 
   const { user } = useAuth();
   const { chatEngine, ragRolloutPct } = useChatConfig();
+  const { knowledgeGapsEnabled, clarificationsEnabled } = useSystemConfig();
   const engine = chatEngine === 'rag' || bucketFor(user?.id) < ragRolloutPct ? 'rag' : 'legacy';
   const clientId = clientScope.startsWith(CLIENT_PREFIX) ? clientScope.slice(CLIENT_PREFIX.length) : null;
 
@@ -77,6 +78,11 @@ export default function Chat() {
           answerMode: data.answer_mode,
           answerStatus: data.answer_status,
           operationalAnswer: data.operational_answer,
+          // Phase 5: context the feedback control needs. The raw question stays
+          // client-side only (the server re-derives / re-gates it).
+          answerLogId: data.answer_log_id || null,
+          standaloneQuery: question,
+          operationalProcessId: data.operational_answer?.process_id || null,
         };
         return next;
       });
@@ -121,7 +127,12 @@ export default function Chat() {
 
           {messages.map((msg, i) => (
             <div key={i} className="mb-5 last:mb-0">
-              <ChatMessage message={msg} />
+              <ChatMessage
+                message={msg}
+                feedbackEnabled={engine === 'rag' && knowledgeGapsEnabled && msg.role === 'assistant'}
+                clarificationsEnabled={clarificationsEnabled}
+                clientScope={clientScope}
+              />
               {msg.error && (
                 <div className="flex items-center gap-1.5 text-xs text-destructive mt-1.5 pl-11">
                   <AlertCircle className="w-3.5 h-3.5" />

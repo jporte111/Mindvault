@@ -17,6 +17,8 @@ import KnowledgeScopeManager from '@/components/admin/KnowledgeScopeManager';
 import OperationalProcessManager from '@/components/admin/OperationalProcessManager';
 import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
 import AnswerLogInspector from '@/components/admin/AnswerLogInspector';
+import KnowledgeGapManager from '@/components/admin/KnowledgeGapManager';
+import ClarificationQueue from '@/components/admin/ClarificationQueue';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
@@ -393,6 +395,10 @@ export default function Admin() {
 
         {/* Phase 3 observability: read-only recent AI answers (admin only) */}
         <AnswerLogInspector />
+
+        {/* Phase 5: knowledge gaps + clarification queue (flag-gated, render null when off) */}
+        <KnowledgeGapManager />
+        <ClarificationQueue />
 
         {/* Sync Card */}
         <Card className="border-border">
