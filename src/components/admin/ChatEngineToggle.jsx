@@ -46,6 +46,9 @@ export function useSystemConfig() {
     governanceRanking: data?.governance_ranking_enabled !== false,
     answerLogging: data?.answer_logging_enabled === true,
     operationalAnswerMode: data?.operational_answer_mode === true,
+    knowledgeGapsEnabled: data?.knowledge_gaps_enabled === true,
+    clarificationsEnabled: data?.clarifications_enabled === true,
+    autoGapFromAnswerStatus: data?.auto_gap_from_answer_status === true,
   };
 }
 
@@ -75,6 +78,21 @@ const SYSTEM_FLAGS = [
     key: 'operational_answer_mode',
     label: 'Operational Answer Mode',
     hint: 'When enabled, operational/process questions use the structured Phase 4 answer format with grounded sections, citations, authority labels, and HIGH / PARTIAL / INSUFFICIENT status. Non-operational questions continue using the normal prose answer. Default off.',
+  },
+  {
+    key: 'knowledge_gaps_enabled',
+    label: 'Answer feedback + knowledge gaps (Phase 5)',
+    hint: 'Shows the feedback row under each answer; aggregates deficiency reports into KnowledgeGap evidence. Employee input never edits knowledge. Off by default.',
+  },
+  {
+    key: 'clarifications_enabled',
+    label: 'Clarification threads (Phase 5)',
+    hint: 'Enables "I still need help" and the two-way clarification thread (/my-questions). Independent of the gaps flag.',
+  },
+  {
+    key: 'auto_gap_from_answer_status',
+    label: 'Auto gap from PARTIAL/INSUFFICIENT (Phase 5)',
+    hint: 'Accrue gap evidence from operational PARTIAL/INSUFFICIENT answers without an explicit click. No-op unless the gaps flag is also on. Off by default.',
   },
 ];
 
@@ -136,6 +154,9 @@ export default function ChatEngineToggle() {
     if (key === 'require_ingestion_review') return system.requireIngestionReview;
     if (key === 'answer_logging_enabled') return system.answerLogging;
     if (key === 'operational_answer_mode') return system.operationalAnswerMode;
+    if (key === 'knowledge_gaps_enabled') return system.knowledgeGapsEnabled;
+    if (key === 'clarifications_enabled') return system.clarificationsEnabled;
+    if (key === 'auto_gap_from_answer_status') return system.autoGapFromAnswerStatus;
     return false;
   };
 

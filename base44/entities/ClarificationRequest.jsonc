@@ -1,0 +1,49 @@
+{
+  "name": "ClarificationRequest",
+  "type": "object",
+  "properties": {
+    "knowledge_gap_id": { "type": "string" },
+    "feedback_id": { "type": "string" },
+    "answer_log_id": { "type": "string" },
+    "normalized_topic": {
+      "type": "string",
+      "description": "Deterministic lexical signature of the question."
+    },
+    "standalone_query": {
+      "type": "string",
+      "description": "PASSIVELY captured -> written only when answer_logging_enabled is on."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "'general' or 'client:<id>' — verbatim from the answer."
+    },
+    "operational_process_id": { "type": "string" },
+    "retrieved_source_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confidence_level": { "type": "string" },
+    "answer_status": { "type": "string" },
+    "requester_user_id": {
+      "type": "string",
+      "description": "The one deliberate raw user id in Phase 5 — a clarification is a 1:1 conversation the owner must be able to follow. Read is owner-or-admin (enforced by the getMyClarifications helper + admin RLS). Never aggregated, never shown in any per-employee admin view."
+    },
+    "assigned_sme": { "type": "string", "description": "Base44 user id. Nothing notifies them (Phase 8)." },
+    "status": {
+      "type": "string",
+      "enum": ["open", "awaiting_employee", "answered", "knowledge_updated", "not_applicable"],
+      "default": "open"
+    },
+    "last_message_at": { "type": "string", "format": "date-time" },
+    "message_count": { "type": "number", "default": 0 },
+    "resolved_at": { "type": "string", "format": "date-time" },
+    "resolved_by": { "type": "string" }
+  },
+  "required": [],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

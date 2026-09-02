@@ -14,6 +14,7 @@ import AppLayout from './components/layout/AppLayout';
 import Home from './pages/Home';
 import Library from './pages/Library';
 import Chat from './pages/Chat';
+import MyQuestions from './pages/MyQuestions';
 import Admin from './pages/Admin';
 import TrainingDetail from './pages/TrainingDetail';
 import Roadmap from './pages/Roadmap';
@@ -46,6 +47,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<Home />} />
         <Route path="/library" element={<Library />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/my-questions" element={<MyQuestions />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/training/:id" element={<TrainingDetail />} />
         <Route path="/roadmap" element={<Roadmap />} />

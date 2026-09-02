@@ -1,0 +1,79 @@
+{
+  "name": "KnowledgeFeedback",
+  "type": "object",
+  "properties": {
+    "feedback_type": {
+      "type": "string",
+      "enum": ["helpful", "didnt_answer", "missing_detail", "incorrect_or_outdated", "still_need_help"],
+      "description": "Phase 5. One employee's reaction to one answer. Written only via submitKnowledgeFeedback (auth me()), never a direct client write."
+    },
+    "answer_log_id": {
+      "type": "string",
+      "description": "Linked AnswerLog id — present only if answer_logging_enabled was on for that answer."
+    },
+    "normalized_topic": {
+      "type": "string",
+      "description": "Deterministic lexical signature of the question (knowledgeGap.normalizeTopic). Always stored — carries no raw phrasing."
+    },
+    "standalone_query": {
+      "type": "string",
+      "description": "The rewritten question. PASSIVELY captured -> written only when answer_logging_enabled is on."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "'general' or 'client:<id>' — copied verbatim from the answer's active scope, never parsed from text."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "From the answer's top cited chunk, when linked."
+    },
+    "related_source_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The answer's final_source_ids (Training ids)."
+    },
+    "answer_mode": {
+      "type": "string",
+      "enum": ["prose", "operational"],
+      "description": "Which generation path produced the answer being rated."
+    },
+    "confidence_level": {
+      "type": "string",
+      "description": "The confidence band or operational status (HIGH/PARTIAL/INSUFFICIENT) at the time of feedback."
+    },
+    "reported_missing_facets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "From the operational answer's missing_facets, or a small fixed employee-selectable list on 'missing_detail'."
+    },
+    "free_text": {
+      "type": "string",
+      "description": "DELIBERATELY submitted by the employee ('what were you looking for?'). Stored on submit regardless of the logging flag because the UI states it goes to an SME. Capped (FREE_TEXT_MAX), admin-only, never retrieved, never auto-promoted to knowledge."
+    },
+    "reporter_hmac": {
+      "type": "string",
+      "description": "Stable keyed HMAC of the user id (long-lived secret). Abuse-prevention + de-duplication only. Admin-hidden; never a per-employee analytics surface. NOT a raw user id."
+    },
+    "knowledge_gap_id": {
+      "type": "string",
+      "description": "Set when this feedback was aggregated into a KnowledgeGap."
+    },
+    "clarification_request_id": {
+      "type": "string",
+      "description": "Set when feedback_type was 'still_need_help' and a ClarificationRequest was opened."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["new", "linked", "dismissed"],
+      "default": "new",
+      "description": "Admin triage of the individual report."
+    }
+  },
+  "required": ["feedback_type"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

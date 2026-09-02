@@ -54,6 +54,21 @@
       "type": "boolean",
       "default": false,
       "description": "Phase 4 flag (row key:'system'). When true AND the question intent is operational, askKnowledgeBaseV2 runs a structured operational answer (direct answer / steps / prerequisites / approvals / exceptions / prohibited actions / verification checkpoints / escalation / watch-outs / systems / expected result) with a HIGH/PARTIAL/INSUFFICIENT grounding status, INSTEAD OF the prose answer. Default false: prose behavior is byte-identical to today. On an operational-generation failure the request falls back to the prose path."
+    },
+    "knowledge_gaps_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 5 master flag (row key:'system'). Enables the answer-feedback UI, submitKnowledgeFeedback / logKnowledgeGap writes, and the admin KnowledgeGapManager. Off => all Phase 5 gap endpoints no-op and no feedback UI renders."
+    },
+    "clarifications_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 5 flag (row key:'system'). Enables 'I still need help', ClarificationRequest/ClarificationMessage threads, replyToClarification / respondToClarification, and the /my-questions view. Independent of knowledge_gaps_enabled."
+    },
+    "auto_gap_from_answer_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 5 flag (row key:'system'). When true AND knowledge_gaps_enabled is also true, askKnowledgeBaseV2 best-effort accrues gap evidence from operational PARTIAL (with missing_facets) and operational INSUFFICIENT (with ranked.length > 0). Never fires for zero-candidate INSUFFICIENT. The write is swallowed on error and never affects the answer or its latency."
     }
   },
   "required": [

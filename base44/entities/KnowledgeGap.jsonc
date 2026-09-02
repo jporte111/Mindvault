@@ -1,0 +1,116 @@
+{
+  "name": "KnowledgeGap",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Phase 5. Short human label — seeded from normalized_topic, SME-editable. A KnowledgeGap is EVIDENCE that documented knowledge is incomplete/unclear/disputed/insufficient for a real operational question. It is NOT knowledge and holds no proposed answer."
+    },
+    "normalized_topic": {
+      "type": "string",
+      "description": "Deterministic lexical signature (knowledgeGap.normalizeTopic) — the dedup key."
+    },
+    "topic_keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Sorted, stemmed, stopword-filtered keyword set. Stored so de-dup does not re-tokenize. Jaccard(topic_keywords) is the only fuzzy dedup signal — no embeddings."
+    },
+    "topic_signature": {
+      "type": "string",
+      "description": "Short deterministic hash of normalized_topic (exact-match fast path)."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "'general' or 'client:<id>' — copied verbatim from the answer. Dedup/aggregation is partitioned by this: a general gap and a client:<id> gap on the same topic never merge."
+    },
+    "client_id": {
+      "type": "string",
+      "description": "Parsed from client_scope, for filter parity with other entities."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "Optional / nullable — process-less gaps are valid ('Unassigned' bucket)."
+    },
+    "related_source_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Training ids retrieved/cited across the aggregated events (capped)."
+    },
+    "missing_facets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Union of operational missing_facets across events — the specific documented deficiencies."
+    },
+    "origins": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["explicit_feedback", "answer_status_partial", "answer_status_insufficient", "clarification", "manual"]
+      },
+      "description": "All evidence origins this deduped gap has accumulated (UNIONED during aggregation)."
+    },
+    "times_asked": {
+      "type": "number",
+      "default": 1,
+      "description": "Total matching events."
+    },
+    "distinct_reporters": {
+      "type": "number",
+      "default": 1,
+      "description": "Distinct reporter_hmac count (clamped at REPORTER_HMACS_CAP). candidate -> open requires >= 2, so a single actor cannot manufacture an actionable gap."
+    },
+    "reporter_hmacs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Capped evidence set of stable reporter HMACs. Abuse/dedup only; admin-hidden; never a per-employee surface."
+    },
+    "example_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "PASSIVELY captured example questions — populated only when answer_logging_enabled is on. Capped (EXAMPLE_QUESTIONS_CAP)."
+    },
+    "first_seen_at": { "type": "string", "format": "date-time" },
+    "last_seen_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["candidate", "open", "under_review", "resolved", "not_applicable"],
+      "default": "candidate",
+      "description": "candidate = accruing evidence, not shown in the actionable queue. open = promoted (>= 3 asked && >= 2 reporters). Only an admin moves it further; the automatic candidate->open promotion writes an AuditEvent with actor_type 'system'."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "default": "low"
+    },
+    "assigned_sme": {
+      "type": "string",
+      "description": "Base44 user id set by an admin. Nothing notifies them — the queue is pull-only (notifications are Phase 8)."
+    },
+    "assigned_at": { "type": "string", "format": "date-time" },
+    "resolution_type": {
+      "type": "string",
+      "enum": ["source_updated", "new_source_added", "clarified_no_change", "duplicate", "not_applicable", "deferred"],
+      "description": "source_updated / new_source_added is recorded only after reviewKnowledgeGap's GUARD passes: the referenced Training already satisfies verified + active + not-archived + exact client-scope. Phase 5 creates no verification workflow; Phase 6 owns the governed source-review/version flow."
+    },
+    "resolved_source_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Training id(s) that closed the gap."
+    },
+    "merged_into_gap_id": {
+      "type": "string",
+      "description": "Set when resolution_type is 'duplicate'."
+    },
+    "resolution_notes": { "type": "string" },
+    "resolved_at": { "type": "string", "format": "date-time" },
+    "resolved_by": { "type": "string", "description": "Admin user id." }
+  },
+  "required": ["title"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

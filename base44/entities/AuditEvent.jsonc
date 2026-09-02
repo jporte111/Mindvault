@@ -1,0 +1,41 @@
+{
+  "name": "AuditEvent",
+  "type": "object",
+  "properties": {
+    "entity": {
+      "type": "string",
+      "description": "The governed entity type, e.g. 'KnowledgeGap', 'ClarificationRequest'."
+    },
+    "entity_id": { "type": "string" },
+    "action": {
+      "type": "string",
+      "description": "e.g. 'gap_promoted', 'gap_assigned', 'gap_resolved', 'gap_reopened', 'clarification_answered'."
+    },
+    "actor_type": {
+      "type": "string",
+      "enum": ["user", "system"],
+      "description": "'system' for automatic transitions (e.g. the automatic candidate->open promotion). 'user' for a privileged human governance action."
+    },
+    "actor_user_id": {
+      "type": "string",
+      "description": "Nullable. Null when actor_type is 'system'; the stable Base44 user id of the admin/SME when actor_type is 'user'."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Short structured description. No raw employee question text unless answer_logging_enabled is on."
+    },
+    "before": { "type": "string", "description": "Optional JSON string of the changed fields' prior values." },
+    "after": { "type": "string", "description": "Optional JSON string of the changed fields' new values." }
+  },
+  "required": ["entity", "entity_id", "action", "actor_type"],
+  // Append-only by application-level enforcement: no Phase 5 function ever calls
+  // AuditEvent.update / .delete (asserted by a contract test in
+  // scripts/rag-eval/knowledge-gap.test.mjs). RLS uses only admin-only
+  // conditions — the syntax already proven valid in this repo.
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

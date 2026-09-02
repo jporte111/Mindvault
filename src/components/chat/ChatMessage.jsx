@@ -2,6 +2,7 @@ import { ExternalLink, BookOpen, Sparkles } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import ReactMarkdown from 'react-markdown';
 import { Link } from 'react-router-dom';
+import AnswerFeedback from '@/components/chat/AnswerFeedback';
 
 // Phase 4 — Operational Guidance answer mode. Status is a grounding/coverage
 // measure (NOT an authority measure); authority is a separate per-section chip.
@@ -93,7 +94,7 @@ function OperationalAnswer({ status, data, fallbackMarkdown }) {
   );
 }
 
-export default function ChatMessage({ message }) {
+export default function ChatMessage({ message, feedbackEnabled, clarificationsEnabled, clientScope }) {
   const isUser = message.role === 'user';
   const isOperational = message.answerMode === 'operational';
 
@@ -177,6 +178,14 @@ export default function ChatMessage({ message }) {
               </Link>
             ))}
           </div>
+        )}
+
+        {feedbackEnabled && !message.loading && !message.error && message.content && (
+          <AnswerFeedback
+            message={message}
+            clientScope={clientScope}
+            clarificationsEnabled={clarificationsEnabled}
+          />
         )}
       </div>
     </div>
