@@ -508,7 +508,7 @@ test('P7-B3: a proven-undocumented process is queued at EVERY criticality, not j
   assert.ok(idx('p_medium') < idx('p_unset'));
 });
 
-test('P7-B2: changes_requested draft revision generates a queue item with a source link', async () => {
+test('P7-B2: changes_requested draft revision generates a queue item routed to Admin (P7-D2)', async () => {
   const b = stub({
     processes: [P({ id: 'p1' })],
     trainings: [
@@ -522,8 +522,9 @@ test('P7-B2: changes_requested draft revision generates a queue item with a sour
   const r = await computeKnowledgeHealth(b, { now: NOW });
   const cr = r.reviewQueue.find((it) => it.kind === 'changes_requested');
   assert.ok(cr, 'expected a changes_requested item');
-  assert.equal(cr.sourceId, 'v2');
-  assert.equal(cr.action.href, '/training/v2');
+  assert.equal(cr.sourceId, 'v2'); // source id still carried as metadata
+  assert.equal(cr.action.href, '/admin'); // /training/:id can't show draft review state
+  assert.equal(/draft|stalled|revision/i.test(cr.action.label), false, 'label must not promise a direct draft destination');
   // the draft is not a GAS source -> it must not inflate coverage / verification numbers
   assert.equal(r.metrics.activeNotVerified.total, 0);
 });
@@ -540,7 +541,8 @@ test('P7-B2: draft_stuck fires only past the DRAFT_STUCK_DAYS threshold', async 
   const stuck = await computeKnowledgeHealth(mk(DRAFT_STUCK_DAYS + 1), { now: NOW });
   const it = stuck.reviewQueue.find((x) => x.kind === 'draft_stuck');
   assert.ok(it);
-  assert.equal(it.action.href, `/training/d${DRAFT_STUCK_DAYS + 1}`);
+  assert.equal(it.action.href, '/admin'); // P7-D2: routed to the governed Admin workflow, not /training/:id
+  assert.equal(/draft|stalled|revision/i.test(it.action.label), false, 'label must not promise a direct draft destination');
 });
 
 test('P7-B2: awaiting_employee clarification generates a queue item and carries NO employee text', async () => {
@@ -828,6 +830,8 @@ test('P7-D1: a genuine open draft older than the threshold -> draft_stuck (on th
   assert.equal(ds.length, 1);
   assert.equal(ds[0].sourceId, 'v2');
   assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck' && it.sourceId === 'v1'), false);
+  assert.equal(ds[0].action.href, '/admin'); // P7-D2
+  assert.equal(/draft|stalled|revision/i.test(ds[0].action.label), false);
 });
 
 test('P7-D1: a genuine in-review revision older than the threshold -> draft_stuck', async () => {
@@ -972,6 +976,32 @@ test('P7-D1: changes_requested uses the same actionable-current-draft gate; cann
     ],
   });
   const r = await computeKnowledgeHealth(b, { now: NOW });
-  const cr = r.reviewQueue.filter((it) => it.kind === 'changes_requested').map((it) => it.sourceId);
-  assert.deepEqual(cr, ['w2']); // v1 (superseded) excluded, w2 (genuine) included
+  const crItems = r.reviewQueue.filter((it) => it.kind === 'changes_requested');
+  assert.deepEqual(crItems.map((it) => it.sourceId), ['w2']); // v1 (superseded) excluded, w2 (genuine) included
+  assert.equal(crItems[0].action.href, '/admin'); // P7-D2
+  assert.equal(/draft|stalled|revision/i.test(crItems[0].action.label), false);
+});
+
+test('P7-D2: draft_stuck / changes_requested actions route to /admin with a label that names that destination', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'a1', root_source_id: 'LA', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'a2', root_source_id: 'LA', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', created_date: iso(NOW - 90 * DAY) }), // -> draft_stuck
+      T({ id: 'b1', root_source_id: 'LB', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'b2', root_source_id: 'LB', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified',
+        review_requested_at: iso(NOW - 90 * DAY), review_outcome: 'changes_requested' }), // -> changes_requested
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const drafty = r.reviewQueue.filter((it) => it.kind === 'draft_stuck' || it.kind === 'changes_requested');
+  assert.equal(drafty.length, 2);
+  for (const it of drafty) {
+    assert.equal(it.action.href, '/admin');
+    assert.equal(it.action.label, 'Review in Admin');
+    // must NOT claim a direct draft-specific destination
+    assert.equal(/open (the )?(stalled )?draft|review draft|open draft/i.test(it.action.label), false);
+  }
 });

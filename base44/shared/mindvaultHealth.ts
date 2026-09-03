@@ -678,9 +678,12 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
           ? { label: "Open process detail", processId: it.processId }
           : null;
       case "changes_requested":
-        return it.sourceId ? { label: "Review the draft revision", href: `/training/${it.sourceId}` } : null;
       case "draft_stuck":
-        return it.sourceId ? { label: "Open the stalled draft", href: `/training/${it.sourceId}` } : null;
+        // The governed draft/review workflow lives in Admin → Knowledge
+        // Lifecycle. /training/:id does not expose draft / in-review /
+        // changes-requested state or review controls, so the action must not
+        // promise a direct draft destination (P7-D2).
+        return { label: "Review in Admin", href: "/admin" };
       case "not_documented":
       case "key_person_dependency":
       case "missing_owner_sme":
