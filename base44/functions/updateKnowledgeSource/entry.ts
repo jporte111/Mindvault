@@ -5,7 +5,9 @@ import {
   classifyEdit,
   MINDVAULT_CONTENT_FIELDS,
   MINDVAULT_INPLACE_METADATA_FIELDS,
+  trainingToVersion,
 } from '../../shared/mindvaultLifecycle.ts';
+import { isOpenDraftCandidate } from '../../shared/lifecycle/stateMachine.ts';
 
 // Phase 6. The ONLY content-editing entry point for a governed knowledge source.
 // It is NOT an in-place editor:
@@ -86,8 +88,28 @@ Deno.serve(async (req) => {
       if (k in rawPatch) contentPatch[k] = (rawPatch as Record<string, unknown>)[k];
     }
 
-    if (training.is_active_version === false && training.is_archived !== true && training.verification_status !== 'rejected') {
-      // an inactive draft — safe to edit in place, then re-pre-index
+    if (training.is_active_version === false) {
+      // Inactive row — editable in place ONLY if it is the lineage's open
+      // draft (workflow state + not superseded history). A superseded,
+      // archived, or rejected historical version is never edited in place:
+      // history is immutable. Edit the published version to open a new draft.
+      const lineageId = training.root_source_id || training.id;
+      const [byRoot, rootRow] = await Promise.all([
+        T.filter({ root_source_id: lineageId }, null, 200).catch(() => []),
+        T.get(lineageId).catch(() => null),
+      ]);
+      const lineageRows: any[] = byRoot || [];
+      if (rootRow && !lineageRows.some((t: any) => t.id === rootRow.id)) lineageRows.push(rootRow);
+      if (!isOpenDraftCandidate(trainingToVersion(training), lineageRows.map(trainingToVersion))) {
+        return Response.json(
+          {
+            error: 'not_an_open_draft',
+            message: 'This is a historical version of a published source. Edit the published version to create a new draft instead.',
+          },
+          { status: 409 },
+        );
+      }
+      // the lineage's open draft — safe to edit in place, then re-pre-index
       await T.update(trainingId, { ...contentPatch, verification_status: 'unverified', index_status: 'pending' });
       const bi = await engine.buildDraftIndex(actor, trainingId, 'admin_edit');
       return bi.ok

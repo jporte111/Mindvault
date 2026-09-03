@@ -38,6 +38,66 @@ export function deriveLifecycleState(
   return "draft";
 }
 
+/** Lineage facts open-draft detection needs (subset of ResourceVersion). */
+export interface OpenDraftLineageRow {
+  id: string;
+  isActiveVersion: boolean;
+  versionNumber: number;
+}
+
+/**
+ * Open-draft detection — workflow state + lineage facts, NOT merely
+ * isActiveVersion=false.
+ *
+ * A version is the lineage's open draft only if ALL hold:
+ *   1. it is inactive, not archived, and not rejected;
+ *   2. its row-local workflow state is a pre-publication editable state —
+ *      draft / in_review / changes_requested, or verified while it is the
+ *      pending candidate that has never been activated;
+ *   3. NO active version in the lineage is NEWER than it (the lineage fact).
+ *
+ * Fact (3) is what makes superseded HISTORY safe: activation demotes the prior
+ * active row to inactive but leaves its own fields workflow-looking forever
+ * (verification 'verified' derives 'verified'; 'unverified' derives 'draft'),
+ * so a superseded row satisfies (1) and (2) indefinitely — yet it can never be
+ * the open draft, because the row that superseded it IS active and newer.
+ *
+ * This is provenance, not a max-version shortcut: createVersion forks the
+ * pending candidate with versionNumber = active.versionNumber + 1, so the
+ * candidate is always NEWER than the active row while every superseded
+ * predecessor is older. If no active row exists (nothing published yet), any
+ * row satisfying (1)+(2) is the pending first-publication candidate.
+ */
+export function isOpenDraftCandidate(
+  v: Pick<
+    ResourceVersion,
+    | "id"
+    | "isActiveVersion"
+    | "versionNumber"
+    | "isArchived"
+    | "verificationStatus"
+    | "reviewOutcome"
+    | "reviewRequestedAt"
+  >,
+  lineage: readonly OpenDraftLineageRow[],
+): boolean {
+  if (v.isActiveVersion) return false;
+  if (v.isArchived === true) return false;
+  if (v.verificationStatus === "rejected") return false;
+  const state = deriveLifecycleState(v);
+  if (
+    state !== "draft" &&
+    state !== "in_review" &&
+    state !== "changes_requested" &&
+    state !== "verified"
+  ) {
+    return false;
+  }
+  return !lineage.some(
+    (r) => r.isActiveVersion && r.id !== v.id && r.versionNumber > v.versionNumber,
+  );
+}
+
 // From-state -> allowed transitions. `set_metadata` and `confirm_current` are
 // only legal on the active version; `create_version` is legal on the active
 // version (it forks a new draft, leaving the active row untouched).

@@ -3,8 +3,10 @@ import { redact } from '../../shared/redact.ts';
 import {
   buildMindvaultLifecycle,
   displayFor,
+  trainingToVersion,
 } from '../../shared/mindvaultLifecycle.ts';
 import { computeFreshness, DEFAULT_POLICY } from '../../shared/lifecycle/index.ts';
+import { isOpenDraftCandidate } from '../../shared/lifecycle/stateMachine.ts';
 import { loadChunks } from '../../shared/chunkLifecycle.ts';
 
 // Phase 6. Read-only lineage view for the admin lifecycle panel / version
@@ -97,8 +99,8 @@ Deno.serve(async (req) => {
       lineage_id: lineageId,
       title: anchor.title || '',
       active_version_number: activeVersion?.version_number || null,
-      has_open_draft: lineage.some(
-        (t) => t.is_active_version === false && t.is_archived !== true && t.verification_status !== 'rejected',
+      has_open_draft: lineage.some((t) =>
+        isOpenDraftCandidate(trainingToVersion(t), lineage.map(trainingToVersion)),
       ),
       latest_version_number: lineage[lineage.length - 1]?.version_number || 1,
       needs_manual_reconciliation: versions.some((v) => v.displayState === 'needs_attention'),

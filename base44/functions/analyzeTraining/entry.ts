@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       return Response.json({
         error: lifecycleOn ? 'governed_source' : 'lifecycle_disabled',
         message: lifecycleOn
-          ? 'This is a published knowledge source. Create a draft revision ("Edit" in Admin → Knowledge Lifecycle), then re-analyze the draft.'
+          ? 'This is a published knowledge source. Open the knowledge source, choose Edit to create a draft revision, then re-analyze the draft.'
           : 'Re-analyzing a published knowledge source would overwrite content employees rely on. Turn on Source Lifecycle (Admin → System) to create and analyze a draft revision instead.',
       }, { status: 409 });
     }

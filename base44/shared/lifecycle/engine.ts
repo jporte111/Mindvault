@@ -34,6 +34,7 @@ import {
   assertTransitionLegal,
   demoteFields,
   deriveLifecycleState,
+  isOpenDraftCandidate,
   newDraftFields,
   normalizeForTransition,
 } from "./stateMachine.ts";
@@ -723,9 +724,9 @@ export function createLifecycleEngine(deps: EngineDeps) {
       if (!legal.ok) return { ok: false, error: legal.reason };
 
       const lineage = await db.listLineage(active.lineageId);
-      const openDraft = lineage.find(
-        (r) => !r.isActiveVersion && !r.isArchived && r.verificationStatus !== "rejected",
-      );
+      // Workflow state + lineage facts (stateMachine.isOpenDraftCandidate) —
+      // a superseded historical version never blocks the next draft.
+      const openDraft = lineage.find((r) => isOpenDraftCandidate(r, lineage));
       if (openDraft) {
         return { ok: false, error: "open_draft_exists", draftId: openDraft.id };
       }
