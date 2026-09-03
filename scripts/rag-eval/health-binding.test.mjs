@@ -508,20 +508,23 @@ test('P7-B3: a proven-undocumented process is queued at EVERY criticality, not j
   assert.ok(idx('p_medium') < idx('p_unset'));
 });
 
-test('P7-B2: changes_requested draft revision generates a queue item with a source link', async () => {
+test('P7-B2: changes_requested draft revision generates a queue item routed to Admin (P7-D2)', async () => {
   const b = stub({
     processes: [P({ id: 'p1' })],
     trainings: [
-      T({ id: 'active', operational_process_id: 'p1', verification_status: 'verified' }),
-      T({ id: 'draft1', operational_process_id: 'p1', is_active_version: false,
-        lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 3 * DAY) }),
+      // published active v1 + a forked v2 the reviewer sent back for changes
+      T({ id: 'v1', root_source_id: 'L', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'v2', root_source_id: 'L', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified',
+        review_requested_at: iso(NOW - 5 * DAY), review_outcome: 'changes_requested' }),
     ],
   });
   const r = await computeKnowledgeHealth(b, { now: NOW });
   const cr = r.reviewQueue.find((it) => it.kind === 'changes_requested');
   assert.ok(cr, 'expected a changes_requested item');
-  assert.equal(cr.sourceId, 'draft1');
-  assert.equal(cr.action.href, '/training/draft1');
+  assert.equal(cr.sourceId, 'v2'); // source id still carried as metadata
+  assert.equal(cr.action.href, '/admin'); // /training/:id can't show draft review state
+  assert.equal(/draft|stalled|revision/i.test(cr.action.label), false, 'label must not promise a direct draft destination');
   // the draft is not a GAS source -> it must not inflate coverage / verification numbers
   assert.equal(r.metrics.activeNotVerified.total, 0);
 });
@@ -529,15 +532,17 @@ test('P7-B2: changes_requested draft revision generates a queue item with a sour
 test('P7-B2: draft_stuck fires only past the DRAFT_STUCK_DAYS threshold', async () => {
   const mk = (ageDays) => stub({
     processes: [P({ id: 'p1' })],
-    trainings: [T({ id: `d${ageDays}`, operational_process_id: 'p1', is_active_version: false,
-      lifecycle_state: 'in_review', review_requested_at: iso(NOW - ageDays * DAY) })],
+    trainings: [T({ id: `d${ageDays}`, root_source_id: `L${ageDays}`, version_number: 2,
+      operational_process_id: 'p1', is_active_version: false, verification_status: 'unverified',
+      review_requested_at: iso(NOW - ageDays * DAY) })], // -> derived state in_review
   });
   const fresh = await computeKnowledgeHealth(mk(DRAFT_STUCK_DAYS - 1), { now: NOW });
   assert.equal(fresh.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
   const stuck = await computeKnowledgeHealth(mk(DRAFT_STUCK_DAYS + 1), { now: NOW });
   const it = stuck.reviewQueue.find((x) => x.kind === 'draft_stuck');
   assert.ok(it);
-  assert.equal(it.action.href, `/training/d${DRAFT_STUCK_DAYS + 1}`);
+  assert.equal(it.action.href, '/admin'); // P7-D2: routed to the governed Admin workflow, not /training/:id
+  assert.equal(/draft|stalled|revision/i.test(it.action.label), false, 'label must not promise a direct draft destination');
 });
 
 test('P7-B2: awaiting_employee clarification generates a queue item and carries NO employee text', async () => {
@@ -579,8 +584,8 @@ test('P7-B2: every declared queue kind that the binding emits has a plain-langua
     processes: [P({ id: 'p1' }), P({ id: 'p2', criticality: 'low', subject_matter_expert: 'u2', backup_sme: 'u3' })],
     trainings: [
       T({ id: 'active', operational_process_id: 'p1', verification_status: 'unverified' }),
-      T({ id: 'draftCR', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 40 * DAY) }),
-      T({ id: 'draftStuck', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'draft', created_date: iso(NOW - 40 * DAY) }),
+      T({ id: 'draftCR', root_source_id: 'Lcr', version_number: 2, operational_process_id: 'p1', is_active_version: false, verification_status: 'unverified', review_requested_at: iso(NOW - 40 * DAY), review_outcome: 'changes_requested' }),
+      T({ id: 'draftStuck', root_source_id: 'Lds', version_number: 2, operational_process_id: 'p1', is_active_version: false, verification_status: 'unverified', created_date: iso(NOW - 40 * DAY) }),
       T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed', effective_until: iso(NOW - 5 * DAY) }),
     ],
     clarifs: [{ id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1', last_message_at: iso(NOW - DAY) }],
@@ -607,7 +612,7 @@ test('P7-B5: every queue/addressFirst action points at an existing route or the 
     trainings: [
       T({ id: 't1', operational_process_id: 'p1', verification_status: 'unverified' }),
       T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed', effective_until: iso(NOW - DAY) }),
-      T({ id: 'drf', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 20 * DAY) }),
+      T({ id: 'drf', root_source_id: 'Ldrf', version_number: 2, operational_process_id: 'p1', is_active_version: false, verification_status: 'unverified', review_requested_at: iso(NOW - 20 * DAY), review_outcome: 'changes_requested' }),
     ],
     clarifs: [{ id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1', last_message_at: iso(NOW - DAY) }],
     gaps: [{ id: 'g1', title: 'g', status: 'open', client_scope: 'general', times_asked: 5, distinct_reporters: 3 }],
@@ -796,5 +801,207 @@ test('P7-C1: index_status="indexed" yields "Indexed successfully"; no documentat
     for (const banned of ['answering', 'in use', 'currently used', 'serving answers']) {
       assert.equal(st.includes(banned), false, `documentationStatus "${st}" implies retrieval eligibility from index_status alone`);
     }
+  }
+});
+
+// ==================================================================
+// P7-D1 — draft_stuck / changes_requested must not fire on historical
+// or otherwise non-actionable inactive versions. Age alone is never enough.
+// Fixtures use REAL Phase-6 lifecycle field combinations (deriveLifecycleState
+// keys off is_active_version / verification_status / review_outcome /
+// review_requested_at / is_archived — NOT the denormalized lifecycle_state).
+// ==================================================================
+
+const OLD = iso(NOW - 400 * DAY); // well past DRAFT_STUCK_DAYS in every case
+
+// L1 lineage: published active v1 + a genuine open draft v2 (no review yet)
+const draftStuckStub = () => stub({
+  processes: [P({ id: 'p1' })],
+  trainings: [
+    T({ id: 'v1', root_source_id: 'L1', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+    T({ id: 'v2', root_source_id: 'L1', version_number: 2, operational_process_id: 'p1',
+      is_active_version: false, verification_status: 'unverified', created_date: OLD }),
+  ],
+});
+
+test('P7-D1: a genuine open draft older than the threshold -> draft_stuck (on the draft row only)', async () => {
+  const r = await computeKnowledgeHealth(draftStuckStub(), { now: NOW });
+  const ds = r.reviewQueue.filter((it) => it.kind === 'draft_stuck');
+  assert.equal(ds.length, 1);
+  assert.equal(ds[0].sourceId, 'v2');
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck' && it.sourceId === 'v1'), false);
+  assert.equal(ds[0].action.href, '/admin'); // P7-D2
+  assert.equal(/draft|stalled|revision/i.test(ds[0].action.label), false);
+});
+
+test('P7-D1: a genuine in-review revision older than the threshold -> draft_stuck', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'v1', root_source_id: 'L2', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'v2', root_source_id: 'L2', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', review_requested_at: OLD }), // -> in_review
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const ds = r.reviewQueue.find((it) => it.kind === 'draft_stuck');
+  assert.ok(ds);
+  assert.equal(ds.sourceId, 'v2');
+});
+
+test('P7-D1: a SUPERSEDED historical version older than the threshold -> NO draft_stuck', async () => {
+  // v1 was published & verified, then v2 was forked, verified and activated.
+  // v1 is now inactive purely because a newer active version exists.
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'v1', root_source_id: 'L3', version_number: 1, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'verified', supersedes_source_id: null, created_date: OLD }),
+      T({ id: 'v2', root_source_id: 'L3', version_number: 2, operational_process_id: 'p1',
+        is_active_version: true, verification_status: 'verified', supersedes_source_id: 'v1' }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'changes_requested'), false);
+});
+
+test('P7-D1: an inactive UNVERIFIED superseded version (force-activate history) older than the threshold -> NO draft_stuck', async () => {
+  // Even if the demoted row derives to "draft", the lineage fact (a newer active
+  // version exists) makes it not an open-draft candidate.
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'v1', root_source_id: 'L3b', version_number: 1, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', created_date: OLD }),
+      T({ id: 'v2', root_source_id: 'L3b', version_number: 2, operational_process_id: 'p1',
+        is_active_version: true, verification_status: 'verified' }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
+});
+
+test('P7-D1: a REJECTED revision older than the threshold -> NO draft_stuck / changes_requested', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'v1', root_source_id: 'L4', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'v2', root_source_id: 'L4', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'rejected', review_requested_at: OLD, review_outcome: 'changes_requested' }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck' || it.kind === 'changes_requested'), false);
+});
+
+test('P7-D1: an ARCHIVED revision older than the threshold -> NO draft_stuck', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'v1', root_source_id: 'L5', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'v2', root_source_id: 'L5', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, is_archived: true, verification_status: 'unverified', review_requested_at: OLD }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
+});
+
+test('P7-D1: a COMPLETED / approved review outcome older than the threshold -> NO draft_stuck', async () => {
+  // review_outcome 'updated' / 'confirmed_current' = the review is done.
+  for (const outcome of ['updated', 'confirmed_current', 'archived']) {
+    const b = stub({
+      processes: [P({ id: 'p1' })],
+      trainings: [
+        T({ id: 'v1', root_source_id: `L6${outcome}`, version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+        T({ id: 'v2', root_source_id: `L6${outcome}`, version_number: 2, operational_process_id: 'p1',
+          is_active_version: false, verification_status: 'unverified', review_requested_at: OLD, review_outcome: outcome }),
+      ],
+    });
+    const r = await computeKnowledgeHealth(b, { now: NOW });
+    assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck'), false, `outcome=${outcome}`);
+  }
+});
+
+test('P7-D1: the ACTIVE current source (incl. legacy with is_active_version absent) -> NO draft_stuck', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' }), P({ id: 'p2' })],
+    trainings: [
+      // legacy published record: no lifecycle fields, is_active_version absent, unverified, old
+      { id: 'legacy', title: 'GBP Posting Transactions', status: 'ready', knowledge_scope: 'general',
+        verification_status: 'unverified', operational_process_id: 'p1', created_date: OLD },
+      // explicit modern active record
+      T({ id: 'modern', operational_process_id: 'p2', verification_status: 'verified', created_date: OLD }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
+  assert.equal(r.reviewQueue.some((it) => it.kind === 'changes_requested'), false);
+  // the legacy record still shows up as active_not_verified (its real state) — exactly once, no paired draft_stuck
+  const anv = r.reviewQueue.filter((it) => it.kind === 'active_not_verified' && it.sourceId === 'legacy');
+  assert.equal(anv.length, 1);
+});
+
+test('P7-D1: same-title old + current versions -> only the genuinely open draft appears', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'h1', title: 'GBP Posting Transactions', root_source_id: 'L7', version_number: 1,
+        operational_process_id: 'p1', is_active_version: false, verification_status: 'verified', created_date: OLD }), // superseded history
+      T({ id: 'cur', title: 'GBP Posting Transactions', root_source_id: 'L7', version_number: 2,
+        operational_process_id: 'p1', is_active_version: true, verification_status: 'verified' }), // current active
+      T({ id: 'drf', title: 'GBP Posting Transactions', root_source_id: 'L7', version_number: 3,
+        operational_process_id: 'p1', is_active_version: false, verification_status: 'unverified', created_date: OLD }), // genuine open draft
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const ds = r.reviewQueue.filter((it) => it.kind === 'draft_stuck');
+  assert.equal(ds.length, 1);
+  assert.equal(ds[0].sourceId, 'drf');
+});
+
+test('P7-D1: changes_requested uses the same actionable-current-draft gate; cannot fire on a superseded row', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      // a stale 'changes_requested' outcome left on a row that was later superseded by a newer active version
+      T({ id: 'v1', root_source_id: 'L8', version_number: 1, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', review_outcome: 'changes_requested', review_requested_at: OLD, created_date: OLD }),
+      T({ id: 'v2', root_source_id: 'L8', version_number: 2, operational_process_id: 'p1', is_active_version: true, verification_status: 'verified' }),
+      // and a genuine changes_requested draft in a different lineage
+      T({ id: 'w1', root_source_id: 'L9', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'w2', root_source_id: 'L9', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', review_outcome: 'changes_requested', review_requested_at: iso(NOW - 3 * DAY) }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const crItems = r.reviewQueue.filter((it) => it.kind === 'changes_requested');
+  assert.deepEqual(crItems.map((it) => it.sourceId), ['w2']); // v1 (superseded) excluded, w2 (genuine) included
+  assert.equal(crItems[0].action.href, '/admin'); // P7-D2
+  assert.equal(/draft|stalled|revision/i.test(crItems[0].action.label), false);
+});
+
+test('P7-D2: draft_stuck / changes_requested actions route to /admin with a label that names that destination', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'a1', root_source_id: 'LA', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'a2', root_source_id: 'LA', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified', created_date: iso(NOW - 90 * DAY) }), // -> draft_stuck
+      T({ id: 'b1', root_source_id: 'LB', version_number: 1, operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'b2', root_source_id: 'LB', version_number: 2, operational_process_id: 'p1',
+        is_active_version: false, verification_status: 'unverified',
+        review_requested_at: iso(NOW - 90 * DAY), review_outcome: 'changes_requested' }), // -> changes_requested
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const drafty = r.reviewQueue.filter((it) => it.kind === 'draft_stuck' || it.kind === 'changes_requested');
+  assert.equal(drafty.length, 2);
+  for (const it of drafty) {
+    assert.equal(it.action.href, '/admin');
+    assert.equal(it.action.label, 'Review in Admin');
+    // must NOT claim a direct draft-specific destination
+    assert.equal(/open (the )?(stalled )?draft|review draft|open draft/i.test(it.action.label), false);
   }
 });
