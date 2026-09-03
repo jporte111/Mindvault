@@ -384,8 +384,10 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
           : "Not yet verified",
         freshnessLabel: vocab.freshness[fr],
         effectiveLabel: inEffect ? "In effect" : "Outside its effective dates",
+        // Retrieval-neutral: index_status === 'indexed' proves the source built
+        // indexed content, NOT that governance currently lets it answer.
         documentationStatus: idx === "indexed"
-          ? "Indexed and answering"
+          ? "Indexed successfully"
           : idx === "failed"
           ? "Failed to update — needs re-indexing"
           : idx === "unresolved"

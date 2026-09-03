@@ -647,6 +647,7 @@ test('P7-B1: processRows carry a detail object with sources, gaps, clarification
   assert.equal(d.linkedSources[0].id, 't1');
   assert.equal(d.linkedSources[0].verification, 'Not yet verified');
   assert.ok(d.linkedSources[0].documentationStatus.length > 0);
+  assert.equal(d.linkedSources[0].documentationStatus, 'Indexed successfully');
   assert.equal(d.openGaps.length, 1);
   assert.equal(d.openGaps[0].missingFacets[0], 'approvals');
   assert.equal(d.clarifications.total, 1);
@@ -766,4 +767,34 @@ test('regression: F1–F4 contracts unchanged after P7-B — coverage ladder, un
     withPolicy.reviewQueue.map((x) => [x.kind, x.criticality, x.action]),
     withNotes.reviewQueue.map((x) => [x.kind, x.criticality, x.action]),
   );
+});
+
+// ==================================================================
+// P7-C1 — Process Detail documentationStatus is retrieval-neutral
+// ==================================================================
+
+test('P7-C1: index_status="indexed" yields "Indexed successfully"; no documentationStatus implies answering / in use', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 's_idx', operational_process_id: 'p1', index_status: 'indexed' }),
+      T({ id: 's_fail', operational_process_id: 'p1', index_status: 'failed' }),
+      T({ id: 's_pending', operational_process_id: 'p1', index_status: 'pending' }),
+      T({ id: 's_skipped', operational_process_id: 'p1', index_status: 'skipped' }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const byId = Object.fromEntries(r.processRows[0].detail.linkedSources.map((s) => [s.id, s.documentationStatus]));
+  assert.equal(byId.s_idx, 'Indexed successfully');
+  assert.equal(byId.s_fail, 'Failed to update — needs re-indexing');
+  assert.equal(byId.s_pending, 'Not indexed yet');
+  assert.equal(byId.s_skipped, 'Not indexed yet');
+
+  const allStatuses = r.processRows
+    .flatMap((row) => (row.detail?.linkedSources || []).map((s) => s.documentationStatus.toLowerCase()));
+  for (const st of allStatuses) {
+    for (const banned of ['answering', 'in use', 'currently used', 'serving answers']) {
+      assert.equal(st.includes(banned), false, `documentationStatus "${st}" implies retrieval eligibility from index_status alone`);
+    }
+  }
 });
