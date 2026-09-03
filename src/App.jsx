@@ -15,6 +15,7 @@ import Home from './pages/Home';
 import Library from './pages/Library';
 import Chat from './pages/Chat';
 import MyQuestions from './pages/MyQuestions';
+import Continuity from './pages/Continuity';
 import Admin from './pages/Admin';
 import TrainingDetail from './pages/TrainingDetail';
 import Roadmap from './pages/Roadmap';
@@ -48,6 +49,7 @@ const AuthenticatedApp = () => {
         <Route path="/library" element={<Library />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/my-questions" element={<MyQuestions />} />
+        <Route path="/continuity" element={<Continuity />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/training/:id" element={<TrainingDetail />} />
         <Route path="/roadmap" element={<Roadmap />} />

@@ -50,6 +50,7 @@ export function useSystemConfig() {
     clarificationsEnabled: data?.clarifications_enabled === true,
     autoGapFromAnswerStatus: data?.auto_gap_from_answer_status === true,
     sourceLifecycleEnabled: data?.source_lifecycle_enabled === true,
+    knowledgeHealthEnabled: data?.knowledge_health_enabled === true,
   };
 }
 
@@ -99,6 +100,11 @@ const SYSTEM_FLAGS = [
     key: 'source_lifecycle_enabled',
     label: 'Source Lifecycle (Phase 6)',
     hint: 'Turns on governed versioning: editing published knowledge creates a draft that must be approved and published; every re-index is verified before it goes live. Repair/reconcile and first-time classification always work regardless. Off by default — enable deliberately after review.',
+  },
+  {
+    key: 'knowledge_health_enabled',
+    label: 'Operational Continuity dashboard (Phase 7)',
+    hint: 'Shows the admin-only /continuity dashboard: process coverage, review backlog, verification backlog, key-person dependency, and a prioritised action queue. Read-only deterministic aggregation — no scores from AI, no changes to retrieval. Off by default.',
   },
 ];
 
@@ -164,6 +170,7 @@ export default function ChatEngineToggle() {
     if (key === 'clarifications_enabled') return system.clarificationsEnabled;
     if (key === 'auto_gap_from_answer_status') return system.autoGapFromAnswerStatus;
     if (key === 'source_lifecycle_enabled') return system.sourceLifecycleEnabled;
+    if (key === 'knowledge_health_enabled') return system.knowledgeHealthEnabled;
     return false;
   };
 
