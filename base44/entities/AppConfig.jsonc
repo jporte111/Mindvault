@@ -82,6 +82,11 @@
     "source_taxonomy": {
       "type": "string",
       "description": "Phase 6 OPTIONAL (row key:'system'). JSON string overriding the offered source-category list and the source-authority tiers + per-tier ranking weights. Absent = the hard-coded enum defaults in Training.jsonc and GOVERNANCE_WEIGHTS in retrieval.ts. Data-driven config with an immediate product use (the Add Knowledge picker + the authority rerank table)."
+    },
+    "knowledge_health_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 7 master flag (row key:'system'). When false: the /continuity Operational Continuity dashboard route and nav are hidden and computeKnowledgeHealth returns 403 health_disabled. The dashboard is a read-only deterministic aggregation over governed entities (no embeddings, no LLM, no retrieval change, no chunk content); it writes nothing. Off by default — enable deliberately after live smoke."
     }
   },
   "required": [

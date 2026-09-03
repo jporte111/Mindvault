@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
@@ -20,10 +20,13 @@ const adminItems = [
 export default function Sidebar({ user }) {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { clarificationsEnabled } = useSystemConfig();
+  const { clarificationsEnabled, knowledgeHealthEnabled } = useSystemConfig();
   const items = clarificationsEnabled
     ? [...navItems, { path: '/my-questions', icon: MessageCircleQuestion, label: 'My questions' }]
     : navItems;
+  const adminNav = knowledgeHealthEnabled
+    ? [{ path: '/continuity', icon: ShieldCheck, label: 'Operational Continuity' }, ...adminItems]
+    : adminItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
@@ -63,7 +66,7 @@ export default function Sidebar({ user }) {
             <div className="pt-4 pb-2 px-3">
               <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Admin</p>
             </div>
-            {adminItems.map(({ path, icon: Icon, label }) => (
+            {adminNav.map(({ path, icon: Icon, label }) => (
               <Link
                 key={path}
                 to={path}
