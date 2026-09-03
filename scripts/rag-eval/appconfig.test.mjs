@@ -38,3 +38,21 @@ test('existing chat-engine fields are untouched by this change', () => {
   assert.equal(props.rag_rollout_pct.default, 0);
   assert.deepEqual(schema.required, ['key']);
 });
+
+test('Phase 6: source_lifecycle_enabled exists and defaults to false', () => {
+  assert.ok(props.source_lifecycle_enabled, 'source_lifecycle_enabled flag missing');
+  assert.equal(props.source_lifecycle_enabled.type, 'boolean');
+  assert.equal(props.source_lifecycle_enabled.default, false);
+});
+
+test('Phase 6: NO freshness_warnings_enabled flag (freshness is admin/Phase-7 data only)', () => {
+  assert.equal(props.freshness_warnings_enabled, undefined,
+    'Phase 6 must not add an answer-path freshness flag');
+});
+
+test('Phase 6: optional vocabulary / taxonomy overrides are string (JSON) and default-absent', () => {
+  assert.equal(props.lifecycle_vocabulary?.type, 'string');
+  assert.equal(props.lifecycle_vocabulary?.default, undefined);
+  assert.equal(props.source_taxonomy?.type, 'string');
+  assert.equal(props.source_taxonomy?.default, undefined);
+});

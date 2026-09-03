@@ -8,6 +8,9 @@ import {
   pass2JsonSchema,
   resolveSourceText,
 } from '../../shared/extraction.ts';
+import { classifyReanalysisTarget } from '../../shared/reanalysisGuard.ts';
+import { buildMindvaultLifecycle } from '../../shared/mindvaultLifecycle.ts';
+import { redact } from '../../shared/redact.ts';
 
 // Normalize an optional string field: keep only a non-empty trimmed string.
 function optStr(v: unknown): string | undefined {
@@ -40,6 +43,41 @@ Deno.serve(async (req) => {
     const training = await base44.entities.Training.get(trainingId);
     console.log('Fetched record — title:', training?.title, '| id:', training?.id, '| source_type:', training?.source_type);
     if (!training) return Response.json({ error: 'Training not found' }, { status: 404 });
+
+    // ---- Phase 6 PERMANENT SAFETY INVARIANT ---------------------------------
+    // AI extraction must NEVER overwrite a SERVED governed source in place —
+    // regardless of source_lifecycle_enabled. The decision is made from the
+    // source's lifecycle / served STATE (classifyReanalysisTarget, which never
+    // reads the flag). The flag is consulted ONLY to phrase the refusal.
+    let hasServedChunks = false;
+    try {
+      const c = await base44.asServiceRole.entities.KnowledgeChunk.filter(
+        { training_id: trainingId }, null, 1,
+      );
+      hasServedChunks = Array.isArray(c) && c.length > 0;
+    } catch (_) {
+      hasServedChunks = true; // unknown -> fail safe: treat as served
+    }
+    const decision = classifyReanalysisTarget(training, hasServedChunks);
+
+    if (decision.kind === 'served') {
+      let lifecycleOn = false;
+      try {
+        const sysRows = await base44.asServiceRole.entities.AppConfig.filter({ key: 'system' });
+        lifecycleOn = sysRows?.[0]?.source_lifecycle_enabled === true;
+      } catch (_) {
+        lifecycleOn = false;
+      }
+      return Response.json({
+        error: lifecycleOn ? 'governed_source' : 'lifecycle_disabled',
+        message: lifecycleOn
+          ? 'This is a published knowledge source. Create a draft revision ("Edit" in Admin → Knowledge Lifecycle), then re-analyze the draft.'
+          : 'Re-analyzing a published knowledge source would overwrite content employees rely on. Turn on Source Lifecycle (Admin → System) to create and analyze a draft revision instead.',
+      }, { status: 409 });
+    }
+    // decision.kind is 'draft' (inactive draft — in place is safe, re-pre-indexed
+    // after Pass 2) or 'legacy' (never-served onboarding — unchanged path).
+    const isInactiveDraft = decision.kind === 'draft';
 
     // 2. Resolve source text. transcript is EITHER a supported http(s) URL to a
     //    text file OR the raw source text itself (pasted text, legacy records).
@@ -152,7 +190,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Pass 2 failed: ' + pass2Error.message }, { status: 500 });
     }
 
-    return Response.json({ success: true });
+    // Phase 6: a re-analyzed INACTIVE DRAFT must be re-pre-indexed (verified) so
+    // its staged chunks reflect the new extraction. The engine's pre-index is
+    // unconditional — it does not read source_lifecycle_enabled.
+    if (isInactiveDraft) {
+      try {
+        const { engine } = buildMindvaultLifecycle(base44, { redact });
+        const pre = await engine.buildDraftIndex(
+          { id: user.id, role: user.role },
+          trainingId,
+          'reanalysis',
+        );
+        console.log('draft re-pre-index:', JSON.stringify(pre));
+      } catch (reErr) {
+        console.log('draft re-pre-index (best-effort) failed:', (reErr as Error)?.message);
+      }
+    }
+
+    return Response.json({ success: true, reanalysis_target: decision.kind });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

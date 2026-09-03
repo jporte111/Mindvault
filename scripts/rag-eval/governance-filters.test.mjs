@@ -155,6 +155,44 @@ test("verification_status === 'rejected' -> dropped REGARDLESS of require_verifi
   }
 });
 
+// --- Phase 6: index_stale is the SOLE new always-on retrieval gate ----------
+
+test('Phase 6: index_stale === true -> always dropped (reason index_stale), checked first', () => {
+  const pool = [
+    gc({ id: 'live' }),
+    gc({ id: 'stale', index_stale: true }),
+    gc({ id: 'staleAndSuperseded', index_stale: true, is_active_version: false }),
+    gc({ id: 'missing' }), // no index_stale field -> retrievable
+  ];
+  const { kept, filteredOut } = applyGovernanceFilters(pool, { now: NOW });
+  assert.deepEqual(kept.map((c) => c.id).sort(), ['live', 'missing']);
+  const byId = Object.fromEntries(filteredOut.map((f) => [f.id, f.reason]));
+  assert.equal(byId.stale, 'index_stale');
+  // a chunk that is both stale AND superseded reports the actionable reason
+  assert.equal(byId.staleAndSuperseded, 'index_stale');
+});
+
+test('Phase 6: retrieval never depends on any Training.index_status-like field on the chunk', () => {
+  // a chunk carrying only a (hypothetical) index_status but not index_stale
+  // stays retrievable — the gate is index_stale alone, join-free.
+  const { kept } = applyGovernanceFilters([gc({ id: 'x', index_status: 'failed' })], { now: NOW });
+  assert.equal(kept.length, 1);
+});
+
+for (const mode of ['semantic', 'lexical']) {
+  const mk = mode === 'semantic' ? (o) => gc({ ...o, embedding: [1, 0, 0, 0] }) : gc;
+  const qv = mode === 'semantic' ? [[1, 0, 0, 0]] : [];
+  test(`[${mode}] rankChunks drops index_stale chunks in both modes (parity)`, () => {
+    const pool = [
+      mk({ id: 'ok', training_id: 't1' }),
+      mk({ id: 'stale', training_id: 't2', index_stale: true }),
+    ];
+    const { ranked, filteredOut } = rankChunks({ chunks: pool, queryVectors: qv, standaloneQuery: 'reconcile bank statement ledger', clientId: null });
+    assert.deepEqual(ranked.map((r) => r.chunk.id), ['ok']);
+    assert.equal(filteredOut.find((f) => f.id === 'stale')?.reason, 'index_stale');
+  });
+}
+
 test('effective window: future-dated -> not_yet_effective, expired -> expired', () => {
   const pool = [
     gc({ id: 'future', effective_from: iso(NOW + 5 * DAY) }),

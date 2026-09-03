@@ -25,7 +25,11 @@
       "description": "Short structured description. No raw employee question text unless answer_logging_enabled is on."
     },
     "before": { "type": "string", "description": "Optional JSON string of the changed fields' prior values." },
-    "after": { "type": "string", "description": "Optional JSON string of the changed fields' new values." }
+    "after": { "type": "string", "description": "Optional JSON string of the changed fields' new values." },
+    "operation_id": {
+      "type": "string",
+      "description": "Phase 6. Nullable. Links a governance audit event to the KnowledgeLifecycleOperation that produced it, so terminal publication records (version_activated / version_superseded) can be written idempotently by both a normal activation and a forward reconciliation of a half-applied one."
+    }
   },
   "required": ["entity", "entity_id", "action", "actor_type"],
   // Append-only by application-level enforcement: no Phase 5 function ever calls

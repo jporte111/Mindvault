@@ -44,22 +44,26 @@ export function resolveScopeFields(value, clients = []) {
   return { knowledge_scope: 'unclassified', client_id: null, client_name: null };
 }
 
-// Fire-and-forget: ask the backend to (re)build this training's KnowledgeChunks.
-// embedKnowledge is idempotent and refuses unclassified trainings on its own.
-export function reindexTraining(trainingId) {
-  return base44.functions
-    .invoke('embedKnowledge', { trainingId })
-    .catch((err) => {
-      // Non-fatal: indexing can be retried from the Admin panel.
-      console.warn('embedKnowledge failed for', trainingId, err?.message || err);
-    });
+// Ask the backend to (re)build this training's KnowledgeChunks and RETURN the
+// real outcome. embedKnowledge is idempotent and refuses unclassified trainings
+// on its own. Phase 6: no longer fire-and-forget — a failed index must be
+// visible, not silently swallowed.
+export async function reindexTraining(trainingId) {
+  try {
+    const r = await base44.functions.invoke('embedKnowledge', { trainingId });
+    const data = r?.data ?? r;
+    return { ok: !data?.error, result: data };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
 }
 
 // Set a training's scope, then reindex (which also clears chunks if the new
-// scope is "unclassified").
+// scope is "unclassified"). Returns { fields, index } so the caller can report
+// whether indexing actually succeeded.
 export async function classifyTraining(trainingId, value, clients = []) {
   const fields = resolveScopeFields(value, clients);
   await base44.entities.Training.update(trainingId, fields);
-  await reindexTraining(trainingId);
-  return fields;
+  const index = await reindexTraining(trainingId);
+  return { fields, index };
 }

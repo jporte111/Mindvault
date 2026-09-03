@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import UploadTraining from '@/components/admin/UploadTraining';
 import KnowledgeScopeManager from '@/components/admin/KnowledgeScopeManager';
+import KnowledgeLifecyclePanel from '@/components/admin/KnowledgeLifecyclePanel';
 import OperationalProcessManager from '@/components/admin/OperationalProcessManager';
 import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
 import AnswerLogInspector from '@/components/admin/AnswerLogInspector';
@@ -389,6 +390,9 @@ export default function Admin() {
 
         {/* RAG knowledge scope: clients, needs-review queue, re-index */}
         <KnowledgeScopeManager />
+
+        {/* Phase 6: governed versioning / review / publishing (flag-gated) */}
+        <KnowledgeLifecyclePanel />
 
         {/* Chatbot engine flag (legacy vs RAG) + rollout + Phase 3 governance flags */}
         <ChatEngineToggle />

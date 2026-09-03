@@ -1,0 +1,82 @@
+{
+  "name": "KnowledgeRevision",
+  "type": "object",
+  // Phase 6. Append-only, immutable ledger of a COMPLETED source/version change.
+  // Written ONLY when a KnowledgeLifecycleOperation reaches 'completed' — never in
+  // a pending posture, never updated, never deleted (asserted by a contract test).
+  //
+  // In-flight state belongs to KnowledgeLifecycleOperation; the uniform event
+  // stream is AuditEvent. This entity is the durable "what actually changed, from
+  // what, by whom, why" record backing the admin history / version viewer.
+  "properties": {
+    "root_source_id": { "type": "string", "description": "The lineage." },
+    "training_id": {
+      "type": "string",
+      "description": "The version row this revision produced or transitioned."
+    },
+    "previous_training_id": {
+      "type": "string",
+      "description": "Nullable. The version row this one was forked from."
+    },
+    "version_number": { "type": "number" },
+    "previous_version_number": { "type": "number" },
+    "operation_id": {
+      "type": "string",
+      "description": "The completed KnowledgeLifecycleOperation that produced this revision."
+    },
+    "change_source": {
+      "type": "string",
+      "enum": [
+        "admin_edit",
+        "reanalysis",
+        "gap_resolution",
+        "drive_resync",
+        "import",
+        "other"
+      ],
+      "description": "How the change originated. 'reanalysis' = analyzeTraining wrote into a draft (never the active version)."
+    },
+    "change_reason": {
+      "type": "string",
+      "description": "Short human note, capped ~2000 chars."
+    },
+    "changed_by": {
+      "type": "string",
+      "description": "Stable Base44 user id of the actor; null for a system actor."
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Nullable. Stable Base44 user id of the verifier, when this revision's terminal state is verified/active."
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": ["unverified", "verified", "rejected"],
+      "description": "The verification state as of this completed revision."
+    },
+    "effective_from": { "type": "string", "format": "date-time" },
+    "effective_until": { "type": "string", "format": "date-time" },
+    "content_snapshot": {
+      "type": "string",
+      "description": "JSON string of the PRIOR version's content + lifecycle-critical fields, so a prior version can be inspected / its content re-drafted."
+    },
+    "field_diff": {
+      "type": "string",
+      "description": "JSON string: shallow { field: { before, after } } of what changed."
+    }
+  },
+  "required": [
+    "root_source_id",
+    "training_id",
+    "operation_id",
+    "change_source"
+  ],
+  // Append-only by application convention: no function ever calls
+  // KnowledgeRevision.update / .delete (asserted by a contract test). RLS uses
+  // only the proven admin-only condition.
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

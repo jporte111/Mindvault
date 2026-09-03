@@ -119,6 +119,9 @@ Deno.serve(async (req) => {
         lexHits: r.lexHits ?? 0,
         lexQueryTermCount: r.lexQueryTermCount ?? 0,
         score: Number(r.score.toFixed(4)),
+        // Phase 6 diagnostics: a retrieved row is never index_stale (stale chunks
+        // are excluded by applyGovernanceFilters); surfaced for completeness.
+        index_stale: r.chunk.index_stale === true,
       }));
 
       // Any retrieved chunk outside the active scope is a hard failure.

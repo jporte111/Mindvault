@@ -161,7 +161,15 @@
         "stale",
         "review_requested"
       ],
-      "description": "Phase 3. Denormalized at index time from the linked OperationalProcess.freshness_status (if any). Small additive rerank penalty only (stale ranks slightly lower). Missing = neutral."
+      "description": "Phase 3. Denormalized at index time from the linked OperationalProcess.freshness_status (if any). Small additive rerank penalty only (stale ranks slightly lower). Missing = neutral. Phase 6 does NOT newly populate this — freshness stays admin/Phase-7 data and never gains a new answer or ranking effect."
+    },
+    "index_stale": {
+      "type": "boolean",
+      "description": "Phase 6. THE SOLE new retrieval safety gate. When true this chunk is always excluded from retrieval (join-free — retrieval never reads Training.index_status). Set true before any lifecycle mutation that could desync this chunk's denormalized metadata, and cleared false only after every verification step of the index contract passes. Missing / false = retrievable. A source whose index is 'indexing' or 'failed' MUST have its existing chunks index_stale=true."
+    },
+    "root_source_id": {
+      "type": "string",
+      "description": "Phase 6. Denormalized lineage handle from Training.root_source_id, for grouping versions in history / health views. No retrieval effect."
     }
   },
   "required": [
