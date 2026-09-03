@@ -29,6 +29,7 @@ import {
   keyPersonResilienceBand,
   prioritizeQueue,
   resolveHealthVocabulary,
+  resolveIndexState,
   resolveReviewInterval,
   topAddressFirst,
   usableSources,
@@ -47,6 +48,12 @@ export const MAX_LEGACY_LOOKUP = 500;
 export const BATCH = 50;
 export const PAGE_LIMIT = 5000;
 export const MAX_PAGES_PER_BATCH = 4;
+
+// A draft revision open (or sitting in changes-requested / in-review) at least
+// this long is surfaced as review-queue work. Deterministic threshold — no
+// notification is sent (that is Phase 8).
+export const DRAFT_STUCK_DAYS = 14;
+const DAY_MS = 86_400_000;
 
 // --- scope --------------------------------------------------------
 
@@ -290,6 +297,9 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
 
   const rows: any[] = [];
   const queueItems: QueueItemInput[] = [];
+  const ageOf = (d?: string | null) => (d ? Math.max(0, now - Date.parse(d)) : 0);
+  const procById = new Map<string, any>(processes.map((p) => [p.id, p]));
+  const gasById = new Map<string, any>(gas.map((t) => [t.id, t]));
 
   for (const p of processes) {
     const linked = sourcesByProcess.get(p.id) || [];
@@ -352,6 +362,93 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
       reviewCadenceResolved,
     });
 
+    // --- Process Detail (P7-B1): plain-language drill-down for one process ---
+    const failedLinked = linked.find((s) => s.index_status === "failed") || null;
+    const unresolvedLinked =
+      linked.find((s) => !s.index_status && hlc(s.id) === undefined) || null;
+    const overdueLinked = usable.find((_s, i) => usableFreshnessStates[i] === "overdue") || null;
+    const firstUnverifiedUsable = usable.find((s) => s.verification_status !== "verified") || null;
+
+    const linkedSourceDetail = linked.map((s) => {
+      const iv = resolveReviewInterval((s as any).source_review_interval_days, p.review_interval_days);
+      const fr = computeFreshness((s as any).next_review_due_at, iv, now);
+      const idx = resolveIndexState(s as HealthSourceLike, hlc(s.id));
+      const inEffect = effectiveNow(s, now);
+      return {
+        id: s.id,
+        title: (s as any).title || "Untitled source",
+        verification: s.verification_status === "verified"
+          ? "Verified"
+          : s.verification_status === "rejected"
+          ? "Rejected"
+          : "Not yet verified",
+        freshnessLabel: vocab.freshness[fr],
+        effectiveLabel: inEffect ? "In effect" : "Outside its effective dates",
+        documentationStatus: idx === "indexed"
+          ? "Indexed and answering"
+          : idx === "failed"
+          ? "Failed to update — needs re-indexing"
+          : idx === "unresolved"
+          ? "Legacy — needs re-indexing to confirm"
+          : idx === "absent"
+          ? "No indexed content"
+          : "Not indexed yet",
+      };
+    });
+
+    const keyPersonReasons: string[] = [];
+    for (const d of kp.drivers) {
+      if (d === "sole_sme_no_backup") {
+        keyPersonReasons.push("The subject-matter expert has no named backup on a critical process.");
+      } else if (d === "owner_is_sole_sme") {
+        keyPersonReasons.push("The same person is both the process owner and the only subject-matter expert.");
+      } else if (d === "gaps_funnel_to_sole_sme") {
+        keyPersonReasons.push("Several open questions on this process all depend on that one expert.");
+      } else if (d === "expertise_concentration") {
+        keyPersonReasons.push("This person is the sole expert on more than one critical process.");
+      }
+    }
+    if (kp.amplified) {
+      keyPersonReasons.push(
+        "The documentation behind this dependency is unverified or overdue for review, which widens the exposure.",
+      );
+    }
+
+    const recommendedActions: Array<{ label: string; href?: string; processId?: string }> = [];
+    if (coverageState === "not_documented") {
+      recommendedActions.push({ label: "Add or link a knowledge source for this process", href: "/admin" });
+    }
+    if (coverageState === "needs_attention" && failedLinked) {
+      recommendedActions.push({ label: "Re-index the source that failed to update", href: `/training/${failedLinked.id}` });
+    }
+    if (coverageState === "unknown" && unresolvedLinked) {
+      recommendedActions.push({
+        label: "Re-index legacy knowledge to confirm documentation status",
+        href: `/training/${unresolvedLinked.id}`,
+      });
+    }
+    if (!p.process_owner || !p.subject_matter_expert) {
+      recommendedActions.push({ label: "Assign an owner and a subject-matter expert", href: "/admin" });
+    }
+    if ((kpLevel === "high" || kpLevel === "critical") && !p.backup_sme) {
+      recommendedActions.push({ label: "Name a backup subject-matter expert", href: "/admin" });
+    }
+    if (worstUsableFreshness === "overdue" && overdueLinked) {
+      recommendedActions.push({ label: "Run a review check-in on the overdue source", href: `/training/${overdueLinked.id}` });
+    }
+    if (coverageState === "documented_unverified" && firstUnverifiedUsable) {
+      recommendedActions.push({
+        label: "Verify the active knowledge for this process",
+        href: `/training/${firstUnverifiedUsable.id}`,
+      });
+    }
+    if (hasPromotedGap) {
+      recommendedActions.push({ label: "Review the recurring question this process can’t fully answer", href: "/admin" });
+    }
+    if (!reviewCadenceResolved) {
+      recommendedActions.push({ label: "Set a review schedule for this process", href: "/admin" });
+    }
+
     rows.push({
       id: p.id,
       name: p.name,
@@ -373,24 +470,60 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
       openGaps: openGapCount,
       clarifications: clarifsByProcess.get(p.id) || 0,
       linkedSourceCount: linked.length,
+      detail: {
+        description: p.description || null,
+        linkedSources: linkedSourceDetail,
+        openGaps: (gapsByProcess.get(p.id) || []).map((g) => ({
+          id: g.id,
+          title: g.title || g.normalized_topic || "Knowledge gap",
+          state: g.status,
+          promoted: promotedGapIds.has(g.id),
+          timesAsked: g.times_asked || 0,
+          distinctReporters: g.distinct_reporters || 0,
+          missingFacets: g.missing_facets || [],
+        })),
+        clarifications: {
+          total: clarifsByProcess.get(p.id) || 0,
+          awaitingEmployee: clarifs.filter(
+            (c) => c.operational_process_id === p.id && c.status === "awaiting_employee",
+          ).length,
+        },
+        keyPersonReasons,
+        recommendedActions,
+      },
     });
 
-    // queue item — one per process, the most severe issue
+    // queue item — one per process, the most severe issue. Criticality is a
+    // sort tier (prioritizeQueue), NOT a gate: a proven-undocumented process is
+    // queued at every criticality, including unset (P7-B3).
     const critTag = p.criticality;
-    const pushQ = (kind: QueueItemInput["kind"], ageMs: number) =>
-      queueItems.push({ id: `proc:${p.id}:${kind}`, kind, criticality: critTag, ageMs, processId: p.id, title: p.name });
-    const ageOf = (d?: string) => (d ? Math.max(0, now - Date.parse(d)) : 0);
-    if (coverageState === "needs_attention") pushQ("source_failure", ageOf(p.created_date));
-    else if (coverageState === "not_documented" && isCritical(p.criticality)) pushQ("not_documented", ageOf(p.created_date));
-    else if (kpLevel === "high" || kpLevel === "critical") pushQ("key_person_dependency", ageOf(p.created_date));
-    else if (coverageState === "unknown") pushQ("legacy_coverage_unresolved", ageOf(p.created_date));
-    else if (worstUsableFreshness === "overdue") pushQ("overdue_review", ageOf(p.created_date));
-    else if (!p.process_owner || !p.subject_matter_expert) pushQ("missing_owner_sme", ageOf(p.created_date));
-    else if (!reviewCadenceResolved) pushQ("no_review_cadence", ageOf(p.created_date));
+    const dept = p.department || null;
+    const pushQ = (
+      kind: QueueItemInput["kind"],
+      ageMs: number,
+      sourceId: string | null = null,
+    ) =>
+      queueItems.push({
+        id: `proc:${p.id}:${kind}`,
+        kind,
+        criticality: critTag,
+        ageMs,
+        processId: p.id,
+        sourceId,
+        department: dept,
+        title: p.name,
+      });
+    const pAge = ageOf(p.created_date);
+    if (coverageState === "needs_attention") pushQ("source_failure", pAge, failedLinked?.id ?? null);
+    else if (coverageState === "not_documented") pushQ("not_documented", pAge);
+    else if (kpLevel === "high" || kpLevel === "critical") pushQ("key_person_dependency", pAge);
+    else if (coverageState === "unknown") pushQ("legacy_coverage_unresolved", pAge, unresolvedLinked?.id ?? null);
+    else if (worstUsableFreshness === "overdue") pushQ("overdue_review", pAge, overdueLinked?.id ?? null);
+    else if (!p.process_owner || !p.subject_matter_expert) pushQ("missing_owner_sme", pAge);
+    else if (!reviewCadenceResolved) pushQ("no_review_cadence", pAge);
   }
 
   // active-not-verified queue items (linked to a process for criticality)
-  const procById = new Map(processes.map((p) => [p.id, p]));
   for (const t of gas) {
     if (t.verification_status === "verified") continue;
     const p = t.operational_process_id ? procById.get(t.operational_process_id) : null;
@@ -398,28 +531,142 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
       id: `src:${t.id}:verify`,
       kind: "active_not_verified",
       criticality: p?.criticality || null,
-      ageMs: t.created_date ? Math.max(0, now - Date.parse(t.created_date)) : 0,
+      ageMs: ageOf(t.created_date),
       processId: t.operational_process_id || null,
+      sourceId: t.id,
+      department: p?.department || t.department || null,
       title: t.title || "Untitled source",
     });
   }
-  // promoted gap queue items
+
+  // expired-active queue items: a published, in-effect-indexed source now past
+  // its effective_until (P7-B2).
+  for (const t of gas) {
+    if (!(t.effective_until && Date.parse(t.effective_until) < now && (t.index_status ?? "indexed") === "indexed")) {
+      continue;
+    }
+    const p = t.operational_process_id ? procById.get(t.operational_process_id) : null;
+    queueItems.push({
+      id: `src:${t.id}:expired`,
+      kind: "expired_active",
+      criticality: p?.criticality || null,
+      ageMs: Math.max(0, now - Date.parse(t.effective_until)),
+      processId: t.operational_process_id || null,
+      sourceId: t.id,
+      department: p?.department || t.department || null,
+      title: t.title || "Published source",
+    });
+  }
+
+  // draft-revision queue items: changes-requested drafts, and drafts that have
+  // been sitting open past DRAFT_STUCK_DAYS (P7-B2). Active versions and
+  // archived/rejected drafts are excluded.
+  for (const t of scopedReady) {
+    if (t.is_active_version === true || t.is_archived === true || t.verification_status === "rejected") continue;
+    const ls: string = t.lifecycle_state ||
+      (t.review_outcome === "changes_requested" ? "changes_requested" : "draft");
+    if (ls !== "draft" && ls !== "in_review" && ls !== "changes_requested") continue;
+    const p = t.operational_process_id ? procById.get(t.operational_process_id) : null;
+    const age = ageOf(t.review_requested_at || t.created_date);
+    if (ls === "changes_requested") {
+      queueItems.push({
+        id: `src:${t.id}:changes_requested`,
+        kind: "changes_requested",
+        criticality: p?.criticality || null,
+        ageMs: age,
+        processId: t.operational_process_id || null,
+        sourceId: t.id,
+        department: p?.department || t.department || null,
+        title: t.title || "Draft revision",
+      });
+    } else if (age >= DRAFT_STUCK_DAYS * DAY_MS) {
+      queueItems.push({
+        id: `src:${t.id}:draft_stuck`,
+        kind: "draft_stuck",
+        criticality: p?.criticality || null,
+        ageMs: age,
+        processId: t.operational_process_id || null,
+        sourceId: t.id,
+        department: p?.department || t.department || null,
+        title: t.title || "Draft revision",
+      });
+    }
+  }
+
+  // clarification threads waiting on the employee (P7-B2). No employee text is
+  // carried — the title is the process name or a generic label.
+  for (const c of clarifs) {
+    if (c.status !== "awaiting_employee") continue;
+    const p = c.operational_process_id ? procById.get(c.operational_process_id) : null;
+    queueItems.push({
+      id: `clarif:${c.id}`,
+      kind: "awaiting_employee",
+      criticality: p?.criticality || null,
+      ageMs: ageOf(c.last_message_at || c.created_date),
+      processId: c.operational_process_id || null,
+      sourceId: null,
+      department: p?.department || null,
+      title: p ? p.name : "Clarification thread",
+    });
+  }
+
+  // promoted / open gap queue items
   for (const g of openGaps) {
     const p = g.operational_process_id ? procById.get(g.operational_process_id) : null;
     queueItems.push({
       id: `gap:${g.id}`,
       kind: promotedGapIds.has(g.id) ? "promoted_gap" : "open_gap",
       criticality: p?.criticality || null,
-      ageMs: g.first_seen_at ? Math.max(0, now - Date.parse(g.first_seen_at)) : 0,
+      ageMs: ageOf(g.first_seen_at),
       processId: g.operational_process_id || null,
+      sourceId: null,
+      department: p?.department || null,
       title: g.title || g.normalized_topic || "Knowledge gap",
     });
   }
+
+  // "What should I do next?" — a link into an EXISTING governed workflow. The
+  // dashboard never mutates lifecycle state itself (P7-B5).
+  const queueAction = (
+    it: QueueItemInput,
+  ): { label: string; href?: string; processId?: string } | null => {
+    switch (it.kind) {
+      case "source_failure":
+      case "legacy_coverage_unresolved":
+      case "active_not_verified":
+      case "expired_active":
+      case "overdue_review":
+        return it.sourceId
+          ? { label: "Open the source", href: `/training/${it.sourceId}` }
+          : it.processId
+          ? { label: "Open process detail", processId: it.processId }
+          : null;
+      case "changes_requested":
+        return it.sourceId ? { label: "Review the draft revision", href: `/training/${it.sourceId}` } : null;
+      case "draft_stuck":
+        return it.sourceId ? { label: "Open the stalled draft", href: `/training/${it.sourceId}` } : null;
+      case "not_documented":
+      case "key_person_dependency":
+      case "missing_owner_sme":
+      case "no_review_cadence":
+        return it.processId ? { label: "Open process detail", processId: it.processId } : null;
+      case "promoted_gap":
+      case "open_gap":
+        return it.processId
+          ? { label: "Open process detail", processId: it.processId }
+          : { label: "Open Knowledge Gaps", href: "/admin" };
+      case "awaiting_employee":
+        return { label: "Open the clarification queue", href: "/admin" };
+      default:
+        return null;
+    }
+  };
 
   const orderedQueue = prioritizeQueue(queueItems);
   const addressFirst = topAddressFirst(queueItems, 10).map((it) => ({
     ...it,
     label: vocab.queueKind[it.kind],
+    action: queueAction(it),
   }));
 
   // --- metrics --------------------------------------------------
@@ -553,20 +800,42 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
     processRows: rows,
     keyPersonExposure: [...exposurePeople.values()],
     concentrationFindings: concentration.map((c) => ({ ...c, name: names[c.userId] || c.userId })),
-    reviewQueue: orderedQueue.slice(0, 50).map((it) => ({ ...it, label: vocab.queueKind[it.kind] })),
-    addressFirst,
-    gaps: openGaps.map((g) => ({
-      id: g.id,
-      title: g.title || g.normalized_topic,
-      state: g.status,
-      promoted: promotedGapIds.has(g.id),
-      timesAsked: g.times_asked || 0,
-      distinctReporters: g.distinct_reporters || 0,
-      processId: g.operational_process_id || null,
-      missingFacets: g.missing_facets || [],
-      firstSeenAt: g.first_seen_at || null,
-      lastSeenAt: g.last_seen_at || null,
+    reviewQueue: orderedQueue.slice(0, 300).map((it) => ({
+      ...it,
+      label: vocab.queueKind[it.kind],
+      action: queueAction(it),
     })),
+    addressFirst,
+    // Watching (candidate) + Open + Under review — a candidate gap is surfaced
+    // as evidence being watched, never as an actionable open gap (P7-B6).
+    gaps: [...openGaps, ...candidateGaps].map((g) => {
+      const p = g.operational_process_id ? procById.get(g.operational_process_id) : null;
+      const relIds = (g.related_source_ids || []).filter((sid: string) => gasById.has(sid));
+      return {
+        id: g.id,
+        title: g.title || g.normalized_topic,
+        state: g.status, // 'candidate' | 'open' | 'under_review'
+        actionable: g.status === "open" || g.status === "under_review",
+        promoted: promotedGapIds.has(g.id),
+        timesAsked: g.times_asked || 0,
+        distinctReporters: g.distinct_reporters || 0,
+        processId: g.operational_process_id || null,
+        processName: p ? p.name : null,
+        missingFacets: g.missing_facets || [],
+        firstSeenAt: g.first_seen_at || null,
+        lastSeenAt: g.last_seen_at || null,
+        ageDays: g.first_seen_at
+          ? Math.max(0, Math.floor((now - Date.parse(g.first_seen_at)) / DAY_MS))
+          : null,
+        relatedSourceCount: relIds.length,
+        relatedSourceTitles: relIds
+          .slice(0, 5)
+          .map((sid: string) => gasById.get(sid)?.title || "Untitled source"),
+        hasUnresolvedClarification: !!(
+          g.operational_process_id && (clarifsByProcess.get(g.operational_process_id) || 0) > 0
+        ),
+      };
+    }),
     gapInvariantNote: vocab.copy.gapNotKnowledge,
     setup,
     legacy_index_lookup: legacyStats,

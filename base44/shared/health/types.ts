@@ -148,4 +148,9 @@ export interface QueueItemInput {
   ageMs: number;
   processId?: string | null;
   title: string;
+  // Optional routing hints carried by the MindVault binding. The primitive
+  // prioritizer ignores them; they only travel through to the payload so the
+  // dashboard can offer a "what to do next" link into an existing workflow.
+  sourceId?: string | null;
+  department?: string | null;
 }

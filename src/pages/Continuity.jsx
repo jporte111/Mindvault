@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Users, ClipboardList, MessageCircleQuestion } from 'lucide-react';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from '@/components/ui/sheet';
+import {
+  Loader2, ShieldCheck, Users, ClipboardList, MessageCircleQuestion, ArrowRight, ExternalLink,
+} from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import {
@@ -46,6 +52,46 @@ function SummaryCard({ label, big, sub, onClick }) {
   );
 }
 
+// "What should I do next?" — a link into an existing governed workflow, or a
+// button that opens this process's detail drawer. The dashboard never mutates
+// lifecycle state itself.
+function ActionLink({ action, onOpenProcess }) {
+  if (!action) return null;
+  if (action.href) {
+    return (
+      <Link to={action.href} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline whitespace-nowrap">
+        {action.label} <ExternalLink className="w-3 h-3" />
+      </Link>
+    );
+  }
+  if (action.processId) {
+    return (
+      <button
+        onClick={() => onOpenProcess(action.processId)}
+        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline whitespace-nowrap"
+      >
+        {action.label} <ArrowRight className="w-3 h-3" />
+      </button>
+    );
+  }
+  return null;
+}
+
+function FilterSelect({ value, onChange, options, allLabel }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-8 rounded-lg border border-border bg-background px-2 text-xs"
+    >
+      <option value="">{allLabel}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}
+
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'processes', label: 'Process Continuity' },
@@ -54,11 +100,46 @@ const TABS = [
   { id: 'gaps', label: 'Knowledge Gaps' },
 ];
 
+const CRITICALITY_OPTS = [
+  { value: 'mission_critical', label: 'mission critical' },
+  { value: 'high', label: 'high' },
+  { value: 'medium', label: 'medium' },
+  { value: 'low', label: 'low' },
+];
+const CONTINUITY_OPTS = [
+  { value: 'at_risk', label: 'At risk' },
+  { value: 'not_documented', label: 'Not documented' },
+  { value: 'needs_setup', label: 'Needs setup' },
+  { value: 'ready', label: 'Ready' },
+];
+const KEYPERSON_OPTS = [
+  { value: 'critical', label: 'Critical key-person dependency' },
+  { value: 'high', label: 'High key-person dependency' },
+  { value: 'elevated', label: 'Elevated dependency' },
+  { value: 'informational', label: 'Minor dependency' },
+  { value: 'none', label: 'No single-person dependency' },
+  { value: 'unknown', label: 'Dependency risk unknown' },
+];
+
 export default function Continuity() {
   const isAdmin = useIsAdmin();
   const { knowledgeHealthEnabled } = useSystemConfig();
   const [tab, setTab] = useState('overview');
   const [scope, setScope] = useState('general');
+  const [detailProcessId, setDetailProcessId] = useState(null);
+
+  // Process Continuity filters (client-side, over the already-scoped payload)
+  const [fDept, setFDept] = useState('');
+  const [fCrit, setFCrit] = useState('');
+  const [fOwner, setFOwner] = useState('');
+  const [fState, setFState] = useState('');
+  const [fKeyPerson, setFKeyPerson] = useState('');
+  // Review Queue filters
+  const [qType, setQType] = useState('');
+  const [qCrit, setQCrit] = useState('');
+  const [qDept, setQDept] = useState('');
+
+  const openProcess = (id) => { setDetailProcessId(id); };
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
@@ -71,7 +152,7 @@ export default function Continuity() {
     enabled: isAdmin && knowledgeHealthEnabled,
   });
 
-  const rows = useMemo(() => {
+  const sortedRows = useMemo(() => {
     const r = [...(data?.processRows || [])];
     const order = { at_risk: 0, not_documented: 1, needs_setup: 2, ready: 3 };
     const crit = { mission_critical: 0, high: 1, medium: 2, low: 3 };
@@ -80,6 +161,44 @@ export default function Continuity() {
       ((crit[a.criticality] ?? 4) - (crit[b.criticality] ?? 4)) ||
       String(a.name).localeCompare(b.name));
   }, [data]);
+
+  const deptOpts = useMemo(() => {
+    const s = new Set((data?.processRows || []).map((r) => r.department).filter(Boolean));
+    return [...s].sort().map((d) => ({ value: d, label: d }));
+  }, [data]);
+  const ownerOpts = useMemo(() => {
+    const m = new Map();
+    for (const r of data?.processRows || []) if (r.owner?.id) m.set(r.owner.id, r.owner.name || r.owner.id);
+    return [...m.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]))).map(([value, label]) => ({ value, label }));
+  }, [data]);
+  const queueTypeOpts = useMemo(() => {
+    const m = new Map();
+    for (const it of data?.reviewQueue || []) if (!m.has(it.kind)) m.set(it.kind, it.label);
+    return [...m.entries()].map(([value, label]) => ({ value, label }));
+  }, [data]);
+  const queueDeptOpts = useMemo(() => {
+    const s = new Set((data?.reviewQueue || []).map((it) => it.department).filter(Boolean));
+    return [...s].sort().map((d) => ({ value: d, label: d }));
+  }, [data]);
+
+  const filteredRows = useMemo(() => sortedRows.filter((r) =>
+    (!fDept || r.department === fDept) &&
+    (!fCrit || r.criticality === fCrit) &&
+    (!fOwner || r.owner?.id === fOwner) &&
+    (!fState || r.continuityState === fState) &&
+    (!fKeyPerson || r.keyPersonLevel === fKeyPerson)
+  ), [sortedRows, fDept, fCrit, fOwner, fState, fKeyPerson]);
+
+  const filteredQueue = useMemo(() => (data?.reviewQueue || []).filter((it) =>
+    (!qType || it.kind === qType) &&
+    (!qCrit || it.criticality === qCrit) &&
+    (!qDept || it.department === qDept)
+  ), [data, qType, qCrit, qDept]);
+
+  const detailRow = useMemo(
+    () => (data?.processRows || []).find((r) => r.id === detailProcessId) || null,
+    [data, detailProcessId],
+  );
 
   if (!isAdmin) {
     return <Shell><p className="text-sm text-muted-foreground">This dashboard is available to admins only.</p></Shell>;
@@ -133,7 +252,7 @@ export default function Continuity() {
                 {data.setup.processesNeedingCriticality > 0 && <p>{data.setup.processesNeedingCriticality} processes need a criticality set.</p>}
                 {data.setup.sourcesNeedingCadence > 0 && <p>{data.setup.sourcesNeedingCadence} sources have no review schedule.</p>}
                 {data.setup.unlinkedSources > 0 && <p>{data.setup.unlinkedSources} knowledge sources aren’t linked to a process yet.</p>}
-                {data.setup.legacyNeedingReindex > 0 && <p>{data.setup.legacyNeedingReindex} {data.setup && 'legacy knowledge sources still need re-indexing before their documentation status can be confirmed.'}</p>}
+                {data.setup.legacyNeedingReindex > 0 && <p>{data.setup.legacyNeedingReindex} legacy knowledge sources still need re-indexing before their documentation status can be confirmed.</p>}
                 {data.setup.unclassifiedItems > 0 && <p>{data.setup.unclassifiedItems} items are awaiting classification.</p>}
               </CardContent>
             </Card>
@@ -178,6 +297,7 @@ export default function Continuity() {
                     <div key={it.id} className="px-5 py-3 flex items-center gap-3">
                       <span className="text-sm text-foreground flex-1">{it.label}{it.title ? ` — ${it.title}` : ''}</span>
                       {it.criticality && <Pill tone="muted">{it.criticality.replace('_', ' ')}</Pill>}
+                      <ActionLink action={it.action} onOpenProcess={openProcess} />
                     </div>
                   ))}
                 </div>}
@@ -187,56 +307,89 @@ export default function Continuity() {
       )}
 
       {data && tab === 'processes' && (
-        <Card className="border-border">
-          <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="px-4 py-2">Process</th>
-                  <th className="px-4 py-2">Criticality</th>
-                  <th className="px-4 py-2">Owner / SME</th>
-                  <th className="px-4 py-2">Documentation</th>
-                  <th className="px-4 py-2">Review</th>
-                  <th className="px-4 py-2">Gaps</th>
-                  <th className="px-4 py-2">Key-person</th>
-                  <th className="px-4 py-2">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-border/60">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{r.name}</td>
-                    <td className="px-4 py-2.5">{r.criticality ? r.criticality.replace('_', ' ') : <Pill tone="warn">not set</Pill>}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {(r.owner?.name || 'Not assigned')} / {(r.sme?.name || '—')}{r.backup ? ` · backup ${r.backup.name}` : ''}
-                    </td>
-                    <td className="px-4 py-2.5"><Pill tone={COVERAGE_TONE[r.coverageState]}>{r.coverageLabel}</Pill></td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.freshnessLabel}</td>
-                    <td className="px-4 py-2.5">{r.openGaps || 0}</td>
-                    <td className="px-4 py-2.5"><Pill tone={KEYPERSON_TONE[r.keyPersonLevel]}>{r.keyPersonLabel}</Pill></td>
-                    <td className="px-4 py-2.5"><Pill tone={CONTINUITY_TONE[r.continuityState]}>{r.continuityLabel}</Pill></td>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <FilterSelect value={fDept} onChange={setFDept} options={deptOpts} allLabel="All departments" />
+            <FilterSelect value={fCrit} onChange={setFCrit} options={CRITICALITY_OPTS} allLabel="All criticalities" />
+            <FilterSelect value={fOwner} onChange={setFOwner} options={ownerOpts} allLabel="All owners" />
+            <FilterSelect value={fState} onChange={setFState} options={CONTINUITY_OPTS} allLabel="All states" />
+            <FilterSelect value={fKeyPerson} onChange={setFKeyPerson} options={KEYPERSON_OPTS} allLabel="All key-person levels" />
+            {(fDept || fCrit || fOwner || fState || fKeyPerson) && (
+              <button onClick={() => { setFDept(''); setFCrit(''); setFOwner(''); setFState(''); setFKeyPerson(''); }}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">Clear</button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground self-center">{filteredRows.length} of {sortedRows.length} processes</span>
+          </div>
+          <Card className="border-border">
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="px-4 py-2">Process</th>
+                    <th className="px-4 py-2">Criticality</th>
+                    <th className="px-4 py-2">Owner / SME</th>
+                    <th className="px-4 py-2">Documentation</th>
+                    <th className="px-4 py-2">Review</th>
+                    <th className="px-4 py-2">Gaps</th>
+                    <th className="px-4 py-2">Key-person</th>
+                    <th className="px-4 py-2">State</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+                </thead>
+                <tbody>
+                  {filteredRows.map((r) => (
+                    <tr key={r.id} onClick={() => openProcess(r.id)} className="border-b border-border/60 cursor-pointer hover:bg-muted/40">
+                      <td className="px-4 py-2.5 font-medium text-foreground">{r.name}<span className="block text-[11px] text-muted-foreground font-normal">{r.department || '—'}</span></td>
+                      <td className="px-4 py-2.5">{r.criticality ? r.criticality.replace('_', ' ') : <Pill tone="warn">not set</Pill>}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
+                        {(r.owner?.name || 'Not assigned')} / {(r.sme?.name || '—')}{r.backup ? ` · backup ${r.backup.name}` : ''}
+                      </td>
+                      <td className="px-4 py-2.5"><Pill tone={COVERAGE_TONE[r.coverageState]}>{r.coverageLabel}</Pill></td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{r.freshnessLabel}</td>
+                      <td className="px-4 py-2.5">{r.openGaps || 0}</td>
+                      <td className="px-4 py-2.5"><Pill tone={KEYPERSON_TONE[r.keyPersonLevel]}>{r.keyPersonLabel}</Pill></td>
+                      <td className="px-4 py-2.5"><Pill tone={CONTINUITY_TONE[r.continuityState]}>{r.continuityLabel}</Pill></td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">No processes match these filters.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {data && tab === 'queue' && (
-        <Card className="border-border">
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {(data.reviewQueue || []).map((it) => (
-                <div key={it.id} className="px-5 py-3 flex items-center gap-3">
-                  <span className="text-sm text-foreground flex-1">{it.label}{it.title ? ` — ${it.title}` : ''}</span>
-                  {it.criticality && <Pill tone="muted">{it.criticality.replace('_', ' ')}</Pill>}
-                </div>
-              ))}
-              {(data.reviewQueue || []).length === 0 && <p className="px-5 py-6 text-sm text-muted-foreground">Queue is clear.</p>}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <FilterSelect value={qType} onChange={setQType} options={queueTypeOpts} allLabel="All item types" />
+            <FilterSelect value={qCrit} onChange={setQCrit} options={CRITICALITY_OPTS} allLabel="All criticalities" />
+            <FilterSelect value={qDept} onChange={setQDept} options={queueDeptOpts} allLabel="All departments" />
+            {(qType || qCrit || qDept) && (
+              <button onClick={() => { setQType(''); setQCrit(''); setQDept(''); }}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">Clear</button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground self-center">{filteredQueue.length} of {(data.reviewQueue || []).length} items</span>
+          </div>
+          <Card className="border-border">
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {filteredQueue.map((it) => (
+                  <div key={it.id} className="px-5 py-3 flex items-center gap-3">
+                    <span className="text-sm text-foreground flex-1">
+                      {it.label}{it.title ? ` — ${it.title}` : ''}
+                      {it.department && <span className="text-[11px] text-muted-foreground"> · {it.department}</span>}
+                    </span>
+                    {it.criticality && <Pill tone="muted">{it.criticality.replace('_', ' ')}</Pill>}
+                    <ActionLink action={it.action} onOpenProcess={openProcess} />
+                  </div>
+                ))}
+                {filteredQueue.length === 0 && <p className="px-5 py-6 text-sm text-muted-foreground">{(data.reviewQueue || []).length === 0 ? 'Queue is clear.' : 'No items match these filters.'}</p>}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {data && tab === 'people' && (
@@ -252,7 +405,10 @@ export default function Continuity() {
                   </p>
                   <ul className="mt-1 text-xs text-muted-foreground list-disc pl-6">
                     {p.processes.map((pr) => (
-                      <li key={pr.id}>{pr.name}{pr.criticality ? ` (${pr.criticality.replace('_', ' ')})` : ''} — {pr.role.replace('_', ' ')}</li>
+                      <li key={pr.id}>
+                        <button className="hover:underline" onClick={() => openProcess(pr.id)}>{pr.name}</button>
+                        {pr.criticality ? ` (${pr.criticality.replace('_', ' ')})` : ''} — {pr.role.replace('_', ' ')}
+                      </li>
                     ))}
                   </ul>
                 </CardContent>
@@ -262,25 +418,160 @@ export default function Continuity() {
       )}
 
       {data && tab === 'gaps' && (
-        <div className="space-y-3">
+        <div className="space-y-5">
           <p className="text-xs text-muted-foreground">{data.gapInvariantNote}</p>
-          {(data.gaps || []).map((g) => (
-            <Card key={g.id} className="border-border">
-              <CardContent className="py-3">
-                <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <MessageCircleQuestion className="w-4 h-4 text-primary" /> {g.title}
-                  <Pill tone={g.state === 'open' ? 'warn' : 'info'}>{g.promoted ? 'Confirmed pattern' : g.state === 'candidate' ? 'Watching' : g.state.replace('_', ' ')}</Pill>
+          {[
+            { key: 'open', title: 'Open', match: (g) => g.state === 'open' },
+            { key: 'under_review', title: 'Under review', match: (g) => g.state === 'under_review' },
+            { key: 'candidate', title: 'Watching', match: (g) => g.state === 'candidate' },
+          ].map(({ key, title, match }) => {
+            const bucket = (data.gaps || []).filter(match);
+            if (bucket.length === 0) return null;
+            return (
+              <div key={key} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {title} ({bucket.length}){key === 'candidate' && ' — accruing evidence, not yet actionable'}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Asked {g.timesAsked}× by {g.distinctReporters} {g.distinctReporters === 1 ? 'person' : 'people'}
-                  {g.missingFacets?.length ? ` · missing: ${g.missingFacets.join(', ')}` : ''}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-          {(data.gaps || []).length === 0 && <p className="text-sm text-muted-foreground">No open knowledge gaps.</p>}
+                {bucket.map((g) => (
+                  <Card key={g.id} className="border-border">
+                    <CardContent className="py-3">
+                      <p className="text-sm font-medium text-foreground flex items-center gap-2 flex-wrap">
+                        <MessageCircleQuestion className="w-4 h-4 text-primary shrink-0" /> {g.title}
+                        <Pill tone={g.state === 'open' ? 'warn' : g.state === 'under_review' ? 'info' : 'muted'}>
+                          {g.promoted ? 'Confirmed pattern' : title}
+                        </Pill>
+                        {g.processName && (
+                          <button className="text-xs text-primary hover:underline" onClick={() => openProcess(g.processId)}>{g.processName}</button>
+                        )}
+                        {g.hasUnresolvedClarification && <Pill tone="info">clarification open</Pill>}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Asked {g.timesAsked}× by {g.distinctReporters} {g.distinctReporters === 1 ? 'person' : 'people'}
+                        {g.ageDays != null && ` · first seen ${g.ageDays}d ago`}
+                        {g.relatedSourceCount ? ` · ${g.relatedSourceCount} related source${g.relatedSourceCount === 1 ? '' : 's'}` : ''}
+                        {g.missingFacets?.length ? ` · missing: ${g.missingFacets.join(', ')}` : ''}
+                      </p>
+                      {g.relatedSourceTitles?.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Related: {g.relatedSourceTitles.join('; ')}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            );
+          })}
+          {(data.gaps || []).length === 0 && <p className="text-sm text-muted-foreground">No knowledge gaps.</p>}
         </div>
       )}
+
+      {/* Process Detail drawer */}
+      <Sheet open={!!detailRow} onOpenChange={(o) => { if (!o) setDetailProcessId(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          {detailRow && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="pr-8">{detailRow.name}</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4 space-y-5 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Pill tone="muted">{detailRow.department || 'No department'}</Pill>
+                  <Pill tone="muted">{detailRow.criticality ? detailRow.criticality.replace('_', ' ') : 'criticality not set'}</Pill>
+                  <Pill tone={CONTINUITY_TONE[detailRow.continuityState]}>{detailRow.continuityLabel}</Pill>
+                </div>
+                {detailRow.detail?.description && (
+                  <p className="text-muted-foreground">{detailRow.detail.description}</p>
+                )}
+
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div><p className="text-muted-foreground">Owner</p><p className="font-medium">{detailRow.owner?.name || 'Not assigned'}</p></div>
+                  <div><p className="text-muted-foreground">SME</p><p className="font-medium">{detailRow.sme?.name || 'Not assigned'}</p></div>
+                  <div><p className="text-muted-foreground">Backup SME</p><p className="font-medium">{detailRow.backup?.name || 'None'}</p></div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><p className="text-muted-foreground">Documentation</p><p className="font-medium">{detailRow.coverageLabel}</p></div>
+                  <div><p className="text-muted-foreground">Review status</p><p className="font-medium">{detailRow.freshnessLabel}</p></div>
+                </div>
+
+                {/* Key-person finding */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Key-person dependency</p>
+                  <Pill tone={KEYPERSON_TONE[detailRow.keyPersonLevel]}>{detailRow.keyPersonLabel}</Pill>
+                  {detailRow.detail?.keyPersonReasons?.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+                      {detailRow.detail.keyPersonReasons.map((reason, i) => <li key={i}>{reason}</li>)}
+                    </ul>
+                  )}
+                  {detailRow.keyPersonPersons?.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {detailRow.keyPersonPersons.map((x) => `${x.name} (${x.role.replace('_', ' ')})`).join(', ')}
+                    </p>
+                  )}
+                </div>
+
+                {/* Linked sources */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Linked governed sources ({detailRow.detail?.linkedSources?.length || 0})
+                  </p>
+                  {(detailRow.detail?.linkedSources || []).length === 0
+                    ? <p className="text-xs text-muted-foreground">No knowledge sources linked to this process.</p>
+                    : <ul className="space-y-2">
+                      {detailRow.detail.linkedSources.map((s) => (
+                        <li key={s.id} className="rounded-lg border border-border p-2">
+                          <Link to={`/training/${s.id}`} className="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1">
+                            {s.title} <ExternalLink className="w-3 h-3" />
+                          </Link>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{s.documentationStatus} · {s.verification} · {s.freshnessLabel} · {s.effectiveLabel}</p>
+                        </li>
+                      ))}
+                    </ul>}
+                </div>
+
+                {/* Open gaps */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Open knowledge gaps ({detailRow.detail?.openGaps?.length || 0})
+                  </p>
+                  {(detailRow.detail?.openGaps || []).length === 0
+                    ? <p className="text-xs text-muted-foreground">None.</p>
+                    : <ul className="space-y-1 text-xs text-muted-foreground">
+                      {detailRow.detail.openGaps.map((g) => (
+                        <li key={g.id}>
+                          {g.title} — asked {g.timesAsked}× by {g.distinctReporters} {g.distinctReporters === 1 ? 'person' : 'people'}
+                          {g.promoted && ' · confirmed pattern'}
+                          {g.missingFacets?.length ? ` · missing: ${g.missingFacets.join(', ')}` : ''}
+                        </li>
+                      ))}
+                    </ul>}
+                </div>
+
+                {/* Clarifications */}
+                <div className="text-xs text-muted-foreground">
+                  Clarification threads: {detailRow.detail?.clarifications?.total || 0}
+                  {detailRow.detail?.clarifications?.awaitingEmployee ? ` (${detailRow.detail.clarifications.awaitingEmployee} waiting on the employee)` : ''}
+                </div>
+
+                {/* Recommended next actions */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Recommended next actions</p>
+                  {(detailRow.detail?.recommendedActions || []).length === 0
+                    ? <p className="text-xs text-muted-foreground">Nothing outstanding for this process.</p>
+                    : <ul className="space-y-1">
+                      {detailRow.detail.recommendedActions.map((a, i) => (
+                        <li key={i}>
+                          {a.href
+                            ? <Link to={a.href} className="text-xs text-primary hover:underline inline-flex items-center gap-1">{a.label} <ExternalLink className="w-3 h-3" /></Link>
+                            : <span className="text-xs text-foreground">{a.label}</span>}
+                        </li>
+                      ))}
+                    </ul>}
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </Shell>
   );
 }

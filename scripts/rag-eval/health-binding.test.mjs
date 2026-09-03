@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 import {
   computeKnowledgeHealth, legacyChunkExistence,
-  MAX_LEGACY_LOOKUP, BATCH, PAGE_LIMIT, MAX_PAGES_PER_BATCH,
+  MAX_LEGACY_LOOKUP, BATCH, PAGE_LIMIT, MAX_PAGES_PER_BATCH, DRAFT_STUCK_DAYS,
 } from '../../base44/shared/mindvaultHealth.ts';
 import { BANNED_UI_TOKENS } from '../../base44/shared/health/presentation.ts';
 
@@ -486,4 +486,284 @@ test('performance: 300 processes / 3000 sources (1500 legacy) / 5000 gaps — bo
   assert.equal(r.legacy_index_lookup.evaluated, 500);
   assert.equal(r.legacy_index_lookup.truncated_count, 1000);
   assert.ok(dt < 2500, `compute took ${dt}ms`);
+});
+
+// ==================================================================
+// P7-B2 / B3 — Review Queue completeness + lower-criticality processes
+// ==================================================================
+
+test('P7-B3: a proven-undocumented process is queued at EVERY criticality, not just critical', async () => {
+  const procs = ['mission_critical', 'high', 'medium', 'low'].map((c) =>
+    P({ id: `p_${c}`, criticality: c, subject_matter_expert: 'u2', backup_sme: 'u3' }));
+  procs.push(P({ id: 'p_unset', criticality: undefined, subject_matter_expert: 'u2', backup_sme: 'u3' }));
+  // no linked sources at all -> deriveCoverageState -> not_documented
+  const b = stub({ processes: procs, trainings: [] });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const notDoc = r.reviewQueue.filter((it) => it.kind === 'not_documented').map((it) => it.processId).sort();
+  assert.deepEqual(notDoc, ['p_high', 'p_low', 'p_medium', 'p_mission_critical', 'p_unset'].sort());
+  // and criticals still sort ahead of the medium/low/unset ones
+  const idx = (pid) => r.reviewQueue.findIndex((it) => it.processId === pid);
+  assert.ok(idx('p_mission_critical') < idx('p_medium'));
+  assert.ok(idx('p_high') < idx('p_low'));
+  assert.ok(idx('p_medium') < idx('p_unset'));
+});
+
+test('P7-B2: changes_requested draft revision generates a queue item with a source link', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [
+      T({ id: 'active', operational_process_id: 'p1', verification_status: 'verified' }),
+      T({ id: 'draft1', operational_process_id: 'p1', is_active_version: false,
+        lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 3 * DAY) }),
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const cr = r.reviewQueue.find((it) => it.kind === 'changes_requested');
+  assert.ok(cr, 'expected a changes_requested item');
+  assert.equal(cr.sourceId, 'draft1');
+  assert.equal(cr.action.href, '/training/draft1');
+  // the draft is not a GAS source -> it must not inflate coverage / verification numbers
+  assert.equal(r.metrics.activeNotVerified.total, 0);
+});
+
+test('P7-B2: draft_stuck fires only past the DRAFT_STUCK_DAYS threshold', async () => {
+  const mk = (ageDays) => stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [T({ id: `d${ageDays}`, operational_process_id: 'p1', is_active_version: false,
+      lifecycle_state: 'in_review', review_requested_at: iso(NOW - ageDays * DAY) })],
+  });
+  const fresh = await computeKnowledgeHealth(mk(DRAFT_STUCK_DAYS - 1), { now: NOW });
+  assert.equal(fresh.reviewQueue.some((it) => it.kind === 'draft_stuck'), false);
+  const stuck = await computeKnowledgeHealth(mk(DRAFT_STUCK_DAYS + 1), { now: NOW });
+  const it = stuck.reviewQueue.find((x) => x.kind === 'draft_stuck');
+  assert.ok(it);
+  assert.equal(it.action.href, `/training/d${DRAFT_STUCK_DAYS + 1}`);
+});
+
+test('P7-B2: awaiting_employee clarification generates a queue item and carries NO employee text', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1', name: 'Monthly close' })],
+    clarifs: [{
+      id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1',
+      normalized_topic: 'why does the vendor payment keep failing',
+      standalone_query: 'why does the vendor payment keep failing every month',
+      last_message_at: iso(NOW - 2 * DAY),
+    }],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const it = r.reviewQueue.find((x) => x.kind === 'awaiting_employee');
+  assert.ok(it);
+  assert.equal(it.title, 'Monthly close');
+  assert.equal(it.action.href, '/admin');
+  const s = JSON.stringify(r);
+  assert.equal(s.includes('vendor payment'), false, 'employee question text must not leak into the payload');
+  assert.equal(s.includes('normalized_topic'), false);
+});
+
+test('P7-B2: expired_active source (past effective_until) generates a queue item', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    trainings: [T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed',
+      effective_until: iso(NOW - 5 * DAY) })],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const it = r.reviewQueue.find((x) => x.kind === 'expired_active');
+  assert.ok(it);
+  assert.equal(it.sourceId, 'exp');
+  assert.equal(it.action.href, '/training/exp');
+  assert.equal(r.metrics.effectiveDateExposure.expiredActive, 1);
+});
+
+test('P7-B2: every declared queue kind that the binding emits has a plain-language label', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' }), P({ id: 'p2', criticality: 'low', subject_matter_expert: 'u2', backup_sme: 'u3' })],
+    trainings: [
+      T({ id: 'active', operational_process_id: 'p1', verification_status: 'unverified' }),
+      T({ id: 'draftCR', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 40 * DAY) }),
+      T({ id: 'draftStuck', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'draft', created_date: iso(NOW - 40 * DAY) }),
+      T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed', effective_until: iso(NOW - 5 * DAY) }),
+    ],
+    clarifs: [{ id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1', last_message_at: iso(NOW - DAY) }],
+    gaps: [{ id: 'g1', title: 'g', status: 'open', client_scope: 'general', operational_process_id: 'p1', times_asked: 5, distinct_reporters: 3 }],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  for (const it of r.reviewQueue) {
+    assert.equal(typeof it.label, 'string');
+    assert.ok(it.label.length > 0, `kind ${it.kind} has no label`);
+  }
+  const kinds = new Set(r.reviewQueue.map((it) => it.kind));
+  for (const k of ['changes_requested', 'draft_stuck', 'awaiting_employee', 'expired_active', 'not_documented']) {
+    assert.ok(kinds.has(k), `expected queue to contain ${k}`);
+  }
+});
+
+// ==================================================================
+// P7-B5 — actionable queue: links stay inside existing governed routes
+// ==================================================================
+
+test('P7-B5: every queue/addressFirst action points at an existing route or the process drawer — never a mutation endpoint', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' }), P({ id: 'p2', process_owner: null, subject_matter_expert: null, criticality: 'medium' })],
+    trainings: [
+      T({ id: 't1', operational_process_id: 'p1', verification_status: 'unverified' }),
+      T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed', effective_until: iso(NOW - DAY) }),
+      T({ id: 'drf', operational_process_id: 'p1', is_active_version: false, lifecycle_state: 'changes_requested', review_requested_at: iso(NOW - 20 * DAY) }),
+    ],
+    clarifs: [{ id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1', last_message_at: iso(NOW - DAY) }],
+    gaps: [{ id: 'g1', title: 'g', status: 'open', client_scope: 'general', times_asked: 5, distinct_reporters: 3 }],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const check = (it) => {
+    if (!it.action) return;
+    if (it.action.href) {
+      assert.ok(/^\/training\/[^/]+$/.test(it.action.href) || it.action.href === '/admin',
+        `unexpected action href ${it.action.href}`);
+    } else {
+      assert.equal(typeof it.action.processId, 'string');
+    }
+    assert.ok(it.action.label && it.action.label.length > 0);
+  };
+  r.reviewQueue.forEach(check);
+  r.addressFirst.forEach(check);
+});
+
+// ==================================================================
+// P7-B1 — Process Detail payload
+// ==================================================================
+
+test('P7-B1: processRows carry a detail object with sources, gaps, clarifications, key-person reasons, actions', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1', name: 'Payroll run', department: 'Finance', description: 'Runs every 2 weeks',
+      criticality: 'mission_critical', subject_matter_expert: 'u2', backup_sme: null })],
+    trainings: [T({ id: 't1', title: 'Payroll SOP', operational_process_id: 'p1', verification_status: 'unverified', index_status: 'indexed' })],
+    gaps: [{ id: 'g1', title: 'overtime rule', status: 'open', client_scope: 'general', operational_process_id: 'p1', times_asked: 4, distinct_reporters: 2, missing_facets: ['approvals'] }],
+    clarifs: [{ id: 'c1', status: 'awaiting_employee', client_scope: 'general', operational_process_id: 'p1', last_message_at: iso(NOW - DAY) }],
+    users: [{ id: 'u2', full_name: 'Dana Lee' }],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const d = r.processRows[0].detail;
+  assert.equal(d.description, 'Runs every 2 weeks');
+  assert.equal(d.linkedSources.length, 1);
+  assert.equal(d.linkedSources[0].id, 't1');
+  assert.equal(d.linkedSources[0].verification, 'Not yet verified');
+  assert.ok(d.linkedSources[0].documentationStatus.length > 0);
+  assert.equal(d.openGaps.length, 1);
+  assert.equal(d.openGaps[0].missingFacets[0], 'approvals');
+  assert.equal(d.clarifications.total, 1);
+  assert.equal(d.clarifications.awaitingEmployee, 1);
+  assert.ok(d.keyPersonReasons.length >= 1, 'sole-SME-no-backup on a mission-critical process yields a reason');
+  assert.ok(d.recommendedActions.some((a) => a.label.toLowerCase().includes('backup')));
+  // no raw technical vocabulary in the detail strings
+  const detailStrings = JSON.stringify(d).toLowerCase();
+  for (const bad of BANNED_UI_TOKENS) assert.equal(detailStrings.includes(bad), false, `detail leaks "${bad}"`);
+});
+
+test('P7-B1 + scope: a client:A process detail contains ONLY client-A/general sources and gaps — never client B', async () => {
+  const b = stub({
+    processes: [
+      P({ id: 'pa', knowledge_scope: 'client-specific', client_id: 'A' }),
+      P({ id: 'pb', knowledge_scope: 'client-specific', client_id: 'B' }),
+    ],
+    trainings: [
+      T({ id: 'sa', knowledge_scope: 'client-specific', client_id: 'A', operational_process_id: 'pa', title: 'A-SOP', index_status: 'indexed' }),
+      T({ id: 'sb', knowledge_scope: 'client-specific', client_id: 'B', operational_process_id: 'pb', title: 'B-SOP', index_status: 'indexed' }),
+      T({ id: 'sg', knowledge_scope: 'general', operational_process_id: 'pa', title: 'G-SOP', index_status: 'indexed' }),
+    ],
+    gaps: [
+      { id: 'ga', title: 'gapA', status: 'open', client_scope: 'client:A', operational_process_id: 'pa', times_asked: 1, distinct_reporters: 1 },
+      { id: 'gb', title: 'gapB', status: 'open', client_scope: 'client:B', operational_process_id: 'pb', times_asked: 1, distinct_reporters: 1 },
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW, scope: { kind: 'client', clientId: 'A' } });
+  const s = JSON.stringify(r);
+  assert.equal(s.includes('"sb"'), false);
+  assert.equal(s.includes('B-SOP'), false);
+  assert.equal(s.includes('gapB'), false);
+  assert.equal(s.includes('"pb"'), false);
+  const pa = r.processRows.find((x) => x.id === 'pa');
+  const linkedIds = pa.detail.linkedSources.map((x) => x.id).sort();
+  assert.deepEqual(linkedIds, ['sa', 'sg']);
+});
+
+// ==================================================================
+// P7-B6 — Knowledge Gaps view includes candidates as "Watching"
+// ==================================================================
+
+test('P7-B6: candidate gaps appear in the gaps view as watching/non-actionable but are NOT promoted to open', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1', name: 'Reconciliation' })],
+    trainings: [T({ id: 't1', operational_process_id: 'p1', verification_status: 'verified' })],
+    gaps: [
+      { id: 'gopen', title: 'open one', status: 'open', client_scope: 'general', operational_process_id: 'p1', times_asked: 5, distinct_reporters: 3, first_seen_at: iso(NOW - 10 * DAY), related_source_ids: ['t1', 'ghost'] },
+      { id: 'gcand', title: 'candidate one', status: 'candidate', client_scope: 'general', operational_process_id: 'p1', times_asked: 1, distinct_reporters: 1, first_seen_at: iso(NOW - 2 * DAY) },
+      { id: 'grev', title: 'under review one', status: 'under_review', client_scope: 'general', times_asked: 4, distinct_reporters: 2 },
+    ],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const byId = Object.fromEntries(r.gaps.map((g) => [g.id, g]));
+  assert.equal(byId.gcand.state, 'candidate');
+  assert.equal(byId.gcand.actionable, false);
+  assert.equal(byId.gopen.actionable, true);
+  assert.equal(byId.grev.actionable, true);
+  // candidate never counted as open
+  assert.equal(r.metrics.openGaps.open, 2);
+  assert.equal(r.metrics.openGaps.watching, 1);
+  // candidate never appears in the actionable review queue
+  assert.equal(r.reviewQueue.some((it) => it.id === 'gap:gcand'), false);
+  // related source titles are resolved only for in-scope GAS ('ghost' dropped)
+  assert.deepEqual(byId.gopen.relatedSourceTitles, ['t1']);
+  assert.equal(byId.gopen.relatedSourceCount, 1);
+  assert.equal(byId.gopen.processName, 'Reconciliation');
+  assert.equal(byId.gcand.ageDays, 2);
+});
+
+test('P7-B6: gaps view never exposes reporter HMACs or example questions', async () => {
+  const b = stub({
+    processes: [P({ id: 'p1' })],
+    gaps: [{
+      id: 'g1', title: 'q', status: 'open', client_scope: 'general', times_asked: 5, distinct_reporters: 3,
+      reporter_hmacs: ['HMAC_AAA', 'HMAC_BBB'], example_questions: ['how do I do the thing on tuesdays'],
+    }],
+  });
+  const r = await computeKnowledgeHealth(b, { now: NOW });
+  const s = JSON.stringify(r);
+  assert.equal(s.includes('HMAC_AAA'), false);
+  assert.equal(s.includes('reporter_hmac'), false);
+  assert.equal(s.includes('example_question'), false);
+  assert.equal(s.includes('on tuesdays'), false);
+});
+
+// ==================================================================
+// F1–F4 not weakened by the P7-B changes
+// ==================================================================
+
+test('regression: F1–F4 contracts unchanged after P7-B — coverage ladder, unknown never not_documented, authority invariance', async () => {
+  // unknown coverage still routes to needs_setup, never not_documented / at_risk
+  const b1 = stub({
+    processes: [P({ id: 'p1', criticality: 'high' })],
+    trainings: [T({ id: 'lz', operational_process_id: 'p1', index_status: null })],
+    chunkPageBehavior: () => Array.from({ length: PAGE_LIMIT }, (_, i) => ({ training_id: 'zz', id: `zz${i}` })), // never short -> undetermined
+  });
+  const r1 = await computeKnowledgeHealth(b1, { now: NOW });
+  assert.equal(r1.processRows[0].coverageState, 'unknown');
+  assert.equal(r1.processRows[0].continuityState, 'needs_setup');
+
+  // authority invariance across the whole payload incl. the new detail + queue fields
+  const mk = (authority) => stub({
+    processes: [P({ id: 'p1' }), P({ id: 'p2', backup_sme: null, criticality: 'mission_critical' })],
+    trainings: [
+      T({ id: 't1', operational_process_id: 'p1', verification_status: 'verified', source_authority: authority, index_status: 'indexed' }),
+      T({ id: 'exp', operational_process_id: 'p1', index_status: 'indexed', effective_until: iso(NOW - DAY), source_authority: authority }),
+    ],
+    gaps: [{ id: 'g', title: 't', status: 'open', client_scope: 'general', operational_process_id: 'p1', times_asked: 5, distinct_reporters: 3 }],
+  });
+  const withPolicy = await computeKnowledgeHealth(mk('policy'), { now: NOW });
+  const withNotes = await computeKnowledgeHealth(mk('notes'), { now: NOW });
+  assert.deepEqual(withPolicy.snapshot, withNotes.snapshot);
+  assert.deepEqual(withPolicy.metrics, withNotes.metrics);
+  assert.deepEqual(withPolicy.processRows.map((x) => x.detail), withNotes.processRows.map((x) => x.detail));
+  assert.deepEqual(
+    withPolicy.reviewQueue.map((x) => [x.kind, x.criticality, x.action]),
+    withNotes.reviewQueue.map((x) => [x.kind, x.criticality, x.action]),
+  );
 });
