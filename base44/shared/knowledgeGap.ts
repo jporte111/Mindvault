@@ -331,6 +331,35 @@ export function resolutionRequiresSource(resolutionType: string): boolean {
   return resolutionType === "source_updated" || resolutionType === "new_source_added";
 }
 
+export interface RelatedSourceScopeLike {
+  knowledge_scope?: string | null;
+  client_id?: string | null;
+}
+
+/**
+ * Write-side scope invariant for KnowledgeGap.related_source_ids (Phase 5
+ * hardening). Mirrors the canonical retrieval scope gate
+ * (shared/retrieval.ts `assertInScope`): a gap may reference a Training source
+ * only when the source is firm-wide ("general"), or client-specific and
+ * belonging to the gap's own client. An "unclassified" / missing / malformed
+ * source scope, and any other client's source, are never allowed. This is the
+ * same model as retrieval and Phase 7 read-side filtering — not a second one.
+ *
+ *   gap client_scope "general"       -> only knowledge_scope "general"
+ *   gap client_scope "client:<id>"   -> "general" OR ("client-specific" AND client_id === <id>)
+ */
+export function relatedSourceInGapScope(
+  source: RelatedSourceScopeLike | null | undefined,
+  gapClientScope: string,
+): boolean {
+  if (!source) return false;
+  const scope = source.knowledge_scope || "unclassified";
+  if (scope === "general") return true;
+  const { clientId } = parseClientScope(gapClientScope);
+  return scope === "client-specific" && !!clientId &&
+    (source.client_id || null) === clientId;
+}
+
 export interface GovernedSourceLike {
   verification_status?: string;
   is_active_version?: boolean;
