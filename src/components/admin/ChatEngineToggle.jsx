@@ -49,6 +49,7 @@ export function useSystemConfig() {
     knowledgeGapsEnabled: data?.knowledge_gaps_enabled === true,
     clarificationsEnabled: data?.clarifications_enabled === true,
     autoGapFromAnswerStatus: data?.auto_gap_from_answer_status === true,
+    sourceLifecycleEnabled: data?.source_lifecycle_enabled === true,
   };
 }
 
@@ -93,6 +94,11 @@ const SYSTEM_FLAGS = [
     key: 'auto_gap_from_answer_status',
     label: 'Auto gap from PARTIAL/INSUFFICIENT (Phase 5)',
     hint: 'Accrue gap evidence from operational PARTIAL/INSUFFICIENT answers without an explicit click. No-op unless the gaps flag is also on. Off by default.',
+  },
+  {
+    key: 'source_lifecycle_enabled',
+    label: 'Source Lifecycle (Phase 6)',
+    hint: 'Turns on governed versioning: editing published knowledge creates a draft that must be approved and published; every re-index is verified before it goes live. Repair/reconcile and first-time classification always work regardless. Off by default — enable deliberately after review.',
   },
 ];
 
@@ -157,6 +163,7 @@ export default function ChatEngineToggle() {
     if (key === 'knowledge_gaps_enabled') return system.knowledgeGapsEnabled;
     if (key === 'clarifications_enabled') return system.clarificationsEnabled;
     if (key === 'auto_gap_from_answer_status') return system.autoGapFromAnswerStatus;
+    if (key === 'source_lifecycle_enabled') return system.sourceLifecycleEnabled;
     return false;
   };
 

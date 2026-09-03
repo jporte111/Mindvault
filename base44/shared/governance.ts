@@ -11,6 +11,7 @@
 // re-index or chunk cleanup atomically, so the copies never lag the source.
 
 export interface SourceLike {
+  id?: string;
   is_active_version?: boolean;
   verification_status?: string;
   is_archived?: boolean;
@@ -21,6 +22,8 @@ export interface SourceLike {
   version_number?: number;
   operational_process_id?: string;
   department?: string;
+  // Phase 6: denormalized for lineage grouping in history / health views only.
+  root_source_id?: string;
 }
 
 /**
@@ -66,6 +69,10 @@ export function buildGovFields(
     operational_process_id: src.operational_process_id || undefined,
     department: src.department || undefined,
     process_freshness_status: processFreshnessStatus || undefined,
+    // Phase 6: lineage grouping only. NOT index_stale — that flag is managed
+    // explicitly by embedKnowledge's mark_stale / clear_stale / build_staged
+    // sub-commands so a legacy full reindex never leaves chunks dark.
+    root_source_id: src.root_source_id || src.id || undefined,
   };
 }
 

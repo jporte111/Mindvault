@@ -13,6 +13,9 @@ import EditableList from '@/components/edit/EditableList';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import ProcessSelect from '@/components/knowledge/ProcessSelect';
 import { classifyTraining, isClassified, resolveScopeFields, scopeValueOf, SCOPE_GENERAL } from '@/lib/knowledgeScope';
+import { saveKnowledgeEdit } from '@/lib/knowledgeLifecycle';
+
+const CARD_CONTENT_FIELDS = ['title', 'summary', 'key_takeaways'];
 
 const categoryColors = {
   Bookkeeping: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -97,14 +100,38 @@ export default function TrainingCard({ training }) {
     setSaving(true);
     try {
       const { scopeValue, ...fields } = draft;
-      fields.operational_process_id = fields.operational_process_id || null;
-      await base44.entities.Training.update(training.id, fields);
+      // Content fields -> governed path (may fork an unverified draft revision).
+      const contentPatch = {};
+      for (const k of CARD_CONTENT_FIELDS) {
+        if (JSON.stringify(fields[k]) !== JSON.stringify(training[k])) contentPatch[k] = fields[k];
+      }
+      let forkedDraft = false;
+      if (Object.keys(contentPatch).length) {
+        const r = await saveKnowledgeEdit(training.id, contentPatch);
+        if (!r?.ok) {
+          toast.error(
+            r?.error === 'lifecycle_disabled'
+              ? 'Editing knowledge content requires Source Lifecycle (Admin → System).'
+              : (r?.message || r?.error || 'Failed to save'),
+          );
+          setSaving(false);
+          return;
+        }
+        forkedDraft = r.mode === 'draft_forked';
+      }
+      // Process link is metadata — governed restamp when it changed.
+      const nextProc = fields.operational_process_id || null;
+      if (nextProc !== (training.operational_process_id || null)) {
+        await saveKnowledgeEdit(training.id, { operational_process_id: nextProc }).catch(() => {});
+      }
       if (scopeValue !== scopeValueOf(training)) {
         await classifyTraining(training.id, scopeValue, clients);
       }
       queryClient.invalidateQueries({ queryKey: ['trainings'] });
       queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-      toast.success('Training updated');
+      toast.success(forkedDraft
+        ? 'Saved as a new draft revision — review & publish from Admin → Knowledge Lifecycle.'
+        : 'Training updated');
       setEditing(false);
       setDraft(null);
     } catch (err) {

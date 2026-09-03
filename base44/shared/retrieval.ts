@@ -42,6 +42,13 @@ export interface Chunk {
   department?: string;
   // "unreviewed" | "current" | "due_soon" | "stale" | "review_requested"
   process_freshness_status?: string;
+  // Phase 6. THE SOLE new retrieval safety gate. `true` => always excluded, in
+  // both modes, regardless of any flag. Set true before any lifecycle mutation
+  // that could desync this chunk's denormalized metadata; cleared only after
+  // every verification step of the index contract passes. Retrieval never reads
+  // Training.index_status — this join-free chunk flag is the only signal.
+  index_stale?: boolean;
+  root_source_id?: string;
 }
 
 export type Intent =
@@ -230,6 +237,7 @@ export interface GovernanceDrop {
   id?: string;
   training_id: string;
   reason:
+    | "index_stale"
     | "superseded"
     | "archived"
     | "rejected"
@@ -248,6 +256,9 @@ export interface GovernanceDrop {
  * none of these fields set passes untouched, in both semantic and lexical mode.
  *
  *   ALWAYS ON (no flag):
+ *     index_stale === true               -> index_stale   (Phase 6 — the final
+ *                                           retrieval commit gate; fail-closed
+ *                                           while an index is mid-flight/failed)
  *     is_active_version === false        -> superseded
  *     source_is_archived === true        -> archived
  *     verification_status === 'rejected' -> rejected
@@ -268,6 +279,9 @@ export function applyGovernanceFilters(
     filteredOut.push({ id: c.id, training_id: c.training_id, reason });
 
   for (const c of chunks) {
+    // Phase 6: the sole new always-on gate. Checked first so a chunk that is
+    // both stale and (e.g.) superseded reports the actionable reason.
+    if (c.index_stale === true) { drop(c, "index_stale"); continue; }
     if (c.is_active_version === false) { drop(c, "superseded"); continue; }
     if (c.source_is_archived === true) { drop(c, "archived"); continue; }
     if (c.verification_status === "rejected") { drop(c, "rejected"); continue; }

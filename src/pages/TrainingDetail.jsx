@@ -14,6 +14,18 @@ import ProcessSelect from '@/components/knowledge/ProcessSelect';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { Workflow } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveKnowledgeEdit } from '@/lib/knowledgeLifecycle';
+
+// Fields that feed KnowledgeChunk generation — edits to these go through the
+// governed path (updateKnowledgeSource), which forks an unverified draft for a
+// published version and never edits served content in place. Non-content
+// fields (presenter, video_url…) still save directly.
+const CONTENT_FIELDS = new Set([
+  'title', 'summary', 'key_takeaways', 'sop_steps', 'decision_rules',
+  'common_mistakes', 'required_inputs', 'final_output', 'software_systems',
+  'ai_knowledge_entry',
+]);
+const METADATA_FIELDS = new Set(['operational_process_id']);
 
 export default function TrainingDetail() {
   const { id } = useParams();
@@ -25,6 +37,33 @@ export default function TrainingDetail() {
   const isAdmin = useIsAdmin();
 
   const handleUpdate = async (field, value) => {
+    // Governed content / metadata -> updateKnowledgeSource (may fork a draft).
+    if (CONTENT_FIELDS.has(field) || METADATA_FIELDS.has(field)) {
+      try {
+        const r = await saveKnowledgeEdit(id, { [field]: value });
+        if (r?.ok) {
+          if (r.mode === 'draft_forked') {
+            toast.success('Saved as a new draft revision — review and publish it from Admin → Knowledge Lifecycle.');
+          } else {
+            toast.success('Saved.');
+          }
+          queryClient.invalidateQueries({ queryKey: ['training', id] });
+          queryClient.invalidateQueries({ queryKey: ['trainings'] });
+          queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+        } else if (r?.error === 'lifecycle_disabled') {
+          toast.error('Editing knowledge content requires Source Lifecycle (Admin → System).');
+          queryClient.invalidateQueries({ queryKey: ['training', id] });
+        } else {
+          toast.error(r?.message || r?.error || 'Failed to save');
+          queryClient.invalidateQueries({ queryKey: ['training', id] });
+        }
+      } catch (err) {
+        toast.error('Failed to save: ' + (err?.message || 'Unknown error'));
+        queryClient.invalidateQueries({ queryKey: ['training', id] });
+      }
+      return;
+    }
+    // Non-content fields (presenter, etc.) — direct, unchanged.
     try {
       queryClient.setQueryData(['training', id], (old) => ({ ...old, [field]: value }));
       await base44.entities.Training.update(id, { [field]: value });
@@ -56,7 +95,18 @@ export default function TrainingDetail() {
     // Mark as processing, then kick off analysis (don't await — we poll instead)
     await base44.entities.Training.update(id, { status: 'processing' });
     queryClient.invalidateQueries({ queryKey: ['training', id] });
-    base44.functions.invoke('analyzeTraining', { trainingId: id });
+    base44.functions.invoke('analyzeTraining', { trainingId: id }).then((r) => {
+      const d = r?.data ?? r;
+      // A served governed source can never be re-analyzed in place — flag ON
+      // returns 'governed_source', flag OFF returns 'lifecycle_disabled'. Either
+      // way, stop the spinner and restore status; the admin must use a draft.
+      if (d?.error === 'governed_source' || d?.error === 'lifecycle_disabled') {
+        toast.error(d.message || 'This published source needs a draft revision before re-analysis.');
+        base44.entities.Training.update(id, { status: 'ready' });
+        queryClient.invalidateQueries({ queryKey: ['training', id] });
+        setReanalyzing(false);
+      }
+    }).catch(() => {});
 
     // Poll every 5s until status leaves "processing"
     const poll = setInterval(async () => {

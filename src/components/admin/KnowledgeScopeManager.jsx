@@ -80,13 +80,15 @@ export default function KnowledgeScopeManager() {
     const value = rowScope[training.id] ?? scopeValueOf(training);
     setBusyRow(training.id);
     try {
-      await classifyTraining(training.id, value, clients);
+      const { index } = await classifyTraining(training.id, value, clients);
       invalidate();
-      toast.success(
-        isClassified(value)
-          ? `"${training.title}" classified and indexed`
-          : `"${training.title}" set to Needs review (removed from chat)`,
-      );
+      if (!isClassified(value)) {
+        toast.success(`"${training.title}" set to Needs review (removed from chat)`);
+      } else if (index?.ok) {
+        toast.success(`"${training.title}" classified and indexed`);
+      } else {
+        toast.warning(`"${training.title}" classified, but indexing failed: ${index?.error || index?.result?.error || 'unknown'} — retry from Re-index.`);
+      }
     } catch (err) {
       toast.error('Failed to classify: ' + (err?.message || 'Unknown error'));
     } finally {
@@ -97,8 +99,9 @@ export default function KnowledgeScopeManager() {
   const reindex = async (training) => {
     setBusyRow(training.id);
     try {
-      await reindexTraining(training.id);
-      toast.success(`Re-indexed "${training.title}"`);
+      const r = await reindexTraining(training.id);
+      if (r?.ok) toast.success(`Re-indexed "${training.title}"`);
+      else toast.error(`Re-index failed: ${r?.error || r?.result?.error || 'unknown'}`);
     } finally {
       setBusyRow(null);
     }

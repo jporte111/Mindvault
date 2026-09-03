@@ -388,6 +388,94 @@
     "process_name": {
       "type": "string",
       "description": "Extracted by analyzeTraining (Phase 1): the canonical name of the operational process this source documents, when stated. Additive."
+    },
+    "root_source_id": {
+      "type": "string",
+      "description": "Phase 6. Stable lineage handle shared by every version of one logical knowledge source. Missing = treated as self (this row's id), i.e. version 1. Set by the lifecycle engine binding when a version is forked."
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "in_review",
+        "changes_requested",
+        "verified",
+        "active",
+        "archived",
+        "rejected"
+      ],
+      "description": "Phase 6. Denormalized from THIS row's own fields only (is_archived, verification_status, is_active_version, review_outcome, review_requested_at) by deriveLifecycleState. Written in the same write as those fields by the lifecycle engine; reconcile asserts it matches the derivation. 'superseded' / 'has open draft' / 'latest version' are lineage-computed VIEW labels, never stored here. Missing = derive on read."
+    },
+    "review_requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 6. Set when a draft is submitted for verification. Drives the 'in_review' derived state. Cleared/reset by verify / reject / create_version / restore."
+    },
+    "index_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "indexing",
+        "indexed",
+        "failed",
+        "skipped"
+      ],
+      "description": "Phase 6. Human/ops rollup of the derived-index state. NEVER read by retrieval — retrieval gates only on KnowledgeChunk.index_stale. Missing = lazily treated 'indexed' if the source is classified with >=1 chunk, else 'skipped'/'pending'."
+    },
+    "index_error": {
+      "type": "string",
+      "description": "Phase 6. Last re-index failure reason, run through redact(), capped ~800 chars. Diagnostics only."
+    },
+    "indexed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 6. When this version's derived index last reached a verified-success state."
+    },
+    "indexed_content_hash": {
+      "type": "string",
+      "description": "Phase 6. Fingerprint of the concatenated draft-chunk inputs at last verified success. A match proves CONTENT IDENTITY ONLY — it is necessary but NOT sufficient for an index no-op; the desired chunk set must also be complete and assertResourceMatchesIndex must be clean."
+    },
+    "indexed_version_number": {
+      "type": "number",
+      "description": "Phase 6. Which version_number the current KnowledgeChunks reflect. Activation precondition compares this to the draft's version_number."
+    },
+    "lifecycle_seq": {
+      "type": "number",
+      "default": 0,
+      "description": "Phase 6. Optimistic-concurrency counter. Every governed lifecycle mutation reads it, checks it against the operation's expected value, then increments it in the same write. Guards double-click, stale-browser, and concurrent operations."
+    },
+    "last_reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 6. Source-level review timestamp (distinct from the linked OperationalProcess's own review timestamp). Set by the confirm_current / updated review actions."
+    },
+    "next_review_due_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 6. Computed = last_reviewed_at + resolved interval. Missing = source_freshness_status 'unknown'. Consumed only by the admin panel and Phase 7 — never by retrieval or ranking."
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Phase 6. Base44 user ID of the last source-level reviewer (stable ID only)."
+    },
+    "review_outcome": {
+      "type": "string",
+      "enum": [
+        "confirmed_current",
+        "updated",
+        "changes_requested",
+        "archived"
+      ],
+      "description": "Phase 6. Result of the last review action. 'changes_requested' also drives the derived lifecycle_state; verify / submit / reject / restore reset it so deriveLifecycleState cannot return the prior state."
+    },
+    "source_review_interval_days": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Phase 6. Per-source review-cadence override. Missing = inherit the linked OperationalProcess.review_interval_days; both missing = no cadence (freshness 'unknown')."
+    },
+    "changes_requested_note": {
+      "type": "string",
+      "description": "Phase 6. Reviewer feedback attached by request_changes, capped ~2000 chars. Admin-only, NEVER retrieved. Cleared by verify / submit / un_reject / restore."
     }
   },
   "required": [

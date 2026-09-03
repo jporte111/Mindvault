@@ -69,6 +69,19 @@
       "type": "boolean",
       "default": false,
       "description": "Phase 5 flag (row key:'system'). When true AND knowledge_gaps_enabled is also true, askKnowledgeBaseV2 best-effort accrues gap evidence from operational PARTIAL (with missing_facets) and operational INSUFFICIENT (with ranked.length > 0). Never fires for zero-candidate INSUFFICIENT. The write is swallowed on error and never affects the answer or its latency."
+    },
+    "source_lifecycle_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 6 master flag (row key:'system'). BINDING concern only — the lifecycle engine's safety (index_stale gating, operation-record-driven reconcile) is unconditional wherever wired. When false: the Knowledge Lifecycle admin panel is hidden and reviewKnowledgeSource / updateKnowledgeSource write actions return 403 lifecycle_disabled. It does NOT re-enable any legacy direct content/lifecycle write path (those are removed permanently), and it does NOT clear existing index_stale=true chunks — a stale/failed index stays fail-closed until repaired. reconcileSourceLifecycle, reindexKnowledgeSource, listKnowledgeSourceHistory, and first-time classification of a never-classified source remain available."
+    },
+    "lifecycle_vocabulary": {
+      "type": "string",
+      "description": "Phase 6 OPTIONAL (row key:'system'). JSON string overriding the plain-language DisplayState / DisplayAction / freshness labels shown in the admin UI (the vocabulary map). Absent = the MindVault default vocabulary. Presentation only — never changes engine behavior, governance, or safety."
+    },
+    "source_taxonomy": {
+      "type": "string",
+      "description": "Phase 6 OPTIONAL (row key:'system'). JSON string overriding the offered source-category list and the source-authority tiers + per-tier ranking weights. Absent = the hard-coded enum defaults in Training.jsonc and GOVERNANCE_WEIGHTS in retrieval.ts. Data-driven config with an immediate product use (the Add Knowledge picker + the authority rerank table)."
     }
   },
   "required": [

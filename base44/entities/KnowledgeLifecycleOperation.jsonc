@@ -1,0 +1,136 @@
+{
+  "name": "KnowledgeLifecycleOperation",
+  "type": "object",
+  // Phase 6. The PERSISTED, mutable, short-lived record of one in-flight lifecycle
+  // action. Base44 has no DB transaction, so every governed mutation is a forward-
+  // only state machine tracked here. reconcileSourceLifecycle resumes / compensates
+  // strictly from THIS record — it never infers intent from scattered Training /
+  // KnowledgeChunk rows and never guesses (e.g. dual-active is repaired from the
+  // last completed activation operation, or fails closed for manual review).
+  //
+  // This is NOT append-only (it is the working record); it is only ever advanced
+  // forward through its status machine and is never edited by a UI.
+  //
+  // Immutable history lives elsewhere: KnowledgeRevision (completed changes) and
+  // AuditEvent (event stream).
+  "properties": {
+    "operation_id": {
+      "type": "string",
+      "description": "Stable id for this operation. Also the idempotency key: replaying with the same operation_id + payload_hash returns the recorded terminal state."
+    },
+    "root_source_id": {
+      "type": "string",
+      "description": "The lineage this operation acts on."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "submit",
+        "request_changes",
+        "verify",
+        "reject",
+        "un_reject",
+        "create_version",
+        "build_draft_index",
+        "activate",
+        "supersede",
+        "archive",
+        "restore",
+        "set_effective_dates",
+        "set_authority",
+        "relink_process",
+        "reclassify_scope",
+        "confirm_current",
+        "rollback_activation",
+        "manual_reconcile"
+      ],
+      "description": "Which lifecycle action this operation performs."
+    },
+    "target_training_id": {
+      "type": "string",
+      "description": "The version row the action centers on (the draft, for activation)."
+    },
+    "prior_active_training_id": {
+      "type": "string",
+      "description": "Nullable. The version being demoted (activation / supersede only)."
+    },
+    "expected_lifecycle_seq": {
+      "type": "number",
+      "description": "target_training_id.lifecycle_seq read at operation start. The lifecycle_seq guard rejects the write if the row moved under it."
+    },
+    "prior_active_lifecycle_seq": {
+      "type": "number",
+      "description": "Nullable. prior_active_training_id.lifecycle_seq at operation start."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "applying",
+        "indexing",
+        "verifying",
+        "completed",
+        "failed",
+        "compensating"
+      ],
+      "description": "The operation state machine. pending -> applying -> (indexing ->) verifying -> completed. failed / compensating are the recovery branches. index_stale on affected chunks is cleared only on the transition into 'completed'."
+    },
+    "failure_stage": {
+      "type": "string",
+      "enum": [
+        "apply",
+        "index",
+        "verify",
+        "cutover_stalemark",
+        "cutover_flip",
+        "cutover_restamp",
+        "cutover_cleanup",
+        "cutover_stale_clear",
+        "restamp",
+        "restamp_stale_clear",
+        "compensate"
+      ],
+      "description": "Which sub-step failed. reconcile resumes from here where the step is idempotently re-runnable, otherwise runs the compensation plan."
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "redact()-ed, capped ~800 chars."
+    },
+    "payload_hash": {
+      "type": "string",
+      "description": "Hash of the action payload. Same operation_id + payload_hash on replay => return the recorded terminal state, no re-apply."
+    },
+    "resume_count": {
+      "type": "number",
+      "default": 0,
+      "description": "How many times reconcile has touched this operation. At RECONCILE_MAX_ATTEMPTS the lineage is stale-marked in full and flagged needs_manual_reconciliation."
+    },
+    "started_by": {
+      "type": "string",
+      "description": "Nullable. Stable Base44 user id of the admin who started it; null when actor_type is system (reconcile, reanalysis)."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set on the transition into 'completed' or terminal 'failed'."
+    }
+  },
+  "required": [
+    "operation_id",
+    "root_source_id",
+    "action",
+    "target_training_id",
+    "status"
+  ],
+  // Admin-only every operation — the only proven-valid RLS syntax in this repo.
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

@@ -2,6 +2,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { embed, getEmbeddingModelName, getEmbeddingProvider } from '../../shared/embeddings.ts';
 import { approxTokens, chunkText, contentHash, extractKeywords } from '../../shared/text.ts';
 import { buildGovFields, buildScopeFields, lifecycleSkipReason, scopeFieldsDrift } from '../../shared/governance.ts';
+import {
+  cleanupChunks,
+  restampChunks,
+  setChunksStale,
+  verifyChunks,
+  verifyStaleCleared,
+} from '../../shared/chunkLifecycle.ts';
 import { redact } from '../../shared/redact.ts';
 
 // TEMP DIAGNOSTIC (remove once the embedKnowledge 500 is root-caused):
@@ -49,6 +56,54 @@ const MAX_TRANSCRIPT_CHARS = 60000;
 interface DraftChunk {
   chunk_type: string;
   content: string;
+}
+
+// --- Phase 6 lifecycle sub-commands ------------------------------------
+// The default invocation ({ trainingId }) is UNCHANGED — a full reindex that
+// leaves chunks retrievable immediately (the legacy classify / "Re-index"
+// path). These modes are the IndexWorker surface the lifecycle engine binding
+// drives; they never run automatically.
+//
+//   mode 'mark_stale'    -> set index_stale=true on every chunk (fail-closed)
+//   mode 'clear_stale'   -> clear index_stale; returns { cleared }
+//   mode 'restamp'       -> refresh denormalized metadata on existing chunks
+//                           (no generation, no stale change); returns mismatches
+//   mode 'cleanup'       -> delete every chunk for the training
+//   mode 'verify'        -> { unit_count, unit_set_complete, mismatches,
+//                             fingerprint } for the engine's verification step
+//   mode 'build_staged'  -> full reindex BUT every resulting chunk is
+//                           index_stale=true (engine clears them after verify)
+
+const LIFECYCLE_MODES = new Set([
+  "mark_stale",
+  "clear_stale",
+  "restamp",
+  "cleanup",
+  "verify",
+  "build_staged",
+]);
+
+async function lifecycleModeOp(base44: any, trainingId: string, mode: string) {
+  if (mode === "mark_stale") {
+    const changed = await setChunksStale(base44, trainingId, true);
+    return { trainingId, mode, marked_stale: changed };
+  }
+  if (mode === "clear_stale") {
+    await setChunksStale(base44, trainingId, false);
+    return { trainingId, mode, cleared: await verifyStaleCleared(base44, trainingId) };
+  }
+  const training = await base44.asServiceRole.entities.Training.get(trainingId).catch(() => null);
+  if (!training) return { trainingId, mode, error: "Training not found", status: 404 };
+  if (mode === "cleanup") {
+    return { trainingId, mode, deleted: await cleanupChunks(base44, trainingId) };
+  }
+  if (mode === "verify") {
+    return { trainingId, mode, ...(await verifyChunks(base44, training)) };
+  }
+  if (mode === "restamp") {
+    return { trainingId, mode, ...(await restampChunks(base44, training)) };
+  }
+  return { trainingId, mode, error: "unknown lifecycle mode", status: 400 };
 }
 
 function buildDraftChunks(training: any, transcript: string | null): DraftChunk[] {
@@ -109,7 +164,7 @@ async function fetchTranscript(training: any): Promise<string | null> {
   }
 }
 
-async function indexOne(base44: any, trainingId: string) {
+async function indexOne(base44: any, trainingId: string, leaveStale = false) {
   let stage = 'training_lookup';
   try {
     const training = await base44.asServiceRole.entities.Training.get(trainingId);
@@ -223,6 +278,11 @@ async function indexOne(base44: any, trainingId: string) {
           const cur = (match as Record<string, unknown>)[k] ?? undefined;
           if (cur !== (v ?? undefined)) drift[k] = v ?? null;
         }
+        // Phase 6: a staged build (draft pre-index / cutover) leaves every
+        // resulting chunk index_stale=true; a normal reindex clears it.
+        if ((match.index_stale === true) !== (leaveStale === true)) {
+          drift.index_stale = leaveStale ? true : null;
+        }
         if (Object.keys(drift).length) updates.push({ id: match.id, data: drift });
         if (!Array.isArray(match.embedding) || match.embedding.length === 0) {
           toBackfill.push({ id: match.id, content: d.content });
@@ -239,6 +299,7 @@ async function indexOne(base44: any, trainingId: string) {
         token_count: approxTokens(d.content),
         keywords: extractKeywords(d.content),
         embedding_model: 'lexical-only',
+        ...(leaveStale ? { index_stale: true } : {}),
         ...scopeFields,
         ...govFields,
       });
@@ -347,6 +408,26 @@ Deno.serve(async (req) => {
 
     stage = 'parse_body';
     const body = await req.json().catch(() => ({}));
+
+    // Phase 6 lifecycle sub-commands. These are the IndexWorker surface the
+    // lifecycle engine binding drives — never triggered automatically. The
+    // default (no `mode`) path below is unchanged.
+    if (body.mode && LIFECYCLE_MODES.has(String(body.mode))) {
+      stage = 'lifecycle_mode';
+      if (!body.trainingId) {
+        return Response.json({ error: 'trainingId is required', stage }, { status: 400 });
+      }
+      if (String(body.mode) === 'build_staged') {
+        const r = await indexOne(base44, String(body.trainingId), true);
+        const st = (r as any).status;
+        if (st) { const { status: _o, ...rest } = r as any; return Response.json(rest, { status: st }); }
+        return Response.json({ ...r, staged: true });
+      }
+      const r = await lifecycleModeOp(base44, String(body.trainingId), String(body.mode));
+      const st = (r as any).status;
+      if (st) { const { status: _o, ...rest } = r as any; return Response.json(rest, { status: st }); }
+      return Response.json(r);
+    }
 
     if (body.all) {
       // Batch/backfill mode. Only classified, ready trainings. Paginated so the
