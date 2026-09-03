@@ -133,7 +133,9 @@ test('archived or rejected inactive versions do not block a new draft', async ()
 
   const d4 = await h.engine.createVersion(admin, 'v_1', (d) => ({ ...d }));
   assert.ok(d4.ok, 'archived draft must not block a new draft');
-  assert.equal(h.versions.get(d4.draftId).versionNumber, 4);
+  // v_1 is still the active version, so each fork is a fresh v2-numbered draft.
+  assert.equal(h.versions.get(d4.draftId).versionNumber, 2);
+  assert.notEqual(d4.draftId, d3.draftId);
 });
 
 test('lineage with historical v1/v2 and current active v3 can still fork v4', async () => {
