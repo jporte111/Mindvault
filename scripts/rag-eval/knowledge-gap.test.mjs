@@ -26,6 +26,7 @@ import {
   newGapFields,
   resolutionRequiresSource,
   sourceSatisfiesResolution,
+  relatedSourceInGapScope,
 } from '../../base44/shared/knowledgeGap.ts';
 
 // ======================================================================
@@ -267,6 +268,40 @@ test('sourceSatisfiesResolution: exact client-scope match required', () => {
 });
 
 // ======================================================================
+// relatedSourceInGapScope — write-side scope invariant (Phase 5 hardening)
+// ======================================================================
+
+const GEN = { knowledge_scope: 'general' };
+const CLI = (id) => ({ knowledge_scope: 'client-specific', client_id: id });
+
+test('relatedSourceInGapScope: general gap accepts only general sources', () => {
+  assert.equal(relatedSourceInGapScope(GEN, 'general'), true);
+  assert.equal(relatedSourceInGapScope(CLI('A'), 'general'), false);
+});
+
+test('relatedSourceInGapScope: client gap accepts general + same-client, rejects other-client', () => {
+  assert.equal(relatedSourceInGapScope(GEN, 'client:A'), true);
+  assert.equal(relatedSourceInGapScope(CLI('A'), 'client:A'), true);
+  assert.equal(relatedSourceInGapScope(CLI('B'), 'client:A'), false);
+});
+
+test('relatedSourceInGapScope: unclassified / missing / malformed source scope is always rejected', () => {
+  assert.equal(relatedSourceInGapScope({ knowledge_scope: 'unclassified' }, 'client:A'), false);
+  assert.equal(relatedSourceInGapScope({ knowledge_scope: 'unclassified' }, 'general'), false);
+  assert.equal(relatedSourceInGapScope({}, 'client:A'), false);
+  assert.equal(relatedSourceInGapScope(null, 'client:A'), false);
+  assert.equal(relatedSourceInGapScope(undefined, 'general'), false);
+  assert.equal(relatedSourceInGapScope({ knowledge_scope: 'client-specific' /* no client_id */ }, 'client:A'), false);
+  assert.equal(relatedSourceInGapScope({ knowledge_scope: 'nonsense' }, 'client:A'), false);
+});
+
+test('relatedSourceInGapScope: uses the SAME model as retrieval assertInScope (no second scope model)', () => {
+  const src = readFileSync(new URL('../../base44/shared/retrieval.ts', import.meta.url), 'utf8');
+  // assertInScope: scope === "general" || (scope === "client-specific" && !!clientId && c.client_id === clientId)
+  assert.ok(/scope === "general"[\s\S]{0,120}client-specific[\s\S]{0,80}client_id === clientId/.test(src));
+});
+
+// ======================================================================
 // feedback -> gap routing
 // ======================================================================
 
@@ -307,9 +342,11 @@ test('poisoning guard: NO Phase 5 function writes to Training / KnowledgeChunk /
   }
 });
 
-test('gapAggregation only reads Training (for process inheritance), never writes it', () => {
+test('gapAggregation only reads Training (scope check + process inheritance), never writes it', () => {
   const src = readFn('base44/shared/gapAggregation.ts');
-  assert.ok(/entities\.Training\.get\(/.test(src), 'expected a Training.get for process inheritance');
+  // Phase 5 hardening replaced the per-id Training.get with ONE bounded $in read
+  // that resolves related sources for the scope check and process inheritance.
+  assert.ok(/entities\.Training\.filter\(\s*\{\s*id:\s*\{\s*\$in/.test(src), 'expected a bounded Training.filter($in) read');
   assert.equal(/entities\.Training\.(create|update|delete)/.test(src), false);
 });
 
