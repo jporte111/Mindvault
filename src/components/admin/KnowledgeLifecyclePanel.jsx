@@ -107,7 +107,7 @@ export default function KnowledgeLifecyclePanel() {
 
   if (!sourceLifecycleEnabled) {
     return (
-      <Card className="border-border">
+      <Card className="border-border" data-tour="verification">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-primary" />
@@ -126,7 +126,7 @@ export default function KnowledgeLifecyclePanel() {
   }
 
   return (
-    <Card className="border-border">
+    <Card className="border-border" data-tour="verification">
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary" />

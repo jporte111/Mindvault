@@ -388,7 +388,9 @@ export default function Admin() {
         </Card>
 
         {/* Upload Card */}
-        <UploadTraining />
+        <div data-tour="knowledge-management">
+          <UploadTraining />
+        </div>
 
         {/* Operational processes: governance owner of knowledge sources */}
         <OperationalProcessManager />

@@ -105,9 +105,9 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] md:h-screen" data-tour="chat-page">
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-5">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto" data-tour="chat-results">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center text-center py-16">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -154,7 +154,7 @@ export default function Chat() {
         {engine === 'rag' && (
           <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2">
             <span className="text-xs text-muted-foreground flex-shrink-0">Answering about:</span>
-            <div className="w-56">
+            <div className="w-56" data-tour="chat-scope-selector">
               <ClientSelect
                 value={clientScope}
                 onChange={setClientScope}
@@ -169,6 +169,7 @@ export default function Chat() {
         )}
         <form onSubmit={ask} className="max-w-3xl mx-auto flex items-center gap-2">
           <input
+            data-tour="chat-input"
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}

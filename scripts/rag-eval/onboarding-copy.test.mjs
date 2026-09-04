@@ -69,9 +69,9 @@ test('EmptyState is a shared component; onboarding + changed pages carry no jarg
   const files = [
     'src/components/common/EmptyState.jsx',
     'src/components/onboarding/SetupChecklist.jsx',
-    'src/components/onboarding/Walkthrough.jsx',
+    'src/components/onboarding/GuidedTour.jsx',
     'src/components/onboarding/ConceptHelp.jsx',
-    'src/lib/walkthroughSteps.js',
+    'src/lib/guidedTourSteps.js',
     'src/pages/Library.jsx',
     'src/pages/Chat.jsx',
     'src/pages/MyQuestions.jsx',
@@ -144,16 +144,16 @@ test('SetupChecklist is admin-guarded and only mounted on the Admin page', () =>
   }
 });
 
-test('Onboarding-2 walkthrough / concept-help copy reintroduces no legacy "Training(s)" noun', () => {
-  for (const f of ['src/lib/walkthroughSteps.js', 'src/components/onboarding/Walkthrough.jsx', 'src/components/onboarding/ConceptHelp.jsx']) {
+test('Guided tour / concept-help copy reintroduces no legacy "Training(s)" noun', () => {
+  for (const f of ['src/lib/guidedTourSteps.js', 'src/components/onboarding/GuidedTour.jsx', 'src/components/onboarding/ConceptHelp.jsx']) {
     const s = read(f);
     assert.equal(/\btraining(s)?\b/i.test(s.replace(/training\.id|Training\.(list|get|create|update)|\/training\//g, '')), false, `${f} reintroduces "training(s)" in visible copy`);
   }
 });
 
-test('Onboarding-2 walkthrough step copy also bans "retrieval" and standalone "index" (spec-specific additions)', () => {
-  const s = read('src/lib/walkthroughSteps.js');
-  const copy = [...s.matchAll(/(title|copy|secondary|actionLabel):\s*'([^']*)'/g)].map((m) => m[2]).join(' ');
+test('Guided tour step copy also bans "retrieval" and standalone "index" (spec-specific additions)', () => {
+  const s = read('src/lib/guidedTourSteps.js');
+  const copy = [...s.matchAll(/(title|description|secondary):\s*'([^']*)'/g)].map((m) => m[2]).join(' ');
   assert.equal(/\bretrieval\b/i.test(copy), false);
   assert.equal(/\bindex(ing|ed)?\b/i.test(copy), false);
 });
