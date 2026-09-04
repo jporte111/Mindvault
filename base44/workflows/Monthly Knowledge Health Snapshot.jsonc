@@ -1,0 +1,47 @@
+{
+  "name": "Monthly Knowledge Health Snapshot",
+  "description": "Phase 9 P9-1. Once-monthly deterministic capture: invokes captureKnowledgeHealthSnapshot in write mode, which runs the existing Phase 7 current-health computation per scope (general + each active client), projects each payload to a KnowledgeHealthSnapshot aggregate row, and upserts exactly one row per (period_key, client_scope). Refuses ALL writes while knowledge_health_snapshots_enabled is false — scheduled runs then produce zero rows. Writes only KnowledgeHealthSnapshot; never Training / KnowledgeChunk / OperationalProcess / KnowledgeGap / Notification. No email, no LLM, no embeddings.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 6 1 * *",
+      "one_time_date": null,
+      "timezone": "America/New_York",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "monthly_knowledge_health_snapshot",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "capture_snapshot": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "captureKnowledgeHealthSnapshot",
+            "args": {
+              "dryRun": false
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Capture knowledge health snapshot",
+            "description": "Write mode; refused while knowledge_health_snapshots_enabled is off"
+          }
+        }
+      }
+    ]
+  }
+}
