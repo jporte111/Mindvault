@@ -1,0 +1,151 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "review_due_soon",
+        "review_overdue",
+        "source_failure",
+        "gap_actionable",
+        "process_governance",
+        "key_person",
+        "draft_stuck",
+        "continuity_drop"
+      ],
+      "description": "Phase 8. Which deterministic notification kind produced this row. P8-1 generates the first six; draft_stuck (P8-3) and continuity_drop (P8-4) are reserved for later increments."
+    },
+    "finding": {
+      "type": "string",
+      "description": "Phase 8. Sub-type, populated ONLY for kind 'process_governance': 'missing_owner' | 'missing_sme' | 'missing_review_cadence' | 'criticality_unset'. Part of the dedupe identity for governance rows. Null/absent for every other kind."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "needs_attention",
+        "urgent"
+      ],
+      "description": "Phase 8. Mapped deterministically from the Phase 7 ExposureSeverity of the underlying finding (severe -> urgent, moderate -> needs_attention, info -> info)."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "dismissed",
+        "resolved"
+      ],
+      "default": "open",
+      "description": "Phase 8. 'dismissed' is set ONLY by the recipient via dismissNotification while the episode is open; it never sets resolved_at. 'resolved' is set ONLY by reconciliation when the underlying condition clears."
+    },
+    "recipient_user_id": {
+      "type": "string",
+      "description": "Phase 8. Stable Base44 user id of the single recipient of this episode. Read access is recipient-or-admin (RLS); write access is admin/service-role only \u2014 recipients act via the guarded markNotificationRead / dismissNotification functions."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "Phase 8. Canonical isolation scope copied verbatim from the governed subject: 'general' or 'client:<id>'. A general finding produces exactly one general notification \u2014 never fanned out per client. There is deliberately NO separate client_id field (this value is canonical; a denormalized copy could drift)."
+    },
+    "dedupe_key": {
+      "type": "string",
+      "description": "Phase 8. Identifies the finding/subject \u2014 NOT the episode and NOT the recipient. 'kind:refId', or 'process_governance:<finding>:<processId>' for governance rows. A row is one immutable EPISODE of that key for one recipient: created on first detection, suppressed while dismissed, closed (resolved_at) when the condition clears, and re-created as a NEW row when the condition later re-enters. Rows are never deleted or reopened."
+    },
+    "title": {
+      "type": "string",
+      "description": "Phase 8. Plain-language title. Built from pre-vetted governed labels only (source/gap/process/client names, dates)."
+    },
+    "message": {
+      "type": "string",
+      "description": "Phase 8. Plain-language explanation and next step. NEVER contains: another client's information, raw chunk content, reporter identity, raw employee question text, or technical internals (index_status, lifecycle_seq, dedupe keys)."
+    },
+    "action_label": {
+      "type": "string",
+      "description": "Phase 8. Deep-link button label into an existing governed workflow."
+    },
+    "action_href": {
+      "type": "string",
+      "description": "Phase 8. App route for the action (the destination page enforces its own scoping)."
+    },
+    "operational_process_id": {
+      "type": "string",
+      "description": "Phase 8. Nullable ref to the linked OperationalProcess, when the subject has one."
+    },
+    "source_id": {
+      "type": "string",
+      "description": "Phase 8. Nullable ref to the linked Training source (review + source_failure kinds)."
+    },
+    "knowledge_gap_id": {
+      "type": "string",
+      "description": "Phase 8. Nullable ref to the linked KnowledgeGap (gap_actionable kind)."
+    },
+    "triggered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 8. First detection of THIS episode. A re-entering condition gets a new row with a fresh triggered_at \u2014 old episodes are never reopened."
+    },
+    "last_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 8. Last create-or-reminder touch for this episode. Cooldown gate input."
+    },
+    "next_eligible_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 8. Earliest time a reminder for this episode is allowed. Null for entry-only kinds (review_due_soon, source_failure, gap_actionable, key_person) \u2014 they send once per episode."
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 8. Set only via markNotificationRead (recipient-or-admin, idempotent). Null = unread."
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 8. Set ONLY by reconciliation when the underlying condition clears (open -> status 'resolved'; dismissed keeps status 'dismissed' but gains resolved_at, ending the episode). Never set by dismissal."
+    },
+    "escalated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 8. Reserved for the P8-4 escalation tuning. Always false in P8-1; no code reads or writes it yet."
+    }
+  },
+  "required": [
+    "kind",
+    "severity",
+    "status",
+    "recipient_user_id",
+    "client_scope",
+    "dedupe_key",
+    "title"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.recipient_user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
