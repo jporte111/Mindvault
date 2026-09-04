@@ -220,14 +220,24 @@ test('no email: notification backend files contain no email delivery', () => {
   }
 });
 
-test('no UI: no src/ file touches Notification or reads notifications_enabled', () => {
+test('UI (P8-3): reads are recipient-scoped; mutations ONLY via guarded functions; flag not read', () => {
   const walk = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
     );
-  for (const f of walk(join(ROOT, 'src')).filter((p) => /\.(js|jsx|ts|tsx)$/.test(p))) {
+  const files = walk(join(ROOT, 'src')).filter((p) => /\.(js|jsx|ts|tsx)$/.test(p));
+  for (const f of files) {
     const src = readFileSync(f, 'utf8');
-    assert.ok(!src.includes('entities.Notification'), `${f} must not touch Notification`);
+    // The only permitted direct SDK use is a READ — never a direct write:
+    // recipients act only through markNotificationRead / dismissNotification.
+    assert.ok(
+      !/entities\.Notification\s*\.\s*(create|bulkCreate|update|updateMany|bulkUpdate|delete|deleteMany)\s*\(/.test(src),
+      `${f} must not write notifications directly`,
+    );
     assert.ok(!src.includes('notifications_enabled'), `${f} must not read the flag`);
   }
+  const lib = readFileSync(join(ROOT, 'src/lib/notifications.js'), 'utf8');
+  assert.ok(lib.includes("invoke('markNotificationRead'"), 'mark read must go through the guarded function');
+  assert.ok(lib.includes("invoke('dismissNotification'"), 'dismiss must go through the guarded function');
+  assert.ok(lib.includes('recipient_user_id'), 'reads must be scoped to the current user');
 });

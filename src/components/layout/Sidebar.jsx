@@ -4,6 +4,7 @@ import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircle
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
+import NotificationBell from '../notifications/NotificationBell';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 
 const navItems = [
@@ -98,6 +99,7 @@ export default function Sidebar({ user }) {
             <p className="text-sidebar-foreground/40 text-xs truncate">{user?.role || 'user'}</p>
           </div>
           <div className="flex items-center gap-1">
+            <NotificationBell />
             <button
               onClick={() => setSettingsOpen(true)}
               className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"

@@ -41,9 +41,13 @@ import type {
   HealthSourceLike,
   QueueItemInput,
 } from "./health/index.ts";
-// Phase-6 lifecycle primitives (pure, type-only deps) — the single source of
-// truth for "is this row a genuinely open draft, or just inactive history?".
-import { deriveLifecycleState, isOpenDraftCandidate } from "./lifecycle/stateMachine.ts";
+// Phase 8 P8-3: the draft-stuck predicate + threshold (and the Phase 6
+// open-draft / derive primitives it wraps) now live in ONE shared helper —
+// ./health/draftStuck.ts — reused unchanged by the Phase 8 notification
+// binding, so the two consumers can never drift apart.
+import { DRAFT_STUCK_DAYS, assessStuckDraft } from "./health/draftStuck.ts";
+
+export { DRAFT_STUCK_DAYS };
 
 // --- constants (F2b) --------------------------------------------------
 
@@ -52,10 +56,6 @@ export const BATCH = 50;
 export const PAGE_LIMIT = 5000;
 export const MAX_PAGES_PER_BATCH = 4;
 
-// A draft revision open (or sitting in changes-requested / in-review) at least
-// this long is surfaced as review-queue work. Deterministic threshold — no
-// notification is sent (that is Phase 8).
-export const DRAFT_STUCK_DAYS = 14;
 const DAY_MS = 86_400_000;
 
 // --- scope --------------------------------------------------------
@@ -563,22 +563,10 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
     });
   }
 
-  // draft-revision queue items (P7-B2, corrected in P7-D1).
-  //
-  // A row produces a changes_requested / draft_stuck item ONLY when the current
-  // Phase-6 lifecycle data proves it is a still-open, still-actionable draft or
-  // review revision. Age alone is never sufficient. The gate:
-  //   1. isOpenDraftCandidate() — the Phase-6 primitive: the row is inactive,
-  //      not archived, not rejected, its row-local workflow state is
-  //      pre-publication, AND no NEWER active version supersedes it in its
-  //      lineage. Fact (3) is what makes superseded history safe.
-  //   2. its row-local derived lifecycle state is draft / in_review /
-  //      changes_requested (never verified / active / archived / rejected).
-  //   3. it carries no COMPLETED review outcome (confirmed_current / updated /
-  //      archived) — only an absent outcome or 'changes_requested' is still open.
-  // Legacy published records (is_active_version absent -> normalized active),
-  // superseded history, and previously-published inactive versions all fail
-  // step 1 and never produce a false draft_stuck.
+  // draft-revision queue items (P7-B2, corrected in P7-D1) — via the ONE shared
+  // draft-stuck predicate (./health/draftStuck.ts, extracted in P8-3). The full
+  // gate semantics (Phase-6 open-draft detection + lineage supersession +
+  // completed-review exclusion) are documented and tested there.
   const lineageGroups = new Map<string, any[]>();
   for (const t of scopedReady) {
     const key = t.root_source_id || t.id;
@@ -586,47 +574,20 @@ export async function computeKnowledgeHealth(base44: any, opts: KnowledgeHealthO
     arr.push(t);
     lineageGroups.set(key, arr);
   }
-  const toLifecycleView = (t: any) => ({
-    id: t.id,
-    isActiveVersion: t.is_active_version !== false, // field absent -> active
-    versionNumber: typeof t.version_number === "number" ? t.version_number : 1,
-    isArchived: t.is_archived === true,
-    verificationStatus: t.verification_status ?? "unverified",
-    reviewOutcome: t.review_outcome ?? null,
-    reviewRequestedAt: t.review_requested_at ?? null,
-  });
   for (const t of scopedReady) {
-    const lineage = (lineageGroups.get(t.root_source_id || t.id) || [t]).map(toLifecycleView);
-    const v = toLifecycleView(t);
-    if (!isOpenDraftCandidate(v as any, lineage as any)) continue;
-    const state = deriveLifecycleState(v as any);
-    if (state !== "draft" && state !== "in_review" && state !== "changes_requested") continue;
-    if (t.review_outcome && t.review_outcome !== "changes_requested") continue; // completed review
+    const a = assessStuckDraft(t, lineageGroups.get(t.root_source_id || t.id) || [t], now);
+    if (!a.kind) continue;
     const p = t.operational_process_id ? procById.get(t.operational_process_id) : null;
-    const age = ageOf(t.review_requested_at || t.created_date);
-    if (state === "changes_requested") {
-      queueItems.push({
-        id: `src:${t.id}:changes_requested`,
-        kind: "changes_requested",
-        criticality: p?.criticality || null,
-        ageMs: age,
-        processId: t.operational_process_id || null,
-        sourceId: t.id,
-        department: p?.department || t.department || null,
-        title: t.title || "Draft revision",
-      });
-    } else if (age >= DRAFT_STUCK_DAYS * DAY_MS) {
-      queueItems.push({
-        id: `src:${t.id}:draft_stuck`,
-        kind: "draft_stuck",
-        criticality: p?.criticality || null,
-        ageMs: age,
-        processId: t.operational_process_id || null,
-        sourceId: t.id,
-        department: p?.department || t.department || null,
-        title: t.title || "Draft revision",
-      });
-    }
+    queueItems.push({
+      id: `src:${t.id}:${a.kind}`,
+      kind: a.kind,
+      criticality: p?.criticality || null,
+      ageMs: a.ageMs,
+      processId: t.operational_process_id || null,
+      sourceId: t.id,
+      department: p?.department || t.department || null,
+      title: t.title || "Draft revision",
+    });
   }
 
   // clarification threads waiting on the employee (P7-B2). No employee text is

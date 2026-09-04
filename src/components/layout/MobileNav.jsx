@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
+import NotificationBell from '../notifications/NotificationBell';
 
 const rootTabs = ['/', '/library', '/chat'];
 
@@ -46,6 +47,7 @@ export default function MobileNav({ user }) {
           <span className="flex-1 font-sora font-semibold text-foreground text-base truncate">
             {titleFor(location.pathname)}
           </span>
+          <NotificationBell />
           <button
             onClick={() => setSettingsOpen(true)}
             className="flex items-center justify-center w-11 h-11 -mr-1 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"

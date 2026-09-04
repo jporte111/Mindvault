@@ -9,9 +9,10 @@ import {
   type ReconcilePlan,
 } from '../../shared/notification/engine.ts';
 
-// Phase 8 P8-1. Deterministic notification reconciliation: computes the six
-// P8-1 findings as a projection of governed state and diffs them against
-// existing Notification episodes (create / remind / resolve / retarget).
+// Phase 8. Deterministic notification reconciliation: computes the P8-1
+// findings (plus the P8-3 draft_stuck finding) as a projection of governed
+// state and diffs them against existing Notification episodes (create /
+// remind / resolve / retarget).
 //
 // P8-2 adds the notifications_enabled master flag (AppConfig row key 'system',
 // default false) and the scheduled 'Daily Notifications Reconcile' workflow.

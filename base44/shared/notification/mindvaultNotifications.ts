@@ -12,6 +12,8 @@
 //   gap_actionable                    — Phase 5 promotion semantics / assignment
 //   process_governance                — Phase 7 exposure findings only
 //   key_person                        — Phase 7 key-person dependency, high/critical
+//   draft_stuck (P8-3)                — the ONE shared Phase 7 predicate
+//                                       (assessStuckDraft) — never a second definition
 //
 // NO LLM, NO embeddings, NO randomness, NO retrieval changes, NO writes — this
 // module only computes findings. Episode reconciliation lives in engine.ts and
@@ -20,6 +22,7 @@
 import {
   assessContinuityExposure,
   assessKeyPersonDependency,
+  assessStuckDraft,
   computeFreshness,
   deriveCoverageState,
   findConcentrationRisks,
@@ -98,9 +101,11 @@ export async function computeNotificationFindings(
   const gas = scopedReady.filter((t) => governedActiveSource(t));
   const gaps = allGaps as any[];
 
-  // Client names for client-scoped message context only.
+  // Client names for client-scoped message context only. scopedReady (not just
+  // gas) so DRAFT revisions — which the P8-3 draft_stuck finding describes —
+  // also resolve their client name for the message.
   const clientIds = new Set<string>();
-  for (const x of [...gas, ...processes]) {
+  for (const x of [...scopedReady, ...processes]) {
     if (x.knowledge_scope === "client-specific" && x.client_id) clientIds.add(x.client_id);
   }
   const clients = clientIds.size
@@ -480,6 +485,43 @@ export async function computeNotificationFindings(
             : null,
       },
       refs: { processId: p ? p.id : null, gapId: g.id },
+    });
+  }
+
+  // --- per-source finding: draft_stuck (P8-3) -------------------------------
+  // The ONE shared Phase 7 predicate (assessStuckDraft from ../health/draftStuck.ts)
+  // — no second definition. Only kind 'draft_stuck' notifies; Phase 7's
+  // changes_requested queue kind stays dashboard work, deliberately not a
+  // notification. Superseded history, archived/rejected rows, and completed
+  // reviews fail the predicate and never notify.
+  const draftLineageGroups = new Map<string, any[]>();
+  for (const t of scopedReady) {
+    const key = t.root_source_id || t.id;
+    const arr = draftLineageGroups.get(key) || [];
+    arr.push(t);
+    draftLineageGroups.set(key, arr);
+  }
+  for (const t of scopedReady) {
+    const a = assessStuckDraft(t, draftLineageGroups.get(t.root_source_id || t.id) || [t], now);
+    if (a.kind !== "draft_stuck") continue;
+    const p = t.operational_process_id ? procById.get(t.operational_process_id) : null;
+    const primary = p
+      ? pickFirstPresent([p.process_owner, p.subject_matter_expert, p.backup_sme], validUserIds)
+      : null;
+    addFinding({
+      kind: "draft_stuck",
+      finding: null,
+      severity: "needs_attention",
+      dedupeKey: makeDedupeKey("draft_stuck", null, t.id),
+      recipients: primary ? [primary] : adminIds,
+      clientScope: scopeOf(t),
+      ctx: {
+        subjectTitle: t.title || "Draft revision",
+        processName: p ? p.name : null,
+        clientName: t.knowledge_scope === "client-specific" ? clientName(t.client_id) : null,
+        sinceDate: t.review_requested_at || t.created_date || null,
+      },
+      refs: { processId: p ? p.id : null, sourceId: t.id },
     });
   }
 
