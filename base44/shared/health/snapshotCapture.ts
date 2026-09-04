@@ -40,10 +40,21 @@ export interface SnapshotPlan {
 }
 
 /**
- * Bounded, EXACT-scope lookup of gaps that resolved during the completed capture
- * period — the calendar month before `period_key` up to now. Deterministic
- * (window anchored to period_key, not `now`). Returns only { id, times_asked,
- * operational_process_id } shaped rows; never titles or reporter data.
+ * Bounded lookup of gaps that resolved DURING the completed capture period — the
+ * single calendar month immediately before `period_key`:
+ *
+ *   monthStartMs(prevMonth(period_key))  <=  resolved_at  <  monthStartMs(period_key)
+ *
+ * The window is anchored to `period_key` and has BOTH bounds, so a later rerun in
+ * the current month can never widen the set or mutate the same monthly
+ * fingerprint by run date.
+ *
+ * Scope follows existing client-health semantics: a `general` snapshot sees only
+ * `general` resolved gaps; a `client:<id>` snapshot sees `general` + that
+ * client's own (two bounded reads, combined and deduped by gap id — no $in
+ * dependency, no new scope model), and never another client's.
+ *
+ * Returns only { id, times_asked, operational_process_id }-shaped rows.
  */
 async function resolvedGapsForPeriod(
   base44: any,
@@ -51,14 +62,23 @@ async function resolvedGapsForPeriod(
   period_key: string,
 ): Promise<any[]> {
   const windowStart = monthStartMs(shiftMonthKey(period_key, -1)); // first day of the prior month
-  if (Number.isNaN(windowStart)) return [];
-  const rows = await base44.asServiceRole.entities.KnowledgeGap
-    .filter({ client_scope, status: "resolved" }, "-resolved_at", 2000)
-    .catch(() => []);
-  return (rows as any[]).filter((g) => {
-    const t = g?.resolved_at ? Date.parse(g.resolved_at) : NaN;
-    return !Number.isNaN(t) && t >= windowStart;
-  });
+  const windowEnd = monthStartMs(period_key); // first day of period_key's month (exclusive)
+  if (Number.isNaN(windowStart) || Number.isNaN(windowEnd)) return [];
+
+  const scopesToRead = client_scope === "general" ? ["general"] : ["general", client_scope];
+  const byId = new Map<string, any>();
+  for (const cs of scopesToRead) {
+    const rows = await base44.asServiceRole.entities.KnowledgeGap
+      .filter({ client_scope: cs, status: "resolved" }, "-resolved_at", 2000)
+      .catch(() => []);
+    for (const g of rows as any[]) {
+      if (!g || g.id == null) continue;
+      const t = g.resolved_at ? Date.parse(g.resolved_at) : NaN;
+      if (Number.isNaN(t) || t < windowStart || t >= windowEnd) continue;
+      if (!byId.has(g.id)) byId.set(g.id, g); // deterministic: general read wins on a duplicate id
+    }
+  }
+  return [...byId.values()];
 }
 
 /**

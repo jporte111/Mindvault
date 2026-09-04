@@ -59,37 +59,94 @@ test('plan: every row carries fingerprint_version + the four fingerprint fields'
   }
 });
 
-test('resolved-gap lookup: bounded, EXACT client_scope, status=resolved, window = prior month start', async () => {
+// period_key '2026-10' -> completed window [2026-09-01T00:00:00Z, 2026-10-01T00:00:00Z)
+const W_START = Date.parse('2026-09-01T00:00:00Z');
+const W_END = Date.parse('2026-10-01T00:00:00Z');
+const iso = (ms) => new Date(ms).toISOString();
+const rgap = (id, resolved_at, client_scope = 'general') => ({ id, client_scope, status: 'resolved', resolved_at, times_asked: 1 });
+
+test('resolved-gap window: BOTH bounds — [prevMonthStart, thisMonthStart); anchored to period_key, not run date', async () => {
   const b = stub({
-    clients: [{ id: 'A', name: 'A', status: 'active' }],
     gaps: [
-      { id: 'gA_recent', client_scope: 'client:A', status: 'resolved', resolved_at: '2026-09-20T00:00:00Z', times_asked: 7 },
-      { id: 'gA_old', client_scope: 'client:A', status: 'resolved', resolved_at: '2026-05-01T00:00:00Z', times_asked: 3 },
-      { id: 'gB', client_scope: 'client:B', status: 'resolved', resolved_at: '2026-09-25T00:00:00Z', times_asked: 9 },
-      { id: 'gGen', client_scope: 'general', status: 'resolved', resolved_at: '2026-09-10T00:00:00Z', times_asked: 4 },
+      rgap('before_start', iso(W_START - 1)),           // one ms before windowStart -> EXCLUDED
+      rgap('at_start', iso(W_START)),                     // exactly windowStart -> INCLUDED
+      rgap('before_end', iso(W_END - 1)),                 // one ms before windowEnd -> INCLUDED
+      rgap('at_end', iso(W_END)),                         // exactly windowEnd -> EXCLUDED
+      rgap('current_month', '2026-10-14T00:00:00Z'),      // later in the current month -> EXCLUDED
+      rgap('way_old', '2026-05-01T00:00:00Z'),            // long before -> EXCLUDED
+    ],
+  });
+  const plan = await planKnowledgeHealthSnapshots(b, { now: NOW }); // NOW = 2026-10-01T06:00:00Z
+  const fp = JSON.parse(plan.rows.find((r) => r.client_scope === 'general').gap_fingerprint);
+  const ids = fp.filter((t) => t[2] === 'r').map((t) => t[0]).sort();
+  assert.deepEqual(ids, ['at_start', 'before_end']);
+
+  // a LATER rerun in the same month must not widen the set
+  const later = await planKnowledgeHealthSnapshots(b, { now: Date.parse('2026-10-27T23:59:00Z') });
+  const idsLater = JSON.parse(later.rows.find((r) => r.client_scope === 'general').gap_fingerprint)
+    .filter((t) => t[2] === 'r').map((t) => t[0]).sort();
+  assert.deepEqual(idsLater, ids, 'rerunning the same period later does not change which resolution dates qualify');
+});
+
+test('resolved-gap scope: GENERAL snapshot includes only general resolved gaps', async () => {
+  const b = stub({
+    clients: [{ id: 'A', name: 'A', status: 'active' }, { id: 'B', name: 'B', status: 'active' }],
+    gaps: [
+      rgap('gGen', '2026-09-10T00:00:00Z', 'general'),
+      rgap('gA', '2026-09-11T00:00:00Z', 'client:A'),
+      rgap('gB', '2026-09-12T00:00:00Z', 'client:B'),
     ],
   });
   const plan = await planKnowledgeHealthSnapshots(b, { now: NOW });
-  const rowA = plan.rows.find((r) => r.client_scope === 'client:A');
-  const rowGen = plan.rows.find((r) => r.client_scope === 'general');
+  const gen = plan.rows.find((r) => r.client_scope === 'general').gap_fingerprint;
+  assert.ok(JSON.parse(gen).some((t) => t[0] === 'gGen' && t[2] === 'r'));
+  assert.equal(/gA|gB/.test(gen), false, 'general excludes every client resolved gap');
+});
 
-  // client:A row includes only client:A's recently-resolved gap (window starts 2026-09-01)
-  const fpA = JSON.parse(rowA.gap_fingerprint);
-  assert.ok(fpA.some((t) => t[0] === 'gA_recent' && t[2] === 'r'));
-  assert.equal(fpA.some((t) => t[0] === 'gA_old'), false, 'resolved before the window is excluded');
-  assert.equal(rowA.gap_fingerprint.includes('gB'), false, 'client B gap never appears in client A');
+test('resolved-gap scope: CLIENT A snapshot includes general + client:A, never client:B', async () => {
+  const b = stub({
+    clients: [{ id: 'A', name: 'A', status: 'active' }, { id: 'B', name: 'B', status: 'active' }],
+    gaps: [
+      rgap('gGen', '2026-09-10T00:00:00Z', 'general'),
+      rgap('gA', '2026-09-11T00:00:00Z', 'client:A'),
+      rgap('gB', '2026-09-12T00:00:00Z', 'client:B'),
+    ],
+  });
+  const plan = await planKnowledgeHealthSnapshots(b, { now: NOW });
+  const a = plan.rows.find((r) => r.client_scope === 'client:A').gap_fingerprint;
+  const aIds = JSON.parse(a).filter((t) => t[2] === 'r').map((t) => t[0]).sort();
+  assert.deepEqual(aIds, ['gA', 'gGen'], 'client A gets general + its own resolved gaps');
+  assert.equal(a.includes('gB'), false, 'client B resolved gap never appears in client A');
+  // client B's own row is fine — the plan naturally builds it, but it never leaks into A
+  const bRow = plan.rows.find((r) => r.client_scope === 'client:B').gap_fingerprint;
+  assert.equal(bRow.includes('gA'), false, 'client A resolved gap never appears in client B');
 
-  // general row gets only the general resolved gap
-  assert.ok(JSON.parse(rowGen.gap_fingerprint).some((t) => t[0] === 'gGen'));
-  assert.equal(rowGen.gap_fingerprint.includes('gA_recent'), false);
-
-  // the P9-3 resolved-gap reads (status === 'resolved') are each scoped + bounded,
-  // one per scope (general + client:A). Other KnowledgeGap reads belong to the
-  // unchanged Phase 7 health engine.
+  // every resolved-gap read is scoped to exactly 'general' or one 'client:<id>' and bounded
   const resolvedReads = b.__reads.KnowledgeGap.filter((rd) => rd.q.status === 'resolved');
-  assert.equal(resolvedReads.length, 2);
-  assert.deepEqual(resolvedReads.map((rd) => rd.q.client_scope).sort(), ['client:A', 'general']);
-  for (const rd of resolvedReads) assert.ok(typeof rd.limit === 'number' && rd.limit <= 2000);
+  for (const rd of resolvedReads) {
+    assert.ok(rd.q.client_scope === 'general' || /^client:[A-Za-z0-9]+$/.test(rd.q.client_scope));
+    assert.ok(typeof rd.limit === 'number' && rd.limit <= 2000);
+  }
+  // 1 (general row) + 2 (client:A: general+A) + 2 (client:B: general+B)
+  assert.equal(resolvedReads.length, 5);
+});
+
+test('resolved-gap dedupe: a duplicate id across the general + client reads dedupes deterministically', async () => {
+  const b = stub({
+    clients: [{ id: 'A', name: 'A', status: 'active' }],
+    gaps: [
+      // same id present in both scope reads (fixture-contrived); general read is first -> wins
+      { id: 'dup', client_scope: 'general', status: 'resolved', resolved_at: '2026-09-05T00:00:00Z', times_asked: 3, operational_process_id: null },
+      { id: 'dup', client_scope: 'client:A', status: 'resolved', resolved_at: '2026-09-20T00:00:00Z', times_asked: 9, operational_process_id: null },
+    ],
+  });
+  const p1 = await planKnowledgeHealthSnapshots(b, { now: NOW });
+  const p2 = await planKnowledgeHealthSnapshots(b, { now: NOW });
+  const fp1 = JSON.parse(p1.rows.find((r) => r.client_scope === 'client:A').gap_fingerprint).filter((t) => t[0] === 'dup');
+  const fp2 = JSON.parse(p2.rows.find((r) => r.client_scope === 'client:A').gap_fingerprint).filter((t) => t[0] === 'dup');
+  assert.equal(fp1.length, 1, 'exactly one tuple for the duplicated id');
+  assert.deepEqual(fp1, fp2, 'deterministic across runs');
+  assert.equal(fp1[0][1], 3, 'the general read (first) wins the dedupe');
 });
 
 test('capture writes ONLY KnowledgeHealthSnapshot (KnowledgeGap is read-only)', async () => {
