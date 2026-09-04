@@ -286,6 +286,61 @@ test('disabled Continuity is supported: the disabled path never includes a /cont
 });
 
 // ====================================================================
+// Correction — optional targets must not stall Next for the full 4s
+// resilience window; they get a short bounded wait instead, while required
+// targets keep the conservative window.
+// ====================================================================
+
+test('optional steps are resolved with the short bounded wait, not the default 4s', () => {
+  const s = stripComments(read('src/components/onboarding/GuidedTour.jsx'));
+  assert.match(s, /waitForElement\(step, \{ timeoutMs: step\.optional \? OPTIONAL_WAIT_MS : REQUIRED_WAIT_MS \}\)/);
+});
+
+test('required steps retain the conservative ~4000ms wait', () => {
+  const s = stripComments(read('src/components/onboarding/GuidedTour.jsx'));
+  assert.match(s, /const REQUIRED_WAIT_MS = 4000;/);
+  // and it's still the default when no override is passed, so any other
+  // caller of waitForElement (or a future one) stays conservative by default
+  assert.match(s, /function waitForElement\(step, \{ timeoutMs = REQUIRED_WAIT_MS \} = \{\}\)/);
+});
+
+test('the optional wait is meaningfully short (300–750ms) — long enough for a real React render, not long enough to feel frozen', () => {
+  const s = stripComments(read('src/components/onboarding/GuidedTour.jsx'));
+  const m = s.match(/const OPTIONAL_WAIT_MS = (\d+);/);
+  assert.ok(m, 'OPTIONAL_WAIT_MS constant not found');
+  const ms = Number(m[1]);
+  assert.ok(ms >= 300 && ms <= 750, `OPTIONAL_WAIT_MS=${ms} is outside the recommended 300–750ms range`);
+  assert.ok(ms < 4000, 'must be strictly shorter than the required-target wait');
+});
+
+test('a missing OPTIONAL target advances the tour via the same skip-forward branch — it does not terminate the tour', () => {
+  const s = stripComments(read('src/components/onboarding/GuidedTour.jsx'));
+  // there is exactly one "not found" branch, reached regardless of
+  // step.optional — no separate early-exit/terminate path for optional steps
+  const notFoundBranches = [...s.matchAll(/if \(!el\) \{/g)];
+  assert.equal(notFoundBranches.length, 1, 'there must be exactly one missing-target branch, shared by required and optional steps');
+  const branch = s.match(/if \(!el\) \{([\s\S]*?)\n\s*\}\n\s*return;/)[1];
+  assert.match(branch, /setStepIndex\(\(i\) => i \+ 1\)/);
+  assert.equal(/step\.optional/.test(branch), false, 'the skip logic must not special-case optional — the timeout difference alone is the fix');
+});
+
+test('chat-scope remains the one optional step, and its wait resolves via step.optional (no separate flag)', () => {
+  const optionalSteps = GUIDED_TOUR_ALL_STEPS_ENABLED.filter((s) => s.optional === true);
+  assert.deepEqual(optionalSteps.map((s) => s.id), ['chat-scope']);
+});
+
+test('cross-route Next/Back behavior is unchanged by the timeout correction', () => {
+  const s = stripComments(read('src/components/onboarding/GuidedTour.jsx'));
+  // the route-mismatch-navigate branch still runs BEFORE any waitForElement
+  // call, and still doesn't know or care about step.optional
+  assert.match(s, /if \(location\.pathname !== step\.route\) \{\s*navigate\(step\.route\);\s*return undefined;\s*\}/);
+  const navigateIdx = s.indexOf('navigate(step.route)');
+  const waitCallIdx = s.indexOf('waitForElement(step, { timeoutMs:');
+  assert.ok(navigateIdx > -1 && waitCallIdx > -1 && navigateIdx < waitCallIdx, 'route navigation must still happen before element resolution');
+  assert.match(s, /onPrevClick: \(\) => setStepIndex\(\(i\) => Math\.max\(i - 1, 0\)\)/);
+});
+
+// ====================================================================
 // 6. Permissions
 // ====================================================================
 

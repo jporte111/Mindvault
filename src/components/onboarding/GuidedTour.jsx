@@ -32,7 +32,16 @@ function resolveElement(step) {
   return null;
 }
 
-function waitForElement(step, { timeoutMs = 4000 } = {}) {
+// Required targets get the conservative resilience window (real async
+// renders — a query resolving, a route's exit animation — need room to
+// finish). Optional targets (step.optional === true — a control that is
+// legitimately absent in some states, e.g. chat-scope on the legacy engine)
+// still get a brief window for React to render them if they ARE present,
+// but must not stall Next for seconds when they're simply not there.
+const REQUIRED_WAIT_MS = 4000;
+const OPTIONAL_WAIT_MS = 500;
+
+function waitForElement(step, { timeoutMs = REQUIRED_WAIT_MS } = {}) {
   return new Promise((resolve) => {
     const immediate = resolveElement(step);
     if (immediate) {
@@ -126,7 +135,7 @@ const GuidedTour = forwardRef(function GuidedTour(_props, ref) {
     }
 
     let cancelled = false;
-    waitForElement(step).then((el) => {
+    waitForElement(step, { timeoutMs: step.optional ? OPTIONAL_WAIT_MS : REQUIRED_WAIT_MS }).then((el) => {
       if (cancelled || runTokenRef.current !== myToken) return;
 
       if (!el) {
