@@ -17,6 +17,7 @@ import {
   TREND_TONE, TREND_STRIP_DIMENSIONS,
   fetchKnowledgeHealthTrendHistory, TREND_SERIES_LABELS, GOV_STATUS_TONE,
 } from '@/lib/knowledgeHealth';
+import { buildSparklinePath } from '@/lib/sparkline';
 
 function Pill({ tone = 'muted', children }) {
   return <Badge variant="outline" className={`text-xs ${TONE[tone] || TONE.muted}`}>{children}</Badge>;
@@ -99,25 +100,20 @@ function TrendStrip({ trend }) {
 }
 
 // Phase 9 P9-2 — compact multi-period sparklines over the existing snapshot
-// history. Deterministic SVG, no chart library, no composite score, no
-// interpolation (a month with no snapshot is simply not a point).
+// history. Deterministic SVG, no chart library, no composite score. x positions
+// come from the ACTUAL calendar-month offset and the path is BROKEN across any
+// gap of more than one month — a missing snapshot is visually discontinuous,
+// never interpolated or zero-filled. Geometry is the pure buildSparklinePath.
 function Sparkline({ points, min, max }) {
   if (!points || points.length < 2) return <span className="text-[11px] text-muted-foreground">—</span>;
   const w = 88, h = 22, pad = 2;
-  const span = Math.max(1, max - min);
-  const step = (w - pad * 2) / (points.length - 1);
-  const d = points
-    .map((p, i) => {
-      const x = pad + i * step;
-      const y = h - pad - ((p.value - min) / span) * (h - pad * 2);
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-  const lastY = h - pad - ((points[points.length - 1].value - min) / span) * (h - pad * 2);
+  const { d, dots } = buildSparklinePath(points, { width: w, height: h, pad, min, max });
   return (
     <svg width={w} height={h} className="text-primary" aria-hidden>
-      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx={w - pad} cy={lastY.toFixed(1)} r="2" fill="currentColor" />
+      {d && <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
+      {dots.map((pt) => (
+        <circle key={pt.period_key} cx={pt.x.toFixed(1)} cy={pt.y.toFixed(1)} r="1.6" fill="currentColor" />
+      ))}
     </svg>
   );
 }

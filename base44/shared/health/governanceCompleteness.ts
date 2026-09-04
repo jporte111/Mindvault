@@ -34,10 +34,6 @@ const CRIT_LABEL: Record<string, string> = {
   low: "Low-criticality",
 };
 
-function isElevatedCriticality(c?: string | null): boolean {
-  return c === "mission_critical" || c === "high";
-}
-
 function personCell(person: any, roleWord: string): GovernanceCell {
   return person && person.id
     ? { status: "present", label: person.name || "Assigned" }
@@ -92,21 +88,29 @@ function verificationCell(row: any): GovernanceCell {
   return { status: "needs_attention", label: "Linked knowledge not yet verified" };
 }
 
+// Restates the EXISTING Phase 7 key-person finding only. It never manufactures a
+// key-person risk: per the Phase 7 invariant, key-person risk exists only when
+// the governed data contains an identifiable person dependency
+// (keyPersonLevel informational..critical). A missing backup on a
+// high/mission-critical process with NO established dependency
+// (keyPersonLevel 'none') is reported as a plain fact ('missing'), not as risk.
 function backupKeyPersonCell(row: any): GovernanceCell {
   const level = row?.keyPersonLevel;
-  const hasBackup = !!(row?.backup && row.backup.id);
-  if (hasBackup) {
+  const label = row?.keyPersonLabel;
+
+  if (row?.backup && row.backup.id) {
     return { status: "present", label: `Backup: ${row.backup.name || "assigned"}` };
   }
-  if (level === "high" || level === "critical") {
-    return { status: "needs_attention", label: row?.keyPersonLabel || "Key-person dependency" };
+  // An actual, identifiable key-person dependency was established by Phase 7.
+  if (level === "critical" || level === "high" || level === "elevated" || level === "informational") {
+    return { status: "needs_attention", label: label || "Key-person dependency" };
   }
+  // Phase 7 could not assess it (criticality not set).
   if (level === "unknown") {
-    return { status: "unknown", label: row?.keyPersonLabel || "Set criticality to assess" };
+    return { status: "unknown", label: label || "Dependency risk unknown — set criticality" };
   }
-  if (isElevatedCriticality(row?.criticality)) {
-    return { status: "needs_attention", label: "No backup expert" };
-  }
+  // level === 'none' (or absent) + no backup: no established dependency — a plain
+  // fact, never escalated to needs_attention on criticality alone.
   return { status: "missing", label: "No backup expert" };
 }
 

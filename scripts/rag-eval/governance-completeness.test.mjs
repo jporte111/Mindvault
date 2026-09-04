@@ -66,20 +66,48 @@ test('verification reads detail.linkedSources[].verification; falls back to cove
   assert.equal(governanceCompletenessRow(row({ detail: undefined, coverageState: 'not_documented' })).verification.status, 'missing');
 });
 
-test('backup / key-person uses the EXISTING key-person primitive output, no new rule', () => {
+test('backup / key-person only RESTATES the existing Phase 7 key-person finding', () => {
   // has a backup -> present with the name
   assert.deepEqual(governanceCompletenessRow(row({ backup: { id: 'u3', name: 'Sam' } })).backupKeyPerson,
     { status: 'present', label: 'Backup: Sam' });
-  // high key-person level, no backup -> needs_attention using the existing label
-  assert.deepEqual(
-    governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'high', keyPersonLabel: 'High key-person dependency' })).backupKeyPerson,
-    { status: 'needs_attention', label: 'High key-person dependency' });
+  // every ESTABLISHED key-person level reflects the finding via its existing label
+  for (const [level, label] of [
+    ['critical', 'Critical key-person dependency'],
+    ['high', 'High key-person dependency'],
+    ['elevated', 'Elevated dependency'],
+    ['informational', 'Minor dependency'],
+  ]) {
+    assert.deepEqual(
+      governanceCompletenessRow(row({ backup: null, keyPersonLevel: level, keyPersonLabel: label })).backupKeyPerson,
+      { status: 'needs_attention', label }, `level ${level} must restate the finding`);
+  }
   // key-person unknown (criticality unset) -> unknown, not "bad"
   assert.equal(governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'unknown' })).backupKeyPerson.status, 'unknown');
-  // elevated criticality, no backup, no key-person finding -> needs_attention (backup relevant)
-  assert.equal(governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'none', criticality: 'mission_critical' })).backupKeyPerson.status, 'needs_attention');
-  // low criticality, no backup, no finding -> plain missing (backup not really relevant)
+  // level 'none' + no backup -> plain fact 'missing', regardless of criticality
   assert.equal(governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'none', criticality: 'low' })).backupKeyPerson.status, 'missing');
+});
+
+test('P9-2 does NOT manufacture key-person risk: mission-critical + no established dependency stays "missing"', () => {
+  // Phase 7 established NO identifiable person dependency (keyPersonLevel 'none').
+  // A missing backup on a mission-critical process must remain a plain fact —
+  // never a new key-person risk invented by the governance view.
+  const g = governanceCompletenessRow(row({
+    backup: null, keyPersonLevel: 'none', keyPersonLabel: 'No single-person dependency',
+    criticality: 'mission_critical',
+  }));
+  assert.equal(g.backupKeyPerson.status, 'missing');
+  assert.notEqual(g.backupKeyPerson.status, 'needs_attention');
+  assert.equal(g.backupKeyPerson.label, 'No backup expert');
+  // same for 'high'
+  assert.equal(governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'none', criticality: 'high' })).backupKeyPerson.status, 'missing');
+});
+
+test('the three key-person buckets stay distinct: no-dependency vs unknown vs actual dependency', () => {
+  const noDep = governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'none', criticality: 'mission_critical' })).backupKeyPerson.status;
+  const unknown = governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'unknown' })).backupKeyPerson.status;
+  const actual = governanceCompletenessRow(row({ backup: null, keyPersonLevel: 'high' })).backupKeyPerson.status;
+  assert.deepEqual([noDep, unknown, actual], ['missing', 'unknown', 'needs_attention']);
+  assert.equal(new Set([noDep, unknown, actual]).size, 3);
 });
 
 test('criticality label + continuity pass-through; "Not set" when absent', () => {
