@@ -51,7 +51,7 @@ export const CONCEPT_HELP = {
   currency: {
     term: 'Currency',
     text:
-      'How up to date your documented knowledge is. It is measured only across sources that have a review schedule — sources without one do not count against it.',
+      'How up to date your documented knowledge is — measured only across sources that have a review schedule. Current means nothing is overdue; Slipping means a review is due soon; Overdue means a review date has passed; Unknown means no review schedule is set. Currency reflects review recency, not correctness — a source can be “Current” simply because no one has flagged it as outdated yet.',
   },
   continuity_exposure: {
     term: 'Continuity exposure',

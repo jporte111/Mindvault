@@ -14,7 +14,6 @@ import {
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import ConceptHelp from '@/components/onboarding/ConceptHelp';
-import CurrencyHelp from '@/components/onboarding/CurrencyHelp';
 import {
   fetchKnowledgeHealth, TONE, BAND_TONE, COVERAGE_TONE, CONTINUITY_TONE, KEYPERSON_TONE,
   TREND_TONE, TREND_STRIP_DIMENSIONS,
@@ -26,13 +25,13 @@ function Pill({ tone = 'muted', children }) {
   return <Badge variant="outline" className={`text-xs ${TONE[tone] || TONE.muted}`}>{children}</Badge>;
 }
 
-function BandCard({ title, band, label, caveat = null, help = null, helpNode = null, tourId = null }) {
+function BandCard({ title, band, label, caveat = null, help = null, tourId = null }) {
   return (
     <Card className="border-border" data-tour={tourId || undefined}>
       <CardContent className="py-4">
         <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
           {title}
-          {helpNode || (help && <ConceptHelp term={help} className="normal-case" />)}
+          {help && <ConceptHelp term={help} className="normal-case" />}
         </p>
         <div className="mt-1 flex items-center gap-2">
           <span className={`inline-block w-2.5 h-2.5 rounded-full ${
@@ -527,7 +526,7 @@ export default function Continuity() {
           {/* Snapshot */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-tour="continuity-overview">
             <BandCard title="Coverage" band={data.snapshot.coverage.band} label={data.snapshot.coverage.label} help="coverage" tourId="continuity-coverage" />
-            <BandCard title="Currency" band={data.snapshot.currency.band} label={data.snapshot.currency.label} helpNode={<CurrencyHelp />} />
+            <BandCard title="Currency" band={data.snapshot.currency.band} label={data.snapshot.currency.label} help="currency" />
             <BandCard title="Verification" band={data.snapshot.verification.band} label={data.snapshot.verification.label} caveat={data.snapshot.verification.caveat} help="verification" tourId="continuity-verification" />
             <BandCard title="Key-person resilience" band={data.snapshot.keyPersonResilience.band} label={data.snapshot.keyPersonResilience.label} help="key_person" tourId="continuity-keyperson" />
           </div>
