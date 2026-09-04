@@ -135,10 +135,62 @@ test('Next / Back only change the step index — they never call navigate()', ()
   assert.ok(nextHandler, 'Next handler must only call setStep, never navigate');
   const backHandler = s.match(/onClick=\{\(\) => setStep\(\(s\) => Math\.max\(0, s - 1\)\)\}/);
   assert.ok(backHandler, 'Back handler must only call setStep, never navigate');
-  // navigate() is called from exactly one place: the explicit route-action button
+  // navigate() is called from exactly one place: inside goToAction, which the
+  // route-action button calls — never directly from Next/Back/Skip/Finish
   const navigateCalls = [...s.matchAll(/navigate\(/g)];
-  assert.equal(navigateCalls.length, 1, 'navigate() must be called from exactly the opt-in action button');
-  assert.match(s, /onClick=\{\(\) => navigate\(action\.href\)\}/);
+  assert.equal(navigateCalls.length, 1, 'navigate() must be called from exactly one place');
+  const navigateSite = s.match(/const goToAction = \(href\) => \{([\s\S]*?)\};/);
+  assert.ok(navigateSite, 'goToAction() not found');
+  assert.match(navigateSite[1], /navigate\(href\)/);
+});
+
+// ====================================================================
+// Correction — an explicit route action must dismiss the walkthrough (seen
+// flag + close) BEFORE navigating, since Walkthrough is mounted at layout
+// level and survives route changes. Reuses dismiss() rather than
+// duplicating the localStorage write.
+// ====================================================================
+
+test('the route-action button calls goToAction(), not navigate() directly', () => {
+  const s = read('src/components/onboarding/Walkthrough.jsx');
+  assert.equal(/onClick=\{\(\) => navigate\(action\.href\)\}/.test(s), false, 'the action button must no longer call navigate() directly');
+  assert.match(s, /onClick=\{\(\) => goToAction\(action\.href\)\}/);
+});
+
+test('goToAction() dismisses (seen flag + close) THEN navigates — reusing dismiss(), not a duplicate localStorage write', () => {
+  const s = read('src/components/onboarding/Walkthrough.jsx');
+  const fn = s.match(/const goToAction = \(href\) => \{([\s\S]*?)\};/);
+  assert.ok(fn, 'goToAction() not found');
+  const body = fn[1];
+  // order: dismiss() runs before navigate(href)
+  const dismissIdx = body.indexOf('dismiss()');
+  const navigateIdx = body.indexOf('navigate(href)');
+  assert.ok(dismissIdx >= 0 && navigateIdx >= 0, 'goToAction must call both dismiss() and navigate(href)');
+  assert.ok(dismissIdx < navigateIdx, 'dismiss() must run before navigate(href)');
+  // no duplicated localStorage write inside goToAction itself — it must
+  // delegate to the single dismiss() implementation
+  assert.equal(/writeLS/.test(body), false, 'goToAction must not duplicate the localStorage write; it must reuse dismiss()');
+});
+
+test('an explicit route action therefore also records the seen flag (transitively, via dismiss())', () => {
+  const s = read('src/components/onboarding/Walkthrough.jsx');
+  // dismiss() is the single place mv_onboarding_seen is written, and
+  // goToAction() calls dismiss() — so the action path is covered without a
+  // second write site.
+  const dismissFn = s.match(/const dismiss = \(\) => \{([\s\S]*?)\};/)[1];
+  assert.match(dismissFn, /writeLS\(WALKTHROUGH_SEEN_KEY, 'true'\)/);
+  const writeSites = [...s.matchAll(/writeLS\(WALKTHROUGH_SEEN_KEY/g)];
+  assert.equal(writeSites.length, 1, 'mv_onboarding_seen must be written from exactly one place (dismiss)');
+});
+
+test('Help can reopen the walkthrough after a route-action dismissal — open() ignores the seen flag', () => {
+  const s = read('src/components/onboarding/Walkthrough.jsx');
+  const openImpl = s.match(/useImperativeHandle\(ref, \(\) => \(\{([\s\S]*?)\}\), \[\]\);/);
+  assert.ok(openImpl, 'useImperativeHandle not found');
+  // open() unconditionally resets step and opens — no readLS/seen check gating it
+  assert.equal(/readLS|WALKTHROUGH_SEEN_KEY/.test(openImpl[1]), false, 'open() must not gate on the seen flag');
+  assert.match(openImpl[1], /setStep\(0\)/);
+  assert.match(openImpl[1], /setOpen\(true\)/);
 });
 
 test('reopen imperative handle exists and always resets to step 0 (usable even when seen=true)', () => {

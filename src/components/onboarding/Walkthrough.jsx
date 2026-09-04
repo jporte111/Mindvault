@@ -61,11 +61,21 @@ const Walkthrough = forwardRef(function Walkthrough(_props, ref) {
   const action = resolveStepAction(current, { knowledgeHealthEnabled });
   const isLast = step === total - 1;
 
-  // Skip, Finish, and any intentional close (Escape, overlay click, the X
-  // button) all mean the same thing: remember this device has seen the tour.
+  // Skip, Finish, any intentional close (Escape, overlay click, the X
+  // button), and an explicit route action all mean the same thing: remember
+  // this device has seen the tour, and close it.
   const dismiss = () => {
     writeLS(WALKTHROUGH_SEEN_KEY, 'true');
     setOpen(false);
+  };
+
+  // The walkthrough is mounted once at AppLayout level, so it survives route
+  // changes — an explicit route action must dismiss it first, or the modal
+  // is left open over whatever page it just navigated to. Reuses dismiss()
+  // rather than duplicating the localStorage write.
+  const goToAction = (href) => {
+    dismiss();
+    navigate(href);
   };
 
   return (
@@ -84,7 +94,7 @@ const Walkthrough = forwardRef(function Walkthrough(_props, ref) {
             <p className="text-xs text-amber-700">{action.disabledNote}</p>
           )}
           {action.href && (
-            <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => navigate(action.href)}>
+            <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => goToAction(action.href)}>
               {action.label}
             </Button>
           )}
