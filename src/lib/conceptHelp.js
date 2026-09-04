@@ -48,6 +48,11 @@ export const CONCEPT_HELP = {
     text:
       'Whether a process has documented, usable knowledge behind it — and whether that knowledge has been verified.',
   },
+  currency: {
+    term: 'Currency',
+    text:
+      'How up to date your documented knowledge is. It is measured only across sources that have a review schedule — sources without one do not count against it.',
+  },
   continuity_exposure: {
     term: 'Continuity exposure',
     text:
