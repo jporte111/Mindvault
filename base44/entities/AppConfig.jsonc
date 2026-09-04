@@ -92,6 +92,11 @@
       "type": "boolean",
       "default": false,
       "description": "Phase 8 P8-2 master flag (row key:'system'). When true: explicit { dryRun: false } runs of computeNotifications (including the scheduled 'Daily Notifications Reconcile' workflow) may write Notification episodes. When false (default): computeNotifications dry-run remains available for admin diagnostics, but EVERY write attempt is refused with a clear reason and zero Notification rows are created \u2014 never a silent write. Affects only notification reconciliation; never retrieval, answer generation, or Phase 7 health rules."
+    },
+    "knowledge_health_snapshots_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 9 P9-1 master flag (row key:'system'). When true: explicit { dryRun: false } runs of captureKnowledgeHealthSnapshot (including the scheduled 'Monthly Knowledge Health Snapshot' workflow) may upsert one KnowledgeHealthSnapshot aggregate row per (period_key, client_scope), and computeKnowledgeHealth attaches a deterministic `trend` block comparing the current projection against the latest prior snapshot for the exact same client_scope. When false (default): capture dry-run stays available for diagnostics but EVERY write attempt is refused with a clear reason, and computeKnowledgeHealth returns its existing payload unchanged with no `trend` key. Never affects retrieval, answer generation, Phase 7 current-health calculations, or notifications."
     }
   },
   "required": [

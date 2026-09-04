@@ -14,6 +14,7 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import {
   fetchKnowledgeHealth, TONE, BAND_TONE, COVERAGE_TONE, CONTINUITY_TONE, KEYPERSON_TONE,
+  TREND_TONE, TREND_STRIP_DIMENSIONS,
 } from '@/lib/knowledgeHealth';
 
 function Pill({ tone = 'muted', children }) {
@@ -35,6 +36,64 @@ function BandCard({ title, band, label, caveat }) {
         {caveat && <p className="mt-1 text-[11px] text-muted-foreground">{caveat}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+// Phase 9 P9-1 — deterministic "since last period" strip. No chart, no score.
+// Shows raw previous -> current with a direction word; deteriorating first.
+function fmtTrendVal(v, kind) {
+  if (v == null) return '—';
+  if (kind === 'ratio') return `${v.covered}/${v.evaluable}`;
+  return String(v);
+}
+function TrendStrip({ trend }) {
+  if (!trend) return null; // snapshots flag off -> no trend key
+  if (!trend.comparable) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
+        Trend data starts after the next monthly snapshot.
+      </div>
+    );
+  }
+  const rows = TREND_STRIP_DIMENSIONS
+    .map((d) => ({ ...d, ...(trend.dimensions?.[d.key] || {}) }))
+    .filter((r) => r.direction);
+  const changed = [
+    ...rows.filter((r) => r.direction === 'deteriorating'),
+    ...rows.filter((r) => r.direction === 'improving'),
+    ...rows.filter((r) => r.direction === 'unknown' && r.previous != null),
+  ];
+  const stable = rows.filter((r) => r.direction === 'stable');
+  const periods = trend.periods_elapsed && trend.periods_elapsed > 1 ? ` (${trend.periods_elapsed} periods)` : '';
+  const tone = (dir) =>
+    TREND_TONE[dir] === 'ok' ? 'text-emerald-600'
+      : TREND_TONE[dir] === 'error' ? 'text-red-600' : 'text-muted-foreground';
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Since {trend.previous_period_key || 'last period'}{periods}
+      </p>
+      {changed.length === 0
+        ? <p className="mt-1 text-xs text-muted-foreground">No material change since {trend.previous_period_key}.</p>
+        : (
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+            {changed.map((r) => (
+              <span key={r.key} className="text-xs">
+                <span className="text-muted-foreground">{r.label} </span>
+                <span className="font-medium text-foreground">
+                  {fmtTrendVal(r.previous, r.kind)} → {fmtTrendVal(r.current, r.kind)}
+                </span>{' '}
+                <span className={tone(r.direction)}>{r.direction}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      {stable.length > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          No change: {stable.map((r) => r.label).join(' · ')}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -257,6 +316,9 @@ export default function Continuity() {
               </CardContent>
             </Card>
           )}
+
+          {/* Phase 9 P9-1 — trend strip (only present when snapshots flag is on) */}
+          <TrendStrip trend={data.trend} />
 
           {/* Snapshot */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

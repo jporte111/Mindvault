@@ -51,6 +51,7 @@ export function useSystemConfig() {
     autoGapFromAnswerStatus: data?.auto_gap_from_answer_status === true,
     sourceLifecycleEnabled: data?.source_lifecycle_enabled === true,
     knowledgeHealthEnabled: data?.knowledge_health_enabled === true,
+    knowledgeHealthSnapshotsEnabled: data?.knowledge_health_snapshots_enabled === true,
   };
 }
 
@@ -105,6 +106,11 @@ const SYSTEM_FLAGS = [
     key: 'knowledge_health_enabled',
     label: 'Operational Continuity dashboard (Phase 7)',
     hint: 'Shows the admin-only /continuity dashboard: process coverage, review backlog, verification backlog, key-person dependency, and a prioritised action queue. Read-only deterministic aggregation — no scores from AI, no changes to retrieval. Off by default.',
+  },
+  {
+    key: 'knowledge_health_snapshots_enabled',
+    label: 'Knowledge Health Snapshots (Phase 9)',
+    hint: 'When on, the monthly workflow captures one aggregate KnowledgeHealthSnapshot per scope and /continuity shows a "since last period" trend strip (deterministic previous → current, no score). Off by default — the scheduled job writes nothing while off.',
   },
 ];
 
@@ -171,7 +177,19 @@ export default function ChatEngineToggle() {
     if (key === 'auto_gap_from_answer_status') return system.autoGapFromAnswerStatus;
     if (key === 'source_lifecycle_enabled') return system.sourceLifecycleEnabled;
     if (key === 'knowledge_health_enabled') return system.knowledgeHealthEnabled;
+    if (key === 'knowledge_health_snapshots_enabled') return system.knowledgeHealthSnapshotsEnabled;
     return false;
+  };
+
+  const captureSnapshotNow = async () => {
+    try {
+      const r = await base44.functions.invoke('captureKnowledgeHealthSnapshot', { dryRun: false });
+      const d = r?.data ?? r;
+      if (d?.ok) toast.success(`Snapshot captured for ${d.period_key} (${d.written} scope${d.written === 1 ? '' : 's'})`);
+      else toast.error(d?.message || 'Snapshot refused — is the flag on?');
+    } catch (err) {
+      toast.error('Failed to capture snapshot: ' + (err?.message || 'Unknown error'));
+    }
   };
 
   return (
@@ -284,6 +302,19 @@ export default function ChatEngineToggle() {
               );
             })}
           </div>
+          {system.knowledgeHealthSnapshotsEnabled && (
+            <div className="flex items-center justify-between gap-3 mt-2">
+              <p className="text-xs text-muted-foreground/70">
+                Capture a KnowledgeHealthSnapshot for the current month now (general + each active client). Idempotent — re-running overwrites this month's rows.
+              </p>
+              <button
+                onClick={captureSnapshotNow}
+                className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border bg-card text-muted-foreground border-border hover:border-primary/50"
+              >
+                Capture snapshot now
+              </button>
+            </div>
+          )}
           {system.requireVerification && (
             <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />

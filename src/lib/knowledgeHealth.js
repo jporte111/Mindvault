@@ -8,6 +8,40 @@ export function fetchKnowledgeHealth(scope) {
   return base44.functions.invoke('computeKnowledgeHealth', body).then((r) => r?.data ?? r);
 }
 
+// Phase 9 P9-1 — admin "Capture snapshot now" (write mode). The backend refuses
+// the write unless knowledge_health_snapshots_enabled is true.
+export function captureKnowledgeHealthSnapshot(dryRun = false) {
+  return base44.functions
+    .invoke('captureKnowledgeHealthSnapshot', { dryRun })
+    .then((r) => r?.data ?? r);
+}
+
+// trend direction -> tone
+export const TREND_TONE = {
+  improving: 'ok',
+  stable: 'muted',
+  deteriorating: 'error',
+  unknown: 'muted',
+};
+
+// Phase 9 P9-1 — which trend dimensions the Overview "Since ..." strip shows,
+// in display order, with plain-language labels. Bands + the derived coverage
+// ratio + the leadership-facing counts. Deterministic; no score.
+export const TREND_STRIP_DIMENSIONS = [
+  { key: 'critical_coverage_ratio', label: 'Critical process coverage', kind: 'ratio' },
+  { key: 'coverage_band', label: 'Coverage band', kind: 'band' },
+  { key: 'currency_band', label: 'Currency band', kind: 'band' },
+  { key: 'verification_band', label: 'Verification band', kind: 'band' },
+  { key: 'key_person_resilience_band', label: 'Key-person resilience', kind: 'band' },
+  { key: 'processes_at_risk', label: 'Processes at risk', kind: 'count' },
+  { key: 'reviews_overdue', label: 'Overdue reviews', kind: 'count' },
+  { key: 'active_not_verified', label: 'Active knowledge not yet verified', kind: 'count' },
+  { key: 'gaps_open', label: 'Open knowledge gaps', kind: 'count' },
+  { key: 'key_person_high_or_critical', label: 'Key-person dependencies', kind: 'count' },
+  { key: 'sources_needing_attention', label: 'Sources needing attention', kind: 'count' },
+  { key: 'processes_without_owner_or_sme', label: 'Processes without owner/SME', kind: 'count' },
+];
+
 // tone -> tailwind classes for badges / band pills
 export const TONE = {
   ok: 'bg-emerald-100 text-emerald-700 border-emerald-200',

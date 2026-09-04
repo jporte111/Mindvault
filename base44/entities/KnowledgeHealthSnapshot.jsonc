@@ -1,0 +1,88 @@
+{
+  "name": "KnowledgeHealthSnapshot",
+  "type": "object",
+  // Phase 9 P9-1. A periodic AGGREGATE projection of the Phase 7 current-health
+  // payload — one row per (period_key, client_scope). Every field is a scalar or
+  // an enum band already computed by computeKnowledgeHealth; nothing here is
+  // recalculated. It carries NO person data: no client_id, no user ids, no
+  // reporter identity, no names, no titles, no raw questions. Written only by
+  // captureKnowledgeHealthSnapshot (idempotent upsert on the identity pair) and
+  // read only by the computeKnowledgeHealth function boundary for trend
+  // enrichment. The Phase 7 engine (base44/shared/mindvaultHealth.ts) never
+  // touches this entity.
+  "properties": {
+    // --- identity ---
+    "period_key": {
+      "type": "string",
+      "description": "Calendar month, 'YYYY-MM'. Exactly one row per (period_key, client_scope)."
+    },
+    "client_scope": {
+      "type": "string",
+      "description": "Canonical isolation scope, verbatim: 'general' or 'client:<id>'. Same convention as Notification.client_scope — a denormalized client_id could drift, so there is deliberately no separate field."
+    },
+    "schema_version": {
+      "type": "number",
+      "description": "Bumped when the projected metric set changes. computeTrend returns 'unknown' for every dimension across a version mismatch — old rows are never reinterpreted."
+    },
+
+    // --- snapshot bands (verbatim from payload.snapshot.*.band) ---
+    "coverage_band": { "type": "string", "enum": ["Strong", "Partial", "Weak", "Unknown"] },
+    "currency_band": { "type": "string", "enum": ["Current", "Slipping", "Overdue", "Unknown"] },
+    "verification_band": { "type": "string", "enum": ["Confirmed", "Mostly confirmed", "Review backlog", "Unknown"] },
+    "key_person_resilience_band": { "type": "string", "enum": ["Resilient", "Watch", "Exposed"] },
+
+    // --- coverage / M1 (payload.metrics.criticalCoverage) ---
+    "critical_covered": { "type": "number" },
+    "critical_evaluable": { "type": "number" },
+    "critical_unknown": { "type": "number" },
+
+    // --- reviews (payload.metrics.knowledgeNeedingReview) ---
+    "reviews_overdue": { "type": "number" },
+    "reviews_due_soon": { "type": "number" },
+
+    // --- verification (payload.metrics.activeNotVerified) ---
+    "active_not_verified": { "type": "number" },
+    "active_not_verified_critical": { "type": "number" },
+
+    // --- gaps (payload.metrics.openGaps) ---
+    "gaps_open": { "type": "number" },
+    "gaps_watching": { "type": "number" },
+
+    // --- continuity / key-person ---
+    "processes_total": { "type": "number" },
+    "processes_at_risk": { "type": "number" },
+    "key_person_high_or_critical": { "type": "number" },
+    "concentration_people": { "type": "number" },
+
+    // --- source / effective-date (payload.metrics) ---
+    "sources_needing_attention": { "type": "number" },
+    "expired_active": { "type": "number" },
+
+    // --- governance headline (payload.metrics.processesWithoutOwnerOrSme) ---
+    "processes_without_owner_or_sme": { "type": "number" },
+
+    // --- setup gaps (payload.setup) ---
+    "processes_needing_owner": { "type": "number" },
+    "processes_needing_sme": { "type": "number" },
+    "processes_needing_criticality": { "type": "number" },
+    "sources_needing_cadence": { "type": "number" },
+    "unlinked_sources": { "type": "number" },
+    "unclassified_items": { "type": "number" },
+    "legacy_needing_reindex": { "type": "number" }
+  },
+  "required": [
+    "period_key",
+    "client_scope",
+    "schema_version",
+    "coverage_band",
+    "currency_band",
+    "verification_band",
+    "key_person_resilience_band"
+  ],
+  "rls": {
+    "read": { "user_condition": { "role": "admin" } },
+    "create": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

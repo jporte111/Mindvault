@@ -12,3 +12,7 @@ export * from "./snapshot.ts";
 export * from "./reviewQueue.ts";
 export * from "./presentation.ts";
 export * from "./draftStuck.ts";
+// Phase 9 P9-1 — historical snapshot projection + deterministic trend. Pure;
+// the Phase 7 current-health engine (mindvaultHealth.ts) never imports these.
+export * from "./snapshotProjection.ts";
+export * from "./trend.ts";
