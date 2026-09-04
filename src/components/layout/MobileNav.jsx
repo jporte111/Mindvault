@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
@@ -14,7 +14,7 @@ function titleFor(pathname) {
   return 'Knowledge Base';
 }
 
-export default function MobileNav({ user }) {
+export default function MobileNav({ user, onOpenHelp }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -48,6 +48,16 @@ export default function MobileNav({ user }) {
             {titleFor(location.pathname)}
           </span>
           <NotificationBell />
+          {user?.role === 'admin' && (
+            <button
+              onClick={onOpenHelp}
+              className="flex items-center justify-center w-11 h-11 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              aria-label="Help"
+              title="Help"
+            >
+              <CircleHelp className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={() => setSettingsOpen(true)}
             className="flex items-center justify-center w-11 h-11 -mr-1 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"

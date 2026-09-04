@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
+import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   fetchKnowledgeHealth, TONE, BAND_TONE, COVERAGE_TONE, CONTINUITY_TONE, KEYPERSON_TONE,
   TREND_TONE, TREND_STRIP_DIMENSIONS,
@@ -24,11 +25,14 @@ function Pill({ tone = 'muted', children }) {
   return <Badge variant="outline" className={`text-xs ${TONE[tone] || TONE.muted}`}>{children}</Badge>;
 }
 
-function BandCard({ title, band, label, caveat }) {
+function BandCard({ title, band, label, caveat = null, help = null }) {
   return (
     <Card className="border-border">
       <CardContent className="py-4">
-        <p className="text-xs text-muted-foreground uppercase tracking-wide">{title}</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          {title}
+          {help && <ConceptHelp term={help} className="normal-case" />}
+        </p>
         <div className="mt-1 flex items-center gap-2">
           <span className={`inline-block w-2.5 h-2.5 rounded-full ${
             (BAND_TONE[band] === 'ok') ? 'bg-emerald-500'
@@ -140,8 +144,8 @@ function TrendPanel({ history }) {
   return (
     <Card className="border-border">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">
-          Trends <span className="text-xs font-normal text-muted-foreground">· {count} periods{range ? ` (${range.first} – ${range.last})` : ''}</span>
+        <CardTitle className="text-base font-semibold flex items-center gap-1">
+          Trends <ConceptHelp term="snapshot" /> <span className="text-xs font-normal text-muted-foreground">· {count} periods{range ? ` (${range.first} – ${range.last})` : ''}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
@@ -245,8 +249,8 @@ function WhatChanged({ change, onProcesses, onGaps }) {
   return (
     <Card className="border-border">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">
-          What changed <span className="text-xs font-normal text-muted-foreground">· since {c.previous_period_key || 'the prior period'}{periods}</span>
+        <CardTitle className="text-base font-semibold flex items-center gap-1">
+          What changed <ConceptHelp term="what_changed" /> <span className="text-xs font-normal text-muted-foreground">· since {c.previous_period_key || 'the prior period'}{periods}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
@@ -521,10 +525,10 @@ export default function Continuity() {
 
           {/* Snapshot */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <BandCard title="Coverage" band={data.snapshot.coverage.band} label={data.snapshot.coverage.label} />
+            <BandCard title="Coverage" band={data.snapshot.coverage.band} label={data.snapshot.coverage.label} help="coverage" />
             <BandCard title="Currency" band={data.snapshot.currency.band} label={data.snapshot.currency.label} />
-            <BandCard title="Verification" band={data.snapshot.verification.band} label={data.snapshot.verification.label} caveat={data.snapshot.verification.caveat} />
-            <BandCard title="Key-person resilience" band={data.snapshot.keyPersonResilience.band} label={data.snapshot.keyPersonResilience.label} />
+            <BandCard title="Verification" band={data.snapshot.verification.band} label={data.snapshot.verification.label} caveat={data.snapshot.verification.caveat} help="verification" />
+            <BandCard title="Key-person resilience" band={data.snapshot.keyPersonResilience.band} label={data.snapshot.keyPersonResilience.label} help="key_person" />
           </div>
 
           {/* Summary cards */}
@@ -596,7 +600,7 @@ export default function Continuity() {
                     <th className="px-4 py-2">Review</th>
                     <th className="px-4 py-2">Gaps</th>
                     <th className="px-4 py-2">Key-person</th>
-                    <th className="px-4 py-2">State</th>
+                    <th className="px-4 py-2">State <ConceptHelp term="continuity_exposure" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -745,6 +749,10 @@ export default function Continuity() {
 
       {data && tab === 'gaps' && (
         <div className="space-y-5">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold text-foreground">Knowledge gaps</h2>
+            <ConceptHelp term="knowledge_gap" />
+          </div>
           <p className="text-xs text-muted-foreground">{data.gapInvariantNote}</p>
           {[
             { key: 'open', title: 'Open', match: (g) => g.state === 'open' },

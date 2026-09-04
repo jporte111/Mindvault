@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
@@ -18,7 +18,7 @@ const adminItems = [
   { path: '/admin', icon: Settings, label: 'Admin' },
 ];
 
-export default function Sidebar({ user }) {
+export default function Sidebar({ user, onOpenHelp }) {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { clarificationsEnabled, knowledgeHealthEnabled } = useSystemConfig();
@@ -100,6 +100,16 @@ export default function Sidebar({ user }) {
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell />
+            {user?.role === 'admin' && (
+              <button
+                onClick={onOpenHelp}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label="Help"
+                title="Help"
+              >
+                <CircleHelp className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={() => setSettingsOpen(true)}
               className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"

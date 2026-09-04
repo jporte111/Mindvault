@@ -69,6 +69,9 @@ test('EmptyState is a shared component; onboarding + changed pages carry no jarg
   const files = [
     'src/components/common/EmptyState.jsx',
     'src/components/onboarding/SetupChecklist.jsx',
+    'src/components/onboarding/Walkthrough.jsx',
+    'src/components/onboarding/ConceptHelp.jsx',
+    'src/lib/walkthroughSteps.js',
     'src/pages/Library.jsx',
     'src/pages/Chat.jsx',
     'src/pages/MyQuestions.jsx',
@@ -139,6 +142,20 @@ test('SetupChecklist is admin-guarded and only mounted on the Admin page', () =>
   for (const p of ['src/pages/Library.jsx', 'src/pages/Chat.jsx', 'src/pages/MyQuestions.jsx']) {
     assert.equal(read(p).includes('SetupChecklist'), false, `${p} must not mount the setup checklist`);
   }
+});
+
+test('Onboarding-2 walkthrough / concept-help copy reintroduces no legacy "Training(s)" noun', () => {
+  for (const f of ['src/lib/walkthroughSteps.js', 'src/components/onboarding/Walkthrough.jsx', 'src/components/onboarding/ConceptHelp.jsx']) {
+    const s = read(f);
+    assert.equal(/\btraining(s)?\b/i.test(s.replace(/training\.id|Training\.(list|get|create|update)|\/training\//g, '')), false, `${f} reintroduces "training(s)" in visible copy`);
+  }
+});
+
+test('Onboarding-2 walkthrough step copy also bans "retrieval" and standalone "index" (spec-specific additions)', () => {
+  const s = read('src/lib/walkthroughSteps.js');
+  const copy = [...s.matchAll(/(title|copy|secondary|actionLabel):\s*'([^']*)'/g)].map((m) => m[2]).join(' ');
+  assert.equal(/\bretrieval\b/i.test(copy), false);
+  assert.equal(/\bindex(ing|ed)?\b/i.test(copy), false);
 });
 
 test('setupChecklist.js is pure — no imports, no Base44 / network / storage', () => {
