@@ -3,6 +3,7 @@ import { redact } from '../../shared/redact.ts';
 import { computeNotificationFindings } from '../../shared/notification/mindvaultNotifications.ts';
 import {
   planReconciliation,
+  resolveWriteGate,
   rowFromDraft,
   type FindingDraft,
   type ReconcilePlan,
@@ -12,9 +13,11 @@ import {
 // P8-1 findings as a projection of governed state and diffs them against
 // existing Notification episodes (create / remind / resolve / retarget).
 //
-// P8-1 builds the function but does NOT schedule it — the scheduled workflow
-// and the notifications_enabled flag belong to P8-2. dryRun DEFAULTS TO TRUE
-// (safe): an explicit { "dryRun": false } is required for any write.
+// P8-2 adds the notifications_enabled master flag (AppConfig row key 'system',
+// default false) and the scheduled 'Daily Notifications Reconcile' workflow.
+// dryRun DEFAULTS TO TRUE (safe) and stays available for admin diagnostics
+// even while the flag is off; write mode additionally requires
+// notifications_enabled === true and is refused with a clear reason otherwise.
 //
 // Never deletes notifications; never invokes LLMs or embeddings; no retrieval or
 // answer-generation effects. Admin-only.
@@ -23,6 +26,22 @@ function createsByKind(plan: ReconcilePlan): Record<string, number> {
   const out: Record<string, number> = {};
   for (const c of plan.creates) {
     out[c.draft.kind] = (out[c.draft.kind] || 0) + 1;
+  }
+  return out;
+}
+
+function createsBySeverity(plan: ReconcilePlan): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of plan.creates) {
+    out[c.draft.severity] = (out[c.draft.severity] || 0) + 1;
+  }
+  return out;
+}
+
+function createsByScope(plan: ReconcilePlan): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of plan.creates) {
+    out[c.draft.clientScope] = (out[c.draft.clientScope] || 0) + 1;
   }
   return out;
 }
@@ -37,6 +56,27 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const dryRun = body?.dryRun !== false; // default SAFE: dry-run
     const now = body?.now && !Number.isNaN(Date.parse(body.now)) ? Date.parse(body.now) : Date.now();
+
+    // P8-2 feature flag (AppConfig row key 'system'). Missing row/field => false.
+    const sysRow = await base44.asServiceRole.entities.AppConfig.filter({ key: 'system' })
+      .catch(() => [])
+      .then((r: any[]) => r?.[0]);
+    const notificationsEnabled = sysRow?.notifications_enabled === true;
+
+    // Deterministic write gate: dry-run is ALWAYS allowed (flag-independent
+    // admin diagnostics); write mode is refused — never silently executed —
+    // while notifications_enabled is false.
+    const gate = resolveWriteGate({ notificationsEnabled, dryRun });
+    if (!gate.allowed) {
+      return Response.json({
+        ok: false,
+        dryRun: false,
+        reason: gate.reason,
+        notifications_enabled: false,
+        message:
+          'Notification writes are disabled (notifications_enabled is false). Dry-run remains available for diagnostics: call with { "dryRun": true }.',
+      }, { status: 403 });
+    }
 
     const { findings, stats } = await computeNotificationFindings(base44, { now });
     const existing = await base44.asServiceRole.entities.Notification.filter(
@@ -55,6 +95,8 @@ Deno.serve(async (req) => {
         generated_at,
         counts: { ...plan.counts, findings: findings.length },
         creates_by_kind: createsByKind(plan),
+        creates_by_severity: createsBySeverity(plan),
+        creates_by_scope: createsByScope(plan),
         stats,
       });
     }
@@ -82,6 +124,8 @@ Deno.serve(async (req) => {
         findings: findings.length,
       },
       creates_by_kind: createsByKind(plan),
+      creates_by_severity: createsBySeverity(plan),
+      creates_by_scope: createsByScope(plan),
       stats,
     });
   } catch (error) {

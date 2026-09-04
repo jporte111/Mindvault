@@ -196,6 +196,37 @@ export function canDismiss(
   return { ok: true, noop: row.status === "dismissed" };
 }
 
+// --- P8-2 feature-flag write gate -------------------------------------------
+
+export interface WriteGateInput {
+  notificationsEnabled: boolean;
+  dryRun: boolean;
+}
+
+export type WriteGate =
+  | { allowed: true; dryRun: boolean }
+  | { allowed: false; reason: "notifications_disabled"; dryRun: boolean; notificationsEnabled: false };
+
+/**
+ * P8-2. Deterministic write gate for computeNotifications:
+ *   - dry-run is ALWAYS allowed (admin diagnostics), regardless of the flag;
+ *   - write mode additionally requires notifications_enabled === true — while
+ *     the flag is off the run is refused with a clear reason and performs
+ *     zero writes. Never a silent write while disabled.
+ */
+export function resolveWriteGate(input: WriteGateInput): WriteGate {
+  if (input.dryRun) return { allowed: true, dryRun: true };
+  if (!input.notificationsEnabled) {
+    return {
+      allowed: false,
+      reason: "notifications_disabled",
+      dryRun: false,
+      notificationsEnabled: false,
+    };
+  }
+  return { allowed: true, dryRun: false };
+}
+
 // --- reconciliation plan ---------------------------------------------------
 
 export interface FindingDraft {

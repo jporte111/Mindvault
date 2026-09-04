@@ -1,0 +1,47 @@
+{
+  "name": "Daily Notifications Reconcile",
+  "description": "Phase 8 P8-2. Once-daily deterministic notification reconciliation: invokes computeNotifications in write mode, which computes the current findings, diffs them against Notification episodes (create / remind / resolve / retarget \u2014 never delete), and refuses all writes while the notifications_enabled flag is false.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 7 * * *",
+      "one_time_date": null,
+      "timezone": "America/New_York",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_notifications_reconcile",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "reconcile_notifications": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "computeNotifications",
+            "args": {
+              "dryRun": false
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Reconcile notifications",
+            "description": "Write mode; refused while notifications_enabled is off"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -28,7 +28,7 @@
         "semantic"
       ],
       "default": "auto",
-      "description": "How askKnowledgeBaseV2 retrieves. 'auto' (default): use semantic embeddings when the query embed() call succeeds, otherwise fall back to lexical/keyword ranking automatically. 'lexical': never call the embeddings provider. 'semantic': require embeddings and error loudly if unavailable. Embeddings are an optional enhancement — no deployment needs EMBEDDINGS_API_KEY to use the knowledge base."
+      "description": "How askKnowledgeBaseV2 retrieves. 'auto' (default): use semantic embeddings when the query embed() call succeeds, otherwise fall back to lexical/keyword ranking automatically. 'lexical': never call the embeddings provider. 'semantic': require embeddings and error loudly if unavailable. Embeddings are an optional enhancement \u2014 no deployment needs EMBEDDINGS_API_KEY to use the knowledge base."
     },
     "require_verification_for_retrieval": {
       "type": "boolean",
@@ -43,12 +43,12 @@
     "governance_ranking_enabled": {
       "type": "boolean",
       "default": true,
-      "description": "Phase 3 governance flag (row key:'system'). When true (default), rankChunks applies a small additive source-authority boost and freshness penalty. Non-destructive — missing metadata is neutral. Kept as a kill-switch if eval recall regresses."
+      "description": "Phase 3 governance flag (row key:'system'). When true (default), rankChunks applies a small additive source-authority boost and freshness penalty. Non-destructive \u2014 missing metadata is neutral. Kept as a kill-switch if eval recall regresses."
     },
     "answer_logging_enabled": {
       "type": "boolean",
       "default": false,
-      "description": "Phase 3 observability flag (row key:'system'). When true, askKnowledgeBaseV2 writes one AnswerLog row per question (knowledge-quality analytics — no asking-user id is stored). Default false: logging raw employee questions is an explicit admin opt-in."
+      "description": "Phase 3 observability flag (row key:'system'). When true, askKnowledgeBaseV2 writes one AnswerLog row per question (knowledge-quality analytics \u2014 no asking-user id is stored). Default false: logging raw employee questions is an explicit admin opt-in."
     },
     "operational_answer_mode": {
       "type": "boolean",
@@ -73,11 +73,11 @@
     "source_lifecycle_enabled": {
       "type": "boolean",
       "default": false,
-      "description": "Phase 6 master flag (row key:'system'). BINDING concern only — the lifecycle engine's safety (index_stale gating, operation-record-driven reconcile) is unconditional wherever wired. When false: the Knowledge Lifecycle admin panel is hidden and reviewKnowledgeSource / updateKnowledgeSource write actions return 403 lifecycle_disabled. It does NOT re-enable any legacy direct content/lifecycle write path (those are removed permanently), and it does NOT clear existing index_stale=true chunks — a stale/failed index stays fail-closed until repaired. reconcileSourceLifecycle, reindexKnowledgeSource, listKnowledgeSourceHistory, and first-time classification of a never-classified source remain available."
+      "description": "Phase 6 master flag (row key:'system'). BINDING concern only \u2014 the lifecycle engine's safety (index_stale gating, operation-record-driven reconcile) is unconditional wherever wired. When false: the Knowledge Lifecycle admin panel is hidden and reviewKnowledgeSource / updateKnowledgeSource write actions return 403 lifecycle_disabled. It does NOT re-enable any legacy direct content/lifecycle write path (those are removed permanently), and it does NOT clear existing index_stale=true chunks \u2014 a stale/failed index stays fail-closed until repaired. reconcileSourceLifecycle, reindexKnowledgeSource, listKnowledgeSourceHistory, and first-time classification of a never-classified source remain available."
     },
     "lifecycle_vocabulary": {
       "type": "string",
-      "description": "Phase 6 OPTIONAL (row key:'system'). JSON string overriding the plain-language DisplayState / DisplayAction / freshness labels shown in the admin UI (the vocabulary map). Absent = the MindVault default vocabulary. Presentation only — never changes engine behavior, governance, or safety."
+      "description": "Phase 6 OPTIONAL (row key:'system'). JSON string overriding the plain-language DisplayState / DisplayAction / freshness labels shown in the admin UI (the vocabulary map). Absent = the MindVault default vocabulary. Presentation only \u2014 never changes engine behavior, governance, or safety."
     },
     "source_taxonomy": {
       "type": "string",
@@ -86,16 +86,33 @@
     "knowledge_health_enabled": {
       "type": "boolean",
       "default": false,
-      "description": "Phase 7 master flag (row key:'system'). When false: the /continuity Operational Continuity dashboard route and nav are hidden and computeKnowledgeHealth returns 403 health_disabled. The dashboard is a read-only deterministic aggregation over governed entities (no embeddings, no LLM, no retrieval change, no chunk content); it writes nothing. Off by default — enable deliberately after live smoke."
+      "description": "Phase 7 master flag (row key:'system'). When false: the /continuity Operational Continuity dashboard route and nav are hidden and computeKnowledgeHealth returns 403 health_disabled. The dashboard is a read-only deterministic aggregation over governed entities (no embeddings, no LLM, no retrieval change, no chunk content); it writes nothing. Off by default \u2014 enable deliberately after live smoke."
+    },
+    "notifications_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Phase 8 P8-2 master flag (row key:'system'). When true: explicit { dryRun: false } runs of computeNotifications (including the scheduled 'Daily Notifications Reconcile' workflow) may write Notification episodes. When false (default): computeNotifications dry-run remains available for admin diagnostics, but EVERY write attempt is refused with a clear reason and zero Notification rows are created \u2014 never a silent write. Affects only notification reconciliation; never retrieval, answer generation, or Phase 7 health rules."
     }
   },
   "required": [
     "key"
   ],
   "rls": {
-    "create": { "user_condition": { "role": "admin" } },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "read": true,
-    "update": { "user_condition": { "role": "admin" } },
-    "delete": { "user_condition": { "role": "admin" } }
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
   }
 }
