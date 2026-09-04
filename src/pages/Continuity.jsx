@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import EmptyState from '@/components/common/EmptyState';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -125,8 +126,11 @@ function TrendPanel({ history }) {
     return (
       <Card className="border-border">
         <CardContent className="py-3 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Trends</span> — need at least two monthly
-          snapshots. {count === 1 ? 'One period captured so far.' : 'No snapshots captured yet.'}
+          <span className="font-medium text-foreground">Trends</span> — a monthly snapshot records
+          your continuity numbers so leadership can see whether things are improving or slipping.{' '}
+          {count === 1
+            ? 'One month captured so far — trends appear after the next monthly snapshot.'
+            : 'No months captured yet. Turn on Knowledge Health Snapshots under Admin → System to start.'}
         </CardContent>
       </Card>
     );
@@ -350,6 +354,20 @@ const KEYPERSON_OPTS = [
 export default function Continuity() {
   const isAdmin = useIsAdmin();
   const { knowledgeHealthEnabled } = useSystemConfig();
+
+  // Onboarding-1: record that an admin has opened the dashboard, so the setup
+  // checklist's "Continuity dashboard reviewed" item can complete. Never proven
+  // by a snapshot existing — only by an actual visit.
+  useEffect(() => {
+    if (isAdmin && knowledgeHealthEnabled) {
+      try {
+        localStorage.setItem('mv_continuity_visited', 'true');
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [isAdmin, knowledgeHealthEnabled]);
+
   const [tab, setTab] = useState('overview');
   const [scope, setScope] = useState('general');
   const [detailProcessId, setDetailProcessId] = useState(null);
@@ -647,7 +665,13 @@ export default function Continuity() {
                     );
                   })}
                   {sortedRows.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">No processes in this scope yet.</td></tr>
+                    <tr><td colSpan={8} className="p-0">
+                      <EmptyState
+                        title="No operational processes yet"
+                        body="Operational processes are the workflows the business runs on. Add the 3–5 you could least afford to lose, then give each one an owner and a subject-matter expert."
+                        action={{ label: 'Add a process in Admin', href: '/admin' }}
+                      />
+                    </td></tr>
                   )}
                 </tbody>
               </table>
@@ -694,7 +718,10 @@ export default function Continuity() {
       {data && tab === 'people' && (
         <div className="space-y-3">
           {(data.keyPersonExposure || []).length === 0
-            ? <p className="text-sm text-muted-foreground">No single-person dependencies found.</p>
+            ? <EmptyState
+                title="No key-person dependencies found"
+                body="No critical process currently depends on one identifiable person with no backup. This is about keeping the business resilient — assign backup SMEs on your critical processes to keep it that way."
+              />
             : (data.keyPersonExposure || []).map((p) => (
               <Card key={p.userId} className="border-border">
                 <CardContent className="py-3">

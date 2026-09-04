@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import TrainingCard from '@/components/knowledge/TrainingCard';
+import EmptyState from '@/components/common/EmptyState';
 import { Input } from '@/components/ui/input';
 import { BookOpen, Search, ChevronDown, Download, Upload } from 'lucide-react';
 import SubmitRecordingModal from '@/components/knowledge/SubmitRecordingModal';
@@ -167,13 +168,19 @@ export default function Library() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-20">
-              <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground font-medium">No knowledge found</p>
-              <p className="text-muted-foreground/60 text-sm mt-1">
-                {search || hasActiveFilters ? 'Try adjusting your search or filters' : 'Add a knowledge source to get started'}
-              </p>
-            </div>
+            (search || hasActiveFilters) ? (
+              <div className="text-center py-20">
+                <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                <p className="text-muted-foreground font-medium">No matching knowledge</p>
+                <p className="text-muted-foreground/60 text-sm mt-1">Try adjusting your search or filters.</p>
+              </div>
+            ) : (
+              <EmptyState
+                icon={BookOpen}
+                title="No knowledge yet"
+                body="This is your team's knowledge library — SOPs, process docs, policies and recordings that the AI Assistant answers from. Add your first source with “Add Knowledge” above, or connect Google Drive to import."
+              />
+            )
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filtered.map(training => (

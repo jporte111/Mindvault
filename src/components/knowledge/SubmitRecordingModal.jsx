@@ -114,7 +114,7 @@ export default function SubmitRecordingModal({ open, onClose }) {
     queryClient.invalidateQueries({ queryKey: ['trainings'] });
     queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
     if (isClassified(scopeValue)) {
-      toast.success('Knowledge added. Index it for chat from "All Trainings" once analysis finishes.');
+      toast.success('Knowledge added. Make it searchable from the "All knowledge sources" list once analysis finishes.');
     } else {
       toast.success('Knowledge added. Classify it under "Needs review" to make it searchable.');
     }

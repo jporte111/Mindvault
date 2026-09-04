@@ -29,6 +29,7 @@ export default function Chat() {
   const inputRef = useRef(null);
 
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { chatEngine, ragRolloutPct } = useChatConfig();
   const { knowledgeGapsEnabled, clarificationsEnabled } = useSystemConfig();
   const engine = chatEngine === 'rag' || bucketFor(user?.id) < ragRolloutPct ? 'rag' : 'legacy';
@@ -114,12 +115,17 @@ export default function Chat() {
               </div>
               <h1 className="font-sora text-2xl font-bold text-foreground mb-2">AI Assistant</h1>
               <p className="text-muted-foreground text-sm max-w-md leading-relaxed">
-                Ask anything about your training library — SOPs, decision rules, common mistakes, and past sessions. Answers cite the source trainings.
+                Ask anything about how your team works — SOPs, decision rules, common mistakes, past sessions. Answers are grounded only in your approved knowledge and cite their sources.
               </p>
               {!hasContent && (
-                <div className="mt-6 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm max-w-md">
-                  <Database className="w-4 h-4 flex-shrink-0" />
-                  <span>No analyzed trainings yet. An admin needs to sync and analyze recordings first.</span>
+                <div className="mt-6 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm max-w-md text-left">
+                  <Database className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    There’s no knowledge to answer from yet.{' '}
+                    {isAdmin
+                      ? 'Add and classify knowledge sources so employees can get grounded answers here.'
+                      : 'Ask an admin to add and classify knowledge sources — then this assistant can help.'}
+                  </span>
                 </div>
               )}
             </div>
@@ -167,7 +173,7 @@ export default function Chat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
-            placeholder={hasContent ? 'Ask about a training, SOP, or decision rule...' : 'Knowledge base is empty — sync trainings first'}
+            placeholder={hasContent ? 'Ask about a process, SOP, or decision rule…' : 'No knowledge to answer from yet'}
             className="flex-1 h-11 rounded-full border border-input bg-card px-5 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           />
           <button

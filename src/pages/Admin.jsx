@@ -21,6 +21,8 @@ import AnswerLogInspector from '@/components/admin/AnswerLogInspector';
 import KnowledgeGapManager from '@/components/admin/KnowledgeGapManager';
 import ClarificationQueue from '@/components/admin/ClarificationQueue';
 import ClientSelect from '@/components/knowledge/ClientSelect';
+import SetupChecklist from '@/components/onboarding/SetupChecklist';
+import EmptyState from '@/components/common/EmptyState';
 import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
 const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
@@ -93,9 +95,9 @@ export default function Admin() {
     if (res.data.synced > 0) {
       queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
       queryClient.invalidateQueries({ queryKey: ['trainings'] });
-      toast.success(`Synced ${res.data.synced} new training(s)!`);
+      toast.success(`Synced ${res.data.synced} new knowledge source${res.data.synced === 1 ? '' : 's'}!`);
     } else {
-      toast.info('No new trainings found.');
+      toast.info('No new knowledge sources found.');
     }
   };
 
@@ -328,10 +330,13 @@ export default function Admin() {
       {/* Content Management Tab */}
       {activeTab === 'content' && (
       <div className="px-8 py-8 max-w-5xl mx-auto space-y-6">
+        {/* Onboarding-1: derived setup checklist (admin-only, never blocking) */}
+        <SetupChecklist />
+
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Total Trainings', value: stats.total, icon: BookOpen },
+            { label: 'Total knowledge sources', value: stats.total, icon: BookOpen },
             { label: 'Ready', value: stats.ready, icon: CheckCircle2 },
             { label: 'Processing', value: stats.processing, icon: Clock },
           ].map(({ label, value, icon: Icon }) => (
@@ -453,7 +458,7 @@ export default function Admin() {
                   <p>Error: {syncResult.error}</p>
                 ) : (
                   <p>
-                    ✓ Synced <strong>{syncResult.synced}</strong> new training(s) · 
+                    ✓ Synced <strong>{syncResult.synced}</strong> new knowledge source(s) ·
                     Skipped <strong>{syncResult.skipped}</strong> already-imported
                   </p>
                 )}
@@ -462,12 +467,12 @@ export default function Admin() {
           </CardContent>
         </Card>
 
-        {/* Training List */}
+        {/* Knowledge source list */}
         <Card className="border-border">
           <CardHeader className="pb-4">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-primary" />
-              All Trainings
+              All knowledge sources
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -478,10 +483,11 @@ export default function Admin() {
                 ))}
               </div>
             ) : trainings.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                <BookOpen className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                <p>No trainings yet. Sync from Google Drive to get started.</p>
-              </div>
+              <EmptyState
+                icon={BookOpen}
+                title="No knowledge sources yet"
+                body="This is where your operational knowledge lives — SOPs, process docs, policies and recordings — so employees can get grounded answers. Add your first source above, or connect Google Drive to import."
+              />
             ) : (
               <div className="divide-y divide-border">
                 {trainings.map(training => {
