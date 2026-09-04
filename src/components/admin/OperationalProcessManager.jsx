@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Workflow, Loader2, Archive, ArchiveRestore, Pencil, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
+import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   PROCESS_CRITICALITY_OPTIONS,
   CRITICALITY_LABEL,
@@ -73,7 +74,9 @@ function ProcessForm({ form, setForm, users, clients, onSubmit, onCancel, saving
           <Input value={form.department} onChange={(e) => set('department', e.target.value)} className="bg-background" disabled={saving} />
         </div>
         <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Criticality</Label>
+          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            Criticality <ConceptHelp term="criticality" />
+          </Label>
           <select className={selectClass} value={form.criticality} onChange={(e) => set('criticality', e.target.value)} disabled={saving}>
             <option value="">Not set</option>
             {PROCESS_CRITICALITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -82,7 +85,9 @@ function ProcessForm({ form, setForm, users, clients, onSubmit, onCancel, saving
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Review interval (days)</Label>
+          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            Review interval (days) <ConceptHelp term="review_cadence" />
+          </Label>
           <Input type="number" min={1} value={form.review_interval_days} onChange={(e) => set('review_interval_days', e.target.value)} placeholder={REVIEW_INTERVAL_OPTIONS.join(' / ')} className="bg-background" disabled={saving} />
         </div>
         <div>
@@ -94,12 +99,14 @@ function ProcessForm({ form, setForm, users, clients, onSubmit, onCancel, saving
       </div>
       <div className="grid sm:grid-cols-3 gap-3">
         {[
-          ['process_owner', 'Owner'],
-          ['subject_matter_expert', 'SME'],
-          ['backup_sme', 'Backup SME'],
-        ].map(([key, label]) => (
+          ['process_owner', 'Owner', 'owner'],
+          ['subject_matter_expert', 'SME', 'sme'],
+          ['backup_sme', 'Backup SME', 'backup_sme'],
+        ].map(([key, label, term]) => (
           <div key={key}>
-            <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
+            <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              {label} <ConceptHelp term={term} />
+            </Label>
             <select className={selectClass} value={form[key]} onChange={(e) => set(key, e.target.value)} disabled={saving}>
               {userOptions.map((u) => <option key={u.id || 'none'} value={u.id}>{u.label}</option>)}
             </select>

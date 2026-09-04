@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, GitBranch, RefreshCw, AlertTriangle, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
+import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   STATE_LABELS,
   ACTION_LABELS,
@@ -130,6 +131,7 @@ export default function KnowledgeLifecyclePanel() {
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary" />
           Knowledge Lifecycle
+          <ConceptHelp term="verification" />
         </CardTitle>
         <Button variant="outline" size="sm" className="gap-1.5 text-xs" disabled={busy === 'reconcile'} onClick={repair}>
           <RefreshCw className={`w-3.5 h-3.5 ${busy === 'reconcile' ? 'animate-spin' : ''}`} />

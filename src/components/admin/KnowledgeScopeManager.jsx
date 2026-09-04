@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Users, ShieldQuestion, Loader2, RefreshCw, Archive, ArchiveRestore } from 'lucide-react';
 import { toast } from 'sonner';
 import ClientSelect from '@/components/knowledge/ClientSelect';
+import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   classifyTraining,
   isClassified,
@@ -160,6 +161,7 @@ export default function KnowledgeScopeManager() {
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <ShieldQuestion className="w-4 h-4 text-primary" />
             Needs review
+            <ConceptHelp term="scope" />
             {needsReview.length > 0 && (
               <Badge variant="outline" className="ml-1 bg-amber-100 text-amber-700 border-amber-200 text-xs">{needsReview.length}</Badge>
             )}
