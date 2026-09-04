@@ -61,7 +61,7 @@ export default function TrainingCard({ training }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trainings'] });
       queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-      toast.success('Training deleted');
+      toast.success('Knowledge source removed');
     },
     onError: (err) => toast.error('Failed to delete: ' + err.message),
   });

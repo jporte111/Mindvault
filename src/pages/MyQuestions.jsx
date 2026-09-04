@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { MessageCircleQuestion, Loader2, Send } from 'lucide-react';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
+import EmptyState from '@/components/common/EmptyState';
 
 // Phase 5. The employee's own clarification threads. Owner-scoped via
 // getMyClarifications. Nothing here is knowledge; the SME's replies are a human
@@ -58,7 +59,12 @@ export default function MyQuestions() {
       )}
 
       {clarificationsEnabled && !isLoading && threads.length === 0 && (
-        <div className="text-sm text-muted-foreground py-8 text-center">No clarification threads yet.</div>
+        <EmptyState
+          icon={MessageCircleQuestion}
+          title="No open questions"
+          body="When an answer from the AI Assistant doesn't fully help, you can send it to an expert. Your conversations with them show up here so you can follow up."
+          action={{ label: 'Ask the AI Assistant', href: '/chat' }}
+        />
       )}
 
       {threads.map((t) => (
