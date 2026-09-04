@@ -16,6 +16,37 @@ export function captureKnowledgeHealthSnapshot(dryRun = false) {
     .then((r) => r?.data ?? r);
 }
 
+// Phase 9 P9-2 — bounded (<=12) read-only history for the multi-period trend
+// panel. Exact-scope; never merges clients.
+export function fetchKnowledgeHealthTrendHistory(scope, limit = 12) {
+  const body = scope && scope !== 'general'
+    ? { scope: { clientId: scope }, limit }
+    : { limit };
+  return base44.functions
+    .invoke('listKnowledgeHealthSnapshots', body)
+    .then((r) => r?.data ?? r);
+}
+
+// Phase 9 P9-2 — plain-language labels for the trend-series keys the backend returns.
+export const TREND_SERIES_LABELS = {
+  processes_at_risk: 'Processes at risk',
+  reviews_overdue: 'Overdue reviews',
+  active_not_verified: 'Active not verified',
+  gaps_open: 'Open gaps',
+  key_person_high_or_critical: 'Key-person high/critical',
+  sources_needing_attention: 'Sources needing attention',
+  processes_without_owner_or_sme: 'Processes without owner/SME',
+  sources_needing_cadence: 'Sources without a review schedule',
+};
+
+// Phase 9 P9-2 — governance completeness cell status -> tone.
+export const GOV_STATUS_TONE = {
+  present: 'ok',
+  needs_attention: 'warn',
+  unknown: 'muted',
+  missing: 'error',
+};
+
 // trend direction -> tone
 export const TREND_TONE = {
   improving: 'ok',

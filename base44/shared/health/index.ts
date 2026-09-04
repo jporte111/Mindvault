@@ -16,3 +16,8 @@ export * from "./draftStuck.ts";
 // the Phase 7 current-health engine (mindvaultHealth.ts) never imports these.
 export * from "./snapshotProjection.ts";
 export * from "./trend.ts";
+// Phase 9 P9-2 — presentation helpers (pure): multi-period series shaping,
+// governance completeness projection, Address First "why" rationale.
+export * from "./trendSeries.ts";
+export * from "./governanceCompleteness.ts";
+export * from "./priorityRationale.ts";

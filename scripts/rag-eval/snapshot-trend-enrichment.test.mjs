@@ -37,13 +37,17 @@ test('mindvaultHealth.ts does NOT read the P9 flag or compute a trend', () => {
 // The FUNCTION BOUNDARY does the enrichment — source-level guarantees
 // ==================================================================
 
-test('entry: when the snapshots flag is not true, the existing payload is returned unchanged (no trend)', () => {
+test('entry: when the snapshots flag is not true, NO trend key is added (P9-2 presentation fields aside)', () => {
   // the early return must be the flag guard, before any trend code
   const guardIdx = entryNoComments.indexOf("knowledge_health_snapshots_enabled !== true");
-  assert.ok(guardIdx > -1, 'entry must guard on the P9 flag');
-  const unchangedReturn = entryNoComments.indexOf('return Response.json(payload); // unchanged') > -1
-    || /knowledge_health_snapshots_enabled !== true\)\s*\{\s*return Response\.json\(payload\)/.test(entryNoComments);
-  assert.ok(unchangedReturn, 'flag-off path must return Response.json(payload) with no trend');
+  assert.ok(guardIdx > -1, 'entry must guard on the P9-1 flag');
+  // flag-off path returns WITHOUT a trend key. (P9-2 added rationale/governance
+  // to the returned object — `enriched` — but never a `trend`.)
+  assert.ok(/knowledge_health_snapshots_enabled !== true\)\s*\{\s*return Response\.json\(enriched\);/.test(entryNoComments),
+    'flag-off path must return the payload with no trend key');
+  assert.equal(/return Response\.json\(enriched\);[\s\S]*trend/.test(
+    entryNoComments.slice(guardIdx, entryNoComments.indexOf('computeTrend'))), false,
+    'no trend before the flag branch resolves');
   const trendIdx = entryNoComments.indexOf('computeTrend(current');
   assert.ok(guardIdx < trendIdx, 'the flag guard must precede the trend computation');
 });
@@ -56,10 +60,12 @@ test('entry: prior snapshot is read for the EXACT client_scope only (isolation b
   assert.equal(/KnowledgeHealthSnapshot\.filter\(\{\}\)/.test(entryNoComments), false);
 });
 
-test('entry: current projection + computeTrend, then payload is spread with trend appended', () => {
+test('entry: current projection + computeTrend, then the payload is spread with trend appended', () => {
   assert.ok(/snapshotFromHealthPayload\(payload, \{/.test(entryNoComments));
   assert.ok(/computeTrend\(current, prior\)/.test(entryNoComments));
-  assert.ok(/return Response\.json\(\{ \.\.\.payload, trend \}\)/.test(entryNoComments));
+  // P9-2 renamed the spread base `payload` -> `enriched` (payload + rationale +
+  // governance); the trend attachment is otherwise unchanged.
+  assert.ok(/return Response\.json\(\{ \.\.\.enriched, trend \}\)/.test(entryNoComments));
 });
 
 // ==================================================================

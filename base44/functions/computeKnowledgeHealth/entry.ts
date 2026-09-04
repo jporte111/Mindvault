@@ -6,6 +6,8 @@ import {
   snapshotFromHealthPayload,
 } from '../../shared/health/snapshotProjection.ts';
 import { computeTrend } from '../../shared/health/trend.ts';
+import { priorityRationale } from '../../shared/health/priorityRationale.ts';
+import { governanceCompletenessRow } from '../../shared/health/governanceCompleteness.ts';
 
 // Phase 7 — admin-only read for the Operational Continuity dashboard. Pure
 // deterministic aggregation over governed entities: NO embeddings, NO LLM, NO
@@ -19,7 +21,13 @@ import { computeTrend } from '../../shared/health/trend.ts';
 // CURRENT health only: it never reads the P9 flag, never queries
 // KnowledgeHealthSnapshot, never computes a trend. When
 // knowledge_health_snapshots_enabled is false the payload is returned
-// byte-for-byte unchanged (no `trend` key).
+// byte-for-byte unchanged apart from the P9-2 presentation fields below.
+//
+// Phase 9 P9-2 (also at this boundary, always on with the dashboard, no extra
+// flag, purely additive): a deterministic `rationale` string on every
+// addressFirst / reviewQueue item (built only from its kind + criticality) and
+// a `governance` completeness sub-object on every processRow (a plain-language
+// restatement of fields already in the payload — no new health rule).
 //
 // Body: { scope?: 'general' | { clientId: string }, vocabularyOverride? }
 
@@ -54,9 +62,24 @@ Deno.serve(async (req) => {
 
     const payload = await computeKnowledgeHealth(base44, { scope, vocabularyOverride });
 
+    // Phase 9 P9-2 presentation enrichment — pure, deterministic, additive.
+    const withRationale = (it: any) => ({
+      ...it,
+      rationale: priorityRationale({ kind: it?.kind, criticality: it?.criticality }),
+    });
+    const enriched = {
+      ...payload,
+      addressFirst: (payload.addressFirst || []).map(withRationale),
+      reviewQueue: (payload.reviewQueue || []).map(withRationale),
+      processRows: (payload.processRows || []).map((r: any) => ({
+        ...r,
+        governance: governanceCompletenessRow(r),
+      })),
+    };
+
     // Phase 9 P9-1 trend enrichment — flag-gated, additive, backward compatible.
     if (sysRows?.[0]?.knowledge_health_snapshots_enabled !== true) {
-      return Response.json(payload); // unchanged: no `trend` key
+      return Response.json(enriched); // no `trend` key
     }
 
     const period_key = new Date().toISOString().slice(0, 7); // 'YYYY-MM', current period
@@ -78,7 +101,7 @@ Deno.serve(async (req) => {
     });
     const trend = computeTrend(current, prior);
 
-    return Response.json({ ...payload, trend });
+    return Response.json({ ...enriched, trend });
   } catch (error) {
     return Response.json({ error: redact((error as Error).message) }, { status: 500 });
   }
