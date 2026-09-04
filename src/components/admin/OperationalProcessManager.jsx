@@ -68,36 +68,38 @@ function ProcessForm({ form, setForm, users, clients, onSubmit, onCancel, saving
         <Label className="text-xs text-muted-foreground mb-1 block">Description</Label>
         <Input value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="What it is and when it runs" className="bg-background" disabled={saving} />
       </div>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Department</Label>
-          <Input value={form.department} onChange={(e) => set('department', e.target.value)} className="bg-background" disabled={saving} />
+      <div data-tour="process-criticality-cadence">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Department</Label>
+            <Input value={form.department} onChange={(e) => set('department', e.target.value)} className="bg-background" disabled={saving} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              Criticality <ConceptHelp term="criticality" />
+            </Label>
+            <select className={selectClass} value={form.criticality} onChange={(e) => set('criticality', e.target.value)} disabled={saving}>
+              <option value="">Not set</option>
+              {PROCESS_CRITICALITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            Criticality <ConceptHelp term="criticality" />
-          </Label>
-          <select className={selectClass} value={form.criticality} onChange={(e) => set('criticality', e.target.value)} disabled={saving}>
-            <option value="">Not set</option>
-            {PROCESS_CRITICALITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              Review interval (days) <ConceptHelp term="review_cadence" />
+            </Label>
+            <Input type="number" min={1} value={form.review_interval_days} onChange={(e) => set('review_interval_days', e.target.value)} placeholder={REVIEW_INTERVAL_OPTIONS.join(' / ')} className="bg-background" disabled={saving} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Scope</Label>
+            <select className={selectClass} value={form.scopeValue} onChange={(e) => set('scopeValue', e.target.value)} disabled={saving}>
+              {scopeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
       </div>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            Review interval (days) <ConceptHelp term="review_cadence" />
-          </Label>
-          <Input type="number" min={1} value={form.review_interval_days} onChange={(e) => set('review_interval_days', e.target.value)} placeholder={REVIEW_INTERVAL_OPTIONS.join(' / ')} className="bg-background" disabled={saving} />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">Scope</Label>
-          <select className={selectClass} value={form.scopeValue} onChange={(e) => set('scopeValue', e.target.value)} disabled={saving}>
-            {scopeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-3 gap-3" data-tour="process-people">
         {[
           ['process_owner', 'Owner', 'owner'],
           ['subject_matter_expert', 'SME', 'sme'],
@@ -220,7 +222,7 @@ export default function OperationalProcessManager() {
   };
 
   return (
-    <Card className="border-border">
+    <Card className="border-border" data-tour="operational-processes">
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Workflow className="w-4 h-4 text-primary" />

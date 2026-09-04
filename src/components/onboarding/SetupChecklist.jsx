@@ -74,7 +74,7 @@ export default function SetupChecklist() {
   };
 
   return (
-    <Card className="border-border">
+    <Card className="border-border" data-tour="setup-checklist">
       <CardHeader className="pb-3">
         <button onClick={toggle} className="flex items-center gap-2 w-full text-left">
           {collapsed ? <ChevronRight className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}

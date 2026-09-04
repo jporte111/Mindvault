@@ -93,7 +93,7 @@ export default function Library() {
     <div className="min-h-screen bg-background">
       <SubmitRecordingModal open={showUploadModal} onClose={() => setShowUploadModal(false)} />
       <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['trainings'] })}>
-        <div className="bg-card border-b border-border px-8 py-8">
+        <div className="bg-card border-b border-border px-8 py-8" data-tour="library-page">
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -106,7 +106,7 @@ export default function Library() {
                 {trainings.length} knowledge source{trainings.length !== 1 ? 's' : ''}
               </p>
               <div className="flex gap-2">
-                <Button size="sm" className="gap-2 text-xs bg-primary hover:bg-primary/90" onClick={() => setShowUploadModal(true)}>
+                <Button data-tour="add-knowledge" size="sm" className="gap-2 text-xs bg-primary hover:bg-primary/90" onClick={() => setShowUploadModal(true)}>
                   <Upload className="w-3.5 h-3.5" />
                   Add Knowledge
                 </Button>
@@ -131,6 +131,7 @@ export default function Library() {
             <div className="relative mt-5">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
+                data-tour="knowledge-search"
                 placeholder="Search knowledge, SOPs, topics, or takeaways..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -139,6 +140,7 @@ export default function Library() {
             </div>
 
             <button
+              data-tour="knowledge-filters"
               onClick={() => setShowFilters(p => !p)}
               className={`mt-3 flex items-center gap-1.5 min-h-[44px] text-sm font-medium transition-colors ${hasActiveFilters ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
             >
@@ -175,14 +177,16 @@ export default function Library() {
                 <p className="text-muted-foreground/60 text-sm mt-1">Try adjusting your search or filters.</p>
               </div>
             ) : (
-              <EmptyState
-                icon={BookOpen}
-                title="No knowledge yet"
-                body="This is your team's knowledge library — SOPs, process docs, policies and recordings that the AI Assistant answers from. Add your first source with “Add Knowledge” above, or connect Google Drive to import."
-              />
+              <div data-tour="knowledge-empty-state">
+                <EmptyState
+                  icon={BookOpen}
+                  title="No knowledge yet"
+                  body="This is your team's knowledge library — SOPs, process docs, policies and recordings that the AI Assistant answers from. Add your first source with “Add Knowledge” above, or connect Google Drive to import."
+                />
+              </div>
             )
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div data-tour="knowledge-results" className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filtered.map(training => (
                 <TrainingCard key={training.id} training={training} />
               ))}

@@ -6,14 +6,14 @@ import Footer from './Footer';
 import { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useIsMobile } from '@/hooks/use-mobile';
-import Walkthrough from '@/components/onboarding/Walkthrough';
+import GuidedTour from '@/components/onboarding/GuidedTour';
 
 export default function AppLayout() {
   const [user, setUser] = useState(null);
   const location = useLocation();
   const isMobile = useIsMobile();
-  const walkthroughRef = useRef(null);
-  const openHelp = () => walkthroughRef.current?.open();
+  const guidedTourRef = useRef(null);
+  const openHelp = () => guidedTourRef.current?.restart();
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -39,9 +39,10 @@ export default function AppLayout() {
         </AnimatePresence>
         <Footer />
       </main>
-      {/* Onboarding-2 — mounted once at layout level so it survives route
-          changes and can be reopened from the Help trigger in either nav. */}
-      <Walkthrough ref={walkthroughRef} />
+      {/* Guided Product Tour — mounted once at layout level so it survives
+          route changes and can be restarted from the Help trigger in either
+          nav. Renders nothing itself; driver.js portals its own overlay. */}
+      <GuidedTour ref={guidedTourRef} />
     </div>
   );
 }

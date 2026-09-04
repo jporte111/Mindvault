@@ -25,9 +25,9 @@ function Pill({ tone = 'muted', children }) {
   return <Badge variant="outline" className={`text-xs ${TONE[tone] || TONE.muted}`}>{children}</Badge>;
 }
 
-function BandCard({ title, band, label, caveat = null, help = null }) {
+function BandCard({ title, band, label, caveat = null, help = null, tourId = null }) {
   return (
-    <Card className="border-border">
+    <Card className="border-border" data-tour={tourId || undefined}>
       <CardContent className="py-4">
         <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
           {title}
@@ -128,7 +128,7 @@ function TrendPanel({ history }) {
   const count = history.count || 0;
   if (count < 2) {
     return (
-      <Card className="border-border">
+      <Card className="border-border" data-tour="continuity-trends">
         <CardContent className="py-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">Trends</span> — a monthly snapshot records
           your continuity numbers so leadership can see whether things are improving or slipping.{' '}
@@ -142,7 +142,7 @@ function TrendPanel({ history }) {
   const range = history.period_range;
   const series = (history.series || []).filter((s) => s.points && s.points.length >= 2);
   return (
-    <Card className="border-border">
+    <Card className="border-border" data-tour="continuity-trends">
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-semibold flex items-center gap-1">
           Trends <ConceptHelp term="snapshot" /> <span className="text-xs font-normal text-muted-foreground">· {count} periods{range ? ` (${range.first} – ${range.last})` : ''}</span>
@@ -524,11 +524,11 @@ export default function Continuity() {
           />
 
           {/* Snapshot */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <BandCard title="Coverage" band={data.snapshot.coverage.band} label={data.snapshot.coverage.label} help="coverage" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-tour="continuity-overview">
+            <BandCard title="Coverage" band={data.snapshot.coverage.band} label={data.snapshot.coverage.label} help="coverage" tourId="continuity-coverage" />
             <BandCard title="Currency" band={data.snapshot.currency.band} label={data.snapshot.currency.label} />
-            <BandCard title="Verification" band={data.snapshot.verification.band} label={data.snapshot.verification.label} caveat={data.snapshot.verification.caveat} help="verification" />
-            <BandCard title="Key-person resilience" band={data.snapshot.keyPersonResilience.band} label={data.snapshot.keyPersonResilience.label} help="key_person" />
+            <BandCard title="Verification" band={data.snapshot.verification.band} label={data.snapshot.verification.label} caveat={data.snapshot.verification.caveat} help="verification" tourId="continuity-verification" />
+            <BandCard title="Key-person resilience" band={data.snapshot.keyPersonResilience.band} label={data.snapshot.keyPersonResilience.label} help="key_person" tourId="continuity-keyperson" />
           </div>
 
           {/* Summary cards */}

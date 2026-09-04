@@ -275,7 +275,7 @@ export default function ChatEngineToggle() {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-border">
+        <div className="pt-2 border-t border-border" data-tour="admin-system-settings">
           <Label className="text-sm text-muted-foreground mb-2 block">
             System / governance (RAG engine)
           </Label>
