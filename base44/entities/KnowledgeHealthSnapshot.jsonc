@@ -68,7 +68,34 @@
     "sources_needing_cadence": { "type": "number" },
     "unlinked_sources": { "type": "number" },
     "unclassified_items": { "type": "number" },
-    "legacy_needing_reindex": { "type": "number" }
+    "legacy_needing_reindex": { "type": "number" },
+
+    // --- P9-3 historical fingerprints (all OPTIONAL, additive) ---
+    // Independent of schema_version — P9-1 trend / P9-2 series continuity is
+    // undisturbed. Pre-P9-3 rows have no fingerprint_version and are treated as
+    // non-fingerprint-bearing history. Carry ONLY process/gap ids, times_asked,
+    // and single-letter status/promoted/criticality codes — never names,
+    // titles, questions, topics, keywords, facets, reporter or employee data.
+    "fingerprint_version": {
+      "type": "number",
+      "description": "P9-3. Bumped only when the fingerprint token grammar changes. computeContinuityChange / computeGapChange return comparable:false (reason 'version_changed') when the latest fingerprint-bearing snapshot cannot be validly compared with its immediately prior one — the newer period is never silently skipped for an older pair."
+    },
+    "exposure_fingerprint": {
+      "type": "string",
+      "description": "P9-3. JSON string: a sorted, deduped array of '<processId>~<kind>~<critChar>' tokens. kind in at_risk | key_person | overdue_review | critical_doc_gap | governance_setup. critChar in m|h|d|l|x. Derived deterministically from the already-scoped payload.processRows; no descriptive text."
+    },
+    "exposure_truncated": {
+      "type": "boolean",
+      "description": "P9-3. True when the exposure token count hit MAX_EXPOSURE_TOKENS. When set on either side of a comparison, every continuity-change category is reported unknown rather than a false 'resolved'."
+    },
+    "gap_fingerprint": {
+      "type": "string",
+      "description": "P9-3. JSON string: a sorted-by-id array of compact tuples [gapId, times_asked, statusChar, promotedInt, critChar]. statusChar in o|u|c|r|n; 'r' = a gap that resolved during the completed capture period (from one bounded, exact-scope resolved-gap lookup). No titles, topics, keywords, facets, reporter data, or distinct_reporters."
+    },
+    "gap_truncated": {
+      "type": "boolean",
+      "description": "P9-3. True when the gap tuple count hit MAX_GAP_FINGERPRINTS. When set on either side, the gap-intelligence block is reported unknown."
+    }
   },
   "required": [
     "period_key",

@@ -63,9 +63,9 @@ test('entry: prior snapshot is read for the EXACT client_scope only (isolation b
 test('entry: current projection + computeTrend, then the payload is spread with trend appended', () => {
   assert.ok(/snapshotFromHealthPayload\(payload, \{/.test(entryNoComments));
   assert.ok(/computeTrend\(current, prior\)/.test(entryNoComments));
-  // P9-2 renamed the spread base `payload` -> `enriched` (payload + rationale +
-  // governance); the trend attachment is otherwise unchanged.
-  assert.ok(/return Response\.json\(\{ \.\.\.enriched, trend \}\)/.test(entryNoComments));
+  // P9-2 renamed the spread base `payload` -> `enriched`; P9-3 appends `change`
+  // alongside `trend`. The P9-1 trend computation itself is unchanged.
+  assert.ok(/return Response\.json\(\{ \.\.\.enriched, trend, change \}\)/.test(entryNoComments));
 });
 
 // ==================================================================

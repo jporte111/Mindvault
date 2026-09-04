@@ -21,3 +21,6 @@ export * from "./trend.ts";
 export * from "./trendSeries.ts";
 export * from "./governanceCompleteness.ts";
 export * from "./priorityRationale.ts";
+// Phase 9 P9-3 — pure historical continuity/gap fingerprints + deterministic
+// persisted-period vs persisted-period change detection.
+export * from "./continuityChange.ts";

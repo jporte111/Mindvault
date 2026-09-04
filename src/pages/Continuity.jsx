@@ -167,6 +167,102 @@ function TrendPanel({ history }) {
   );
 }
 
+// Phase 9 P9-3 — compact deterministic "what changed" between the latest two
+// persisted fingerprint-bearing monthly snapshots for this exact scope. No
+// score, no prose, no prediction. Falls back to a plain message when there are
+// fewer than two comparable periods or the fingerprint format changed.
+function pl(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+function WhatChanged({ change, onProcesses, onGaps }) {
+  if (!change || !change.continuity) return null;
+  const c = change.continuity;
+  const g = change.gaps || {};
+
+  if (!c.comparable) {
+    const msg = c.reason === 'version_changed'
+      ? 'Change detection is unavailable this period because the snapshot format changed.'
+      : c.reason === 'truncated'
+        ? 'Change detection is unavailable this period (too many exposures to compare reliably).'
+        : 'Period-over-period change needs at least two monthly snapshots.';
+    return (
+      <Card className="border-border">
+        <CardContent className="py-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">What changed</span> — {msg}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const cat = c.categories;
+  const n = (x) => (x && typeof x.count === 'number' ? x.count : 0);
+  const improved = [];
+  const attention = [];
+  const created = [];
+
+  if (n(cat.atRisk.resolved)) improved.push([pl(n(cat.atRisk.resolved), 'process', 'processes') + ' moved out of At Risk', onProcesses]);
+  if (n(cat.keyPerson.resolved)) improved.push([pl(n(cat.keyPerson.resolved), 'key-person dependency', 'key-person dependencies') + ' resolved', onProcesses]);
+  if (n(cat.overdueReview.resolved)) improved.push([pl(n(cat.overdueReview.resolved), 'overdue review exposure', 'overdue review exposures') + ' cleared', onProcesses]);
+  if (n(cat.criticalDocGap.resolved)) improved.push([pl(n(cat.criticalDocGap.resolved), 'critical documentation gap', 'critical documentation gaps') + ' resolved', onProcesses]);
+  if (n(cat.governanceSetup.improved)) improved.push([pl(n(cat.governanceSetup.improved), 'governance setup improvement', 'governance setup improvements'), onProcesses]);
+  if (g.comparable && n(g.resolvedSincePrior)) improved.push([pl(n(g.resolvedSincePrior), 'previously recurring gap', 'previously recurring gaps') + ' resolved', onGaps]);
+
+  if (n(cat.atRisk.new)) {
+    const k = n(cat.atRisk.newCritical);
+    attention.push([pl(n(cat.atRisk.new), 'process', 'processes') + ' newly At Risk' + (k ? ` (${k} critical)` : ''), onProcesses]);
+  }
+  if (n(cat.keyPerson.new)) attention.push([pl(n(cat.keyPerson.new), 'newly exposed key-person dependency', 'newly exposed key-person dependencies'), onProcesses]);
+  if (n(cat.overdueReview.new)) attention.push([pl(n(cat.overdueReview.new), 'newly overdue review exposure', 'newly overdue review exposures'), onProcesses]);
+  if (n(cat.governanceSetup.regressed)) attention.push([pl(n(cat.governanceSetup.regressed), 'governance setup regression', 'governance setup regressions'), onProcesses]);
+  if (g.comparable && n(g.frequencyRises)) attention.push([pl(n(g.frequencyRises), 'gap', 'gaps') + ' increased in frequency', onGaps]);
+  if (g.comparable && g.longUnresolved?.state === 'known' && g.longUnresolved.items.length) {
+    attention.push([pl(g.longUnresolved.items.length, 'recurring gap', 'recurring gaps') + ` unresolved since ${g.longUnresolved.items[0].since}`, onGaps]);
+  }
+
+  if (n(cat.criticalDocGap.new)) created.push([pl(n(cat.criticalDocGap.new), 'new critical documentation gap', 'new critical documentation gaps'), onProcesses]);
+  if (g.comparable && n(g.newlyPromoted)) created.push([pl(n(g.newlyPromoted), 'recurring gap', 'recurring gaps') + ' reached actionable threshold', onGaps]);
+
+  const periods = c.periods_elapsed && c.periods_elapsed > 1 ? ` (${c.periods_elapsed} periods)` : '';
+  const nothing = !improved.length && !attention.length && !created.length;
+
+  const Group = ({ title, items, tone }) => items.length ? (
+    <div className="space-y-1">
+      <p className={`text-xs font-semibold uppercase tracking-wide ${tone}`}>{title}</p>
+      <ul className="space-y-0.5">
+        {items.map(([text, onClick], i) => (
+          <li key={i}>
+            <button onClick={onClick} className="text-sm text-foreground text-left hover:underline">{text}</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">
+          What changed <span className="text-xs font-normal text-muted-foreground">· since {c.previous_period_key || 'the prior period'}{periods}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        {nothing
+          ? <p className="text-sm text-muted-foreground">No material continuity or gap changes since {c.previous_period_key}.</p>
+          : <>
+            <Group title="Improved" items={improved} tone="text-emerald-700" />
+            <Group title="Needs attention" items={attention} tone="text-red-700" />
+            <Group title="New" items={created} tone="text-muted-foreground" />
+          </>}
+        {!g.comparable && (
+          <p className="text-[11px] text-muted-foreground">
+            Gap-level change {g.reason === 'version_changed' ? 'unavailable (format changed)' : g.reason === 'truncated' ? 'unavailable (too many gaps)' : 'needs two comparable monthly snapshots'}.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SummaryCard({ label, big, sub, onClick }) {
   return (
     <button onClick={onClick} className="text-left">
@@ -398,6 +494,12 @@ export default function Continuity() {
           <TrendStrip trend={data.trend} />
           {/* Phase 9 P9-2 — multi-period trend panel over the snapshot history */}
           <TrendPanel history={history} />
+          {/* Phase 9 P9-3 — persisted-period vs prior-period executive change summary */}
+          <WhatChanged
+            change={data.change}
+            onProcesses={() => setTab('processes')}
+            onGaps={() => setTab('gaps')}
+          />
 
           {/* Snapshot */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

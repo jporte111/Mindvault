@@ -102,7 +102,8 @@ test('boundary: P9-2 fields are present with AND without the snapshots flag (no 
   const flagBranchIdx = healthEntryNoC.indexOf("knowledge_health_snapshots_enabled !== true");
   assert.ok(enrichedIdx > -1 && enrichedIdx < flagBranchIdx, 'enrichment must precede the P9-1 flag branch');
   assert.ok(/return Response\.json\(enriched\);/.test(healthEntryNoC), 'flag-off path returns the enriched payload');
-  assert.ok(/return Response\.json\(\{ \.\.\.enriched, trend \}\)/.test(healthEntryNoC), 'flag-on path spreads enriched + trend');
+  // P9-3 appends `change` alongside `trend` on the flag-on path.
+  assert.ok(/return Response\.json\(\{ \.\.\.enriched, trend, change \}\)/.test(healthEntryNoC), 'flag-on path spreads enriched + trend + change');
 });
 
 test('boundary: P9-1 trend semantics unchanged — still exact client_scope, in-memory < current period', () => {
