@@ -4,6 +4,8 @@
 // (base44/shared/{embeddings,retrieval,text}.ts) or askKnowledgeBaseV2. This
 // module only ever sees the static, bundled product-help corpus.
 
+import { hasPageReferenceCue, routeBias } from './routeContext.js';
+
 const STOPWORDS = new Set([
   'a', 'an', 'the', 'is', 'are', 'do', 'does', 'did', 'how', 'what', 'when',
   'where', 'why', 'which', 'who', 'i', 'my', 'me', 'to', 'of', 'for', 'in',
@@ -86,19 +88,31 @@ export function scoreTopic(topicEntry, queryWords) {
  * Returns an empty array when nothing scores at or above minScore — the
  * caller must treat that as "not documented," never invent an answer.
  *
+ * `opts.route`, when given, is a lightweight relevance SIGNAL only (see
+ * routeContext.js): it can help a vague, page-relative question ("What
+ * should I look at here?") resolve to the right topic, but it never fires
+ * for an ordinary question, is always weaker than an explicit keyword
+ * match, and contributes nothing on a route this corpus has no bias for —
+ * so it can never turn gibberish into a confident answer, and it never
+ * outranks an explicit term (e.g. "What is an SME?" still resolves to SME
+ * regardless of which page it's asked from).
+ *
  * @param {object[]} topics
  * @param {string} question
- * @param {{limit?: number, minScore?: number}} [opts]
+ * @param {{limit?: number, minScore?: number, route?: string}} [opts]
  * @returns {object[]}
  */
 export function retrieveTopics(topics, question, opts = {}) {
   const limit = opts.limit ?? 3;
   const minScore = opts.minScore ?? 1;
+  const route = opts.route;
   const queryWords = tokenize(question);
-  if (queryWords.length === 0) return [];
+  // Bail out only when there is truly nothing to go on: no real question
+  // content AND no page-reference cue a route bias could ever attach to.
+  if (queryWords.length === 0 && !hasPageReferenceCue(question)) return [];
 
   return topics
-    .map((t) => ({ topicEntry: t, score: scoreTopic(t, queryWords) }))
+    .map((t) => ({ topicEntry: t, score: scoreTopic(t, queryWords) + routeBias(route, t.id, question) }))
     .filter((r) => r.score >= minScore)
     .sort((a, b) => b.score - a.score || a.topicEntry.id.localeCompare(b.topicEntry.id))
     .slice(0, limit)

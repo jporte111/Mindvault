@@ -45,7 +45,7 @@ export function answerAdminHelpQuestion(question, context = {}) {
     return { answer: '', sources: [], navigation: [] };
   }
 
-  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1 });
+  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: context.route });
   if (matched.length === 0) {
     return { answer: INSUFFICIENT_HELP_MESSAGE, sources: [], navigation: [] };
   }

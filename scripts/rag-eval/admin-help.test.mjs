@@ -21,6 +21,7 @@ import {
   answerAdminHelpQuestion, NAV_ROUTE_ALLOWLIST, INSUFFICIENT_HELP_MESSAGE,
 } from '../../src/lib/adminHelp/answer.js';
 import { getStarterPrompts, GENERIC_STARTER_PROMPTS } from '../../src/lib/adminHelp/routePrompts.js';
+import { topicsForRoute, hasPageReferenceCue, routeBias } from '../../src/lib/adminHelp/routeContext.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const exists = (p) => existsSync(new URL(`../../${p}`, import.meta.url));
@@ -49,6 +50,7 @@ test('no writes anywhere in the admin-help modules — no entity create/update/d
     'src/lib/adminHelp/retrieval.js',
     'src/lib/adminHelp/answer.js',
     'src/lib/adminHelp/routePrompts.js',
+    'src/lib/adminHelp/routeContext.js',
     'src/components/onboarding/AdminHelpAssistant.jsx',
   ]) {
     const s = stripComments(read(f));
@@ -248,6 +250,92 @@ test('tokenize and scoreTopic are deterministic and pure', () => {
 });
 
 // ====================================================================
+// Correction — route as a lightweight relevance SIGNAL for vague,
+// page-relative questions. Never permission to fabricate an answer.
+// ====================================================================
+
+test('/continuity + "What should I look at here?" retrieves Operational Continuity help', () => {
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What should I look at here?', { route: '/continuity' });
+  assert.equal(matched[0]?.id, 'operational_continuity');
+});
+
+test('/admin + "What should I do first here?" retrieves Setup Checklist or Getting Started help', () => {
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What should I do first here?', { route: '/admin' });
+  assert.ok(['setup_checklist', 'getting_started'].includes(matched[0]?.id), `got ${matched[0]?.id}`);
+});
+
+test('/library + "What is this page?" retrieves Knowledge Library', () => {
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What is this page?', { route: '/library' });
+  assert.equal(matched[0]?.id, 'knowledge_library');
+});
+
+test('/chat + "How does this work?" retrieves AI Assistant', () => {
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'How does this work?', { route: '/chat' });
+  assert.equal(matched[0]?.id, 'ai_assistant');
+});
+
+test('explicit "What is an SME?" on /continuity still retrieves SME — explicit terms outrank route context', () => {
+  const onContinuity = retrieveTopics(ADMIN_HELP_TOPICS, 'What is an SME?', { route: '/continuity' });
+  const noRoute = retrieveTopics(ADMIN_HELP_TOPICS, 'What is an SME?');
+  assert.equal(onContinuity[0]?.id, 'sme');
+  assert.equal(noRoute[0]?.id, 'sme');
+  assert.notEqual(onContinuity[0]?.id, 'operational_continuity');
+});
+
+test('gibberish does not become a confident answer merely because a route exists', () => {
+  const gibberish = 'asdkjfh qwoeiruty zzz gibberish';
+  for (const route of ['/library', '/chat', '/admin', '/continuity', '/training/abc123']) {
+    const matched = retrieveTopics(ADMIN_HELP_TOPICS, gibberish, { route });
+    assert.deepEqual(matched, [], `route ${route} let gibberish through`);
+  }
+  const r = answerAdminHelpQuestion(gibberish, { route: '/continuity' });
+  assert.equal(r.answer, INSUFFICIENT_HELP_MESSAGE);
+});
+
+test('unknown routes add no relevance — a page-relative question on an unmapped route (or no route) resolves to no match', () => {
+  const q = 'What should I look at here?';
+  assert.deepEqual(retrieveTopics(ADMIN_HELP_TOPICS, q, { route: '/some/unmapped/route' }), []);
+  assert.deepEqual(retrieveTopics(ADMIN_HELP_TOPICS, q), []);
+  assert.deepEqual(topicsForRoute('/some/unmapped/route'), []);
+  assert.deepEqual(topicsForRoute(undefined), []);
+});
+
+test('route bias never fires without a page-reference cue in the question, even on a mapped route', () => {
+  assert.equal(hasPageReferenceCue('What does Review Cadence do?'), false);
+  assert.equal(routeBias('/continuity', 'operational_continuity', 'What does Review Cadence do?'), 0);
+});
+
+test('route bias is strictly weaker than an explicit keyword or exact-id match', () => {
+  const bias = routeBias('/continuity', 'operational_continuity', 'What should I look at here?');
+  const t = ADMIN_HELP_TOPICS.find((x) => x.id === 'sme');
+  const explicitScore = scoreTopic(t, tokenize('What is an SME?'));
+  assert.ok(bias < explicitScore, `route bias (${bias}) must be weaker than an explicit id match (${explicitScore})`);
+});
+
+test('topicsForRoute matches the suggested route -> topic bias, including the /training/:id prefix', () => {
+  assert.deepEqual(topicsForRoute('/library'), ['knowledge_library', 'adding_knowledge', 'knowledge_scope']);
+  assert.deepEqual(topicsForRoute('/chat'), ['ai_assistant', 'knowledge_scope', 'knowledge_gaps']);
+  assert.deepEqual(topicsForRoute('/admin'), ['setup_checklist', 'operational_processes', 'owner', 'sme', 'review_cadence', 'verification']);
+  assert.deepEqual(topicsForRoute('/continuity'), [
+    'operational_continuity', 'coverage', 'currency', 'key_person_dependency',
+    'knowledge_gaps', 'snapshots', 'trends', 'what_changed',
+  ]);
+  assert.deepEqual(topicsForRoute('/training/xyz'), ['knowledge_library', 'verification', 'lifecycle', 'knowledge_scope']);
+  // every biased topic id must be a real corpus topic
+  for (const route of ['/library', '/chat', '/admin', '/continuity', '/training/xyz']) {
+    for (const id of topicsForRoute(route)) {
+      assert.ok(ADMIN_HELP_TOPICS.some((t) => t.id === id), `${route} biases toward unknown topic "${id}"`);
+    }
+  }
+});
+
+test('routeContext.js is pure — no React, no Base44, no network, no LLM', () => {
+  const s = stripComments(read('src/lib/adminHelp/routeContext.js'));
+  assert.equal(/^\s*import\s/m.test(s), false);
+  assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
+});
+
+// ====================================================================
 // 4. Scope isolation — never touches customer retrieval / answer generation
 // ====================================================================
 
@@ -266,6 +354,7 @@ test('the Admin Help Assistant never imports or invokes the customer retrieval /
     'src/lib/adminHelp/retrieval.js',
     'src/lib/adminHelp/answer.js',
     'src/lib/adminHelp/routePrompts.js',
+    'src/lib/adminHelp/routeContext.js',
     'src/lib/adminHelp/index.js',
     'src/components/onboarding/AdminHelpAssistant.jsx',
   ]) {
