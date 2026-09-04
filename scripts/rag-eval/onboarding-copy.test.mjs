@@ -44,7 +44,7 @@ test('CONCEPT_HELP contains NO implementation jargon', () => {
 
 test('checklist labels + detail strings contain no implementation jargon (across every state)', () => {
   const src = (o = {}) => ({ id: o.id || 's', status: 'ready', knowledge_scope: 'general', verification_status: 'verified', ...o });
-  const proc = (o = {}) => ({ id: o.id || 'p', status: 'active', criticality: 'high', process_owner: 'u', subject_matter_expert: 'u2', review_interval_days: 90, ...o });
+  const proc = (o = {}) => ({ id: o.id || 'p', status: 'active', knowledge_scope: 'general', criticality: 'high', process_owner: 'u', subject_matter_expert: 'u2', review_interval_days: 90, ...o });
   const ctxs = [
     { healthFlagOn: false, health: null, sources: null, processes: null, continuityVisited: false },
     { healthFlagOn: true, health: { processRows: [], setup: { legacyNeedingReindex: 3 } }, sources: [src()], processes: [], continuityVisited: false },

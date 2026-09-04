@@ -87,7 +87,8 @@ export default function SetupChecklist() {
       {!collapsed && (
         <CardContent className="pt-0">
           <p className="text-xs text-muted-foreground mb-3">
-            You don’t need to finish this before using MindVault — work through it as you go.
+            Firm-wide setup — client-specific setup is reviewed in each client’s Operational Continuity view.
+            You don’t need to finish this before using MindVault; work through it as you go.
           </p>
           <ul className="divide-y divide-border">
             {items.map((it) => (
