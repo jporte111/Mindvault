@@ -8,4 +8,4 @@ export { ADMIN_HELP_TOPICS, ADMIN_HELP_TOPIC_IDS } from './corpus.js';
 export { tokenize, scoreTopic, retrieveTopics } from './retrieval.js';
 export { answerAdminHelpQuestion, NAV_ROUTE_ALLOWLIST, INSUFFICIENT_HELP_MESSAGE } from './answer.js';
 export { getStarterPrompts, GENERIC_STARTER_PROMPTS } from './routePrompts.js';
-export { topicsForRoute, hasPageReferenceCue, routeBias } from './routeContext.js';
+export { topicsForRoute, isPageRelativeIntent, routeBias } from './routeContext.js';

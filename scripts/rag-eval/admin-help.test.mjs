@@ -21,7 +21,7 @@ import {
   answerAdminHelpQuestion, NAV_ROUTE_ALLOWLIST, INSUFFICIENT_HELP_MESSAGE,
 } from '../../src/lib/adminHelp/answer.js';
 import { getStarterPrompts, GENERIC_STARTER_PROMPTS } from '../../src/lib/adminHelp/routePrompts.js';
-import { topicsForRoute, hasPageReferenceCue, routeBias } from '../../src/lib/adminHelp/routeContext.js';
+import { topicsForRoute, isPageRelativeIntent, routeBias } from '../../src/lib/adminHelp/routeContext.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const exists = (p) => existsSync(new URL(`../../${p}`, import.meta.url));
@@ -251,7 +251,11 @@ test('tokenize and scoreTopic are deterministic and pure', () => {
 
 // ====================================================================
 // Correction — route as a lightweight relevance SIGNAL for vague,
-// page-relative questions. Never permission to fabricate an answer.
+// page-relative questions. Never permission to fabricate an answer, and
+// never satisfied by a bare cue word alone: route bias may only apply when
+// the topic already has real lexical relevance (re-rank) OR the question
+// matches a small, explicit, recognized page-relative intent pattern.
+// Invariant: unknown words + a page cue ≠ a documented question.
 // ====================================================================
 
 test('/continuity + "What should I look at here?" retrieves Operational Continuity help', () => {
@@ -259,7 +263,12 @@ test('/continuity + "What should I look at here?" retrieves Operational Continui
   assert.equal(matched[0]?.id, 'operational_continuity');
 });
 
-test('/admin + "What should I do first here?" retrieves Setup Checklist or Getting Started help', () => {
+test('/admin + "What should I do first on this page?" retrieves Setup Checklist or Getting Started help', () => {
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What should I do first on this page?', { route: '/admin' });
+  assert.ok(['setup_checklist', 'getting_started'].includes(matched[0]?.id), `got ${matched[0]?.id}`);
+});
+
+test('/admin + "What should I do first here?" (the original phrasing) still retrieves Setup Checklist or Getting Started', () => {
   const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What should I do first here?', { route: '/admin' });
   assert.ok(['setup_checklist', 'getting_started'].includes(matched[0]?.id), `got ${matched[0]?.id}`);
 });
@@ -282,6 +291,20 @@ test('explicit "What is an SME?" on /continuity still retrieves SME — explicit
   assert.notEqual(onContinuity[0]?.id, 'operational_continuity');
 });
 
+test('nonsense + a bare page cue word must still be insufficient — route context cannot create relevance from zero', () => {
+  const cases = [
+    ['/continuity', 'flibbertigibbet here'],
+    ['/admin', 'xyzzy this page'],
+    ['/library', 'banana section'],
+  ];
+  for (const [route, q] of cases) {
+    const matched = retrieveTopics(ADMIN_HELP_TOPICS, q, { route });
+    assert.deepEqual(matched, [], `"${q}" on ${route} incorrectly produced a result`);
+    const r = answerAdminHelpQuestion(q, { route });
+    assert.equal(r.answer, INSUFFICIENT_HELP_MESSAGE, `"${q}" on ${route} did not fall back to insufficient help`);
+  }
+});
+
 test('gibberish does not become a confident answer merely because a route exists', () => {
   const gibberish = 'asdkjfh qwoeiruty zzz gibberish';
   for (const route of ['/library', '/chat', '/admin', '/continuity', '/training/abc123']) {
@@ -300,16 +323,50 @@ test('unknown routes add no relevance — a page-relative question on an unmappe
   assert.deepEqual(topicsForRoute(undefined), []);
 });
 
-test('route bias never fires without a page-reference cue in the question, even on a mapped route', () => {
-  assert.equal(hasPageReferenceCue('What does Review Cadence do?'), false);
-  assert.equal(routeBias('/continuity', 'operational_continuity', 'What does Review Cadence do?'), 0);
+test('isPageRelativeIntent recognizes the small explicit intent set, and nothing else — the bare presence of "here"/"page"/"section" is not enough', () => {
+  const recognized = [
+    'What should I look at here?',
+    'What should I do first on this page?',
+    'What should I do first here?',
+    'What is this page?',
+    'What is this?',
+    'How does this work?',
+  ];
+  for (const q of recognized) {
+    assert.equal(isPageRelativeIntent(q), true, `expected "${q}" to be recognized`);
+  }
+  const unrecognized = [
+    'flibbertigibbet here',
+    'xyzzy this page',
+    'banana section',
+    'What does Review Cadence do?', // a real, explicit, non-vague question
+    'here',
+    'this page',
+    'section',
+  ];
+  for (const q of unrecognized) {
+    assert.equal(isPageRelativeIntent(q), false, `expected "${q}" to NOT be recognized as page-relative intent`);
+  }
+});
+
+test('route bias never applies on its own without either real lexical relevance or a recognized page-relative intent', () => {
+  // "What does Review Cadence do?" is explicit and not vague — no bias needed,
+  // and it must not be granted purely because /continuity is a mapped route.
+  assert.equal(isPageRelativeIntent('What does Review Cadence do?'), false);
+  const matched = retrieveTopics(ADMIN_HELP_TOPICS, 'What does Review Cadence do?', { route: '/continuity' });
+  assert.equal(matched[0]?.id, 'review_cadence'); // real lexical match wins, not a continuity topic
 });
 
 test('route bias is strictly weaker than an explicit keyword or exact-id match', () => {
-  const bias = routeBias('/continuity', 'operational_continuity', 'What should I look at here?');
+  const bias = routeBias('/continuity', 'operational_continuity');
   const t = ADMIN_HELP_TOPICS.find((x) => x.id === 'sme');
   const explicitScore = scoreTopic(t, tokenize('What is an SME?'));
   assert.ok(bias < explicitScore, `route bias (${bias}) must be weaker than an explicit id match (${explicitScore})`);
+});
+
+test('routeBias no longer takes or depends on the question text — gating on intent is retrieveTopics\' job', () => {
+  const s = stripComments(read('src/lib/adminHelp/routeContext.js'));
+  assert.match(s, /export function routeBias\(route, topicId\)/);
 });
 
 test('topicsForRoute matches the suggested route -> topic bias, including the /training/:id prefix', () => {

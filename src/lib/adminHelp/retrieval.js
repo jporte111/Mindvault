@@ -4,7 +4,7 @@
 // (base44/shared/{embeddings,retrieval,text}.ts) or askKnowledgeBaseV2. This
 // module only ever sees the static, bundled product-help corpus.
 
-import { hasPageReferenceCue, routeBias } from './routeContext.js';
+import { isPageRelativeIntent, routeBias } from './routeContext.js';
 
 const STOPWORDS = new Set([
   'a', 'an', 'the', 'is', 'are', 'do', 'does', 'did', 'how', 'what', 'when',
@@ -89,13 +89,17 @@ export function scoreTopic(topicEntry, queryWords) {
  * caller must treat that as "not documented," never invent an answer.
  *
  * `opts.route`, when given, is a lightweight relevance SIGNAL only (see
- * routeContext.js): it can help a vague, page-relative question ("What
- * should I look at here?") resolve to the right topic, but it never fires
- * for an ordinary question, is always weaker than an explicit keyword
- * match, and contributes nothing on a route this corpus has no bias for —
- * so it can never turn gibberish into a confident answer, and it never
- * outranks an explicit term (e.g. "What is an SME?" still resolves to SME
- * regardless of which page it's asked from).
+ * routeContext.js) — and critically, route bias alone is never enough to
+ * produce a result: it is only ever applied to a topic when EITHER (A) that
+ * topic already has real lexical relevance of its own (word/phrase/id
+ * overlap with the question — the bias then only re-ranks it), OR (B) the
+ * question matches one of routeContext.js's small set of explicit,
+ * recognized page-relative intent patterns (isPageRelativeIntent). The bare
+ * presence of a word like "here" or "page" is NOT that intent — "unknown
+ * words + a page cue ≠ a documented question" is the invariant this
+ * function protects. Route bias is also always smaller than a real keyword
+ * match or the exact-id bonus, so an explicit term (e.g. "What is an SME?")
+ * still resolves correctly regardless of which page it's asked from.
  *
  * @param {object[]} topics
  * @param {string} question
@@ -107,12 +111,19 @@ export function retrieveTopics(topics, question, opts = {}) {
   const minScore = opts.minScore ?? 1;
   const route = opts.route;
   const queryWords = tokenize(question);
+  const pageIntent = isPageRelativeIntent(question);
   // Bail out only when there is truly nothing to go on: no real question
-  // content AND no page-reference cue a route bias could ever attach to.
-  if (queryWords.length === 0 && !hasPageReferenceCue(question)) return [];
+  // content AND no recognized page-relative intent a route bias could ever
+  // attach to.
+  if (queryWords.length === 0 && !pageIntent) return [];
 
   return topics
-    .map((t) => ({ topicEntry: t, score: scoreTopic(t, queryWords) + routeBias(route, t.id, question) }))
+    .map((t) => {
+      const lexicalScore = scoreTopic(t, queryWords);
+      const biasAllowed = lexicalScore > 0 || pageIntent;
+      const score = lexicalScore + (biasAllowed ? routeBias(route, t.id) : 0);
+      return { topicEntry: t, score };
+    })
     .filter((r) => r.score >= minScore)
     .sort((a, b) => b.score - a.score || a.topicEntry.id.localeCompare(b.topicEntry.id))
     .slice(0, limit)
