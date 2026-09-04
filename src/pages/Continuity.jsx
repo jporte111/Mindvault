@@ -15,6 +15,7 @@ import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import {
   fetchKnowledgeHealth, TONE, BAND_TONE, COVERAGE_TONE, CONTINUITY_TONE, KEYPERSON_TONE,
   TREND_TONE, TREND_STRIP_DIMENSIONS,
+  fetchKnowledgeHealthTrendHistory, TREND_SERIES_LABELS, GOV_STATUS_TONE,
 } from '@/lib/knowledgeHealth';
 
 function Pill({ tone = 'muted', children }) {
@@ -97,6 +98,79 @@ function TrendStrip({ trend }) {
   );
 }
 
+// Phase 9 P9-2 — compact multi-period sparklines over the existing snapshot
+// history. Deterministic SVG, no chart library, no composite score, no
+// interpolation (a month with no snapshot is simply not a point).
+function Sparkline({ points, min, max }) {
+  if (!points || points.length < 2) return <span className="text-[11px] text-muted-foreground">—</span>;
+  const w = 88, h = 22, pad = 2;
+  const span = Math.max(1, max - min);
+  const step = (w - pad * 2) / (points.length - 1);
+  const d = points
+    .map((p, i) => {
+      const x = pad + i * step;
+      const y = h - pad - ((p.value - min) / span) * (h - pad * 2);
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  const lastY = h - pad - ((points[points.length - 1].value - min) / span) * (h - pad * 2);
+  return (
+    <svg width={w} height={h} className="text-primary" aria-hidden>
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx={w - pad} cy={lastY.toFixed(1)} r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function TrendPanel({ history }) {
+  if (!history) return null;
+  const count = history.count || 0;
+  if (count < 2) {
+    return (
+      <Card className="border-border">
+        <CardContent className="py-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Trends</span> — need at least two monthly
+          snapshots. {count === 1 ? 'One period captured so far.' : 'No snapshots captured yet.'}
+        </CardContent>
+      </Card>
+    );
+  }
+  const range = history.period_range;
+  const series = (history.series || []).filter((s) => s.points && s.points.length >= 2);
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">
+          Trends <span className="text-xs font-normal text-muted-foreground">· {count} periods{range ? ` (${range.first} – ${range.last})` : ''}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+          {series.map((s) => {
+            const dir = s.last < s.first ? 'improving' : s.last > s.first ? 'deteriorating' : 'stable';
+            return (
+              <div key={s.key} className="flex items-center justify-between gap-2 border-b border-border/50 py-1">
+                <span className="text-xs text-muted-foreground flex-1 min-w-0 truncate">
+                  {TREND_SERIES_LABELS[s.key] || s.key}
+                </span>
+                <span className="text-xs font-medium text-foreground tabular-nums">{s.first} → {s.last}</span>
+                <span className={
+                  dir === 'improving' ? 'text-[11px] text-emerald-600'
+                    : dir === 'deteriorating' ? 'text-[11px] text-red-600' : 'text-[11px] text-muted-foreground'
+                }>{dir}</span>
+                <Sparkline points={s.points} min={s.min} max={s.max} />
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Deterministic counts from monthly snapshots for this scope only. Missing months are left blank — no estimate is drawn.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SummaryCard({ label, big, sub, onClick }) {
   return (
     <button onClick={onClick} className="text-left">
@@ -154,6 +228,7 @@ function FilterSelect({ value, onChange, options, allLabel }) {
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'processes', label: 'Process Continuity' },
+  { id: 'governance', label: 'Governance' },
   { id: 'queue', label: 'Review Queue' },
   { id: 'people', label: 'Key-Person Exposure' },
   { id: 'gaps', label: 'Knowledge Gaps' },
@@ -208,6 +283,12 @@ export default function Continuity() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['knowledge-health', scope],
     queryFn: () => fetchKnowledgeHealth(scope),
+    enabled: isAdmin && knowledgeHealthEnabled,
+  });
+  // Phase 9 P9-2 — bounded multi-period history for the trend panel. Exact scope.
+  const { data: history } = useQuery({
+    queryKey: ['knowledge-health-history', scope],
+    queryFn: () => fetchKnowledgeHealthTrendHistory(scope, 12),
     enabled: isAdmin && knowledgeHealthEnabled,
   });
 
@@ -317,8 +398,10 @@ export default function Continuity() {
             </Card>
           )}
 
-          {/* Phase 9 P9-1 — trend strip (only present when snapshots flag is on) */}
+          {/* Phase 9 P9-1 — single-period trend strip (present when snapshots flag is on) */}
           <TrendStrip trend={data.trend} />
+          {/* Phase 9 P9-2 — multi-period trend panel over the snapshot history */}
+          <TrendPanel history={history} />
 
           {/* Snapshot */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -357,7 +440,10 @@ export default function Continuity() {
                 : <div className="divide-y divide-border">
                   {data.addressFirst.map((it) => (
                     <div key={it.id} className="px-5 py-3 flex items-center gap-3">
-                      <span className="text-sm text-foreground flex-1">{it.label}{it.title ? ` — ${it.title}` : ''}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm text-foreground">{it.label}{it.title ? ` — ${it.title}` : ''}</span>
+                        {it.rationale && <span className="block text-[11px] text-muted-foreground mt-0.5">Why: {it.rationale}</span>}
+                      </span>
                       {it.criticality && <Pill tone="muted">{it.criticality.replace('_', ' ')}</Pill>}
                       <ActionLink action={it.action} onOpenProcess={openProcess} />
                     </div>
@@ -422,6 +508,56 @@ export default function Continuity() {
         </div>
       )}
 
+      {data && tab === 'governance' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Each process against the governance basics already tracked in the product. Missing data is shown as
+            missing / needs attention / unknown — never assumed bad. No new health rules.
+          </p>
+          <Card className="border-border">
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="px-4 py-2">Process</th>
+                    <th className="px-4 py-2">Criticality</th>
+                    <th className="px-4 py-2">Owner</th>
+                    <th className="px-4 py-2">SME</th>
+                    <th className="px-4 py-2">Review cadence</th>
+                    <th className="px-4 py-2">Coverage</th>
+                    <th className="px-4 py-2">Verification</th>
+                    <th className="px-4 py-2">Backup / key-person</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((r) => {
+                    const g = r.governance || {};
+                    const cell = (c) => c
+                      ? <Pill tone={GOV_STATUS_TONE[c.status] || 'muted'}>{c.label}</Pill>
+                      : <span className="text-muted-foreground">—</span>;
+                    return (
+                      <tr key={r.id} onClick={() => openProcess(r.id)} className="border-b border-border/60 cursor-pointer hover:bg-muted/40">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{r.name}</td>
+                        <td className="px-4 py-2.5">{g.criticality || (r.criticality ? r.criticality.replace('_', ' ') : 'Not set')}</td>
+                        <td className="px-4 py-2.5">{cell(g.owner)}</td>
+                        <td className="px-4 py-2.5">{cell(g.sme)}</td>
+                        <td className="px-4 py-2.5">{cell(g.reviewCadence)}</td>
+                        <td className="px-4 py-2.5">{cell(g.coverage)}</td>
+                        <td className="px-4 py-2.5">{cell(g.verification)}</td>
+                        <td className="px-4 py-2.5">{cell(g.backupKeyPerson)}</td>
+                      </tr>
+                    );
+                  })}
+                  {sortedRows.length === 0 && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">No processes in this scope yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {data && tab === 'queue' && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -439,9 +575,12 @@ export default function Continuity() {
               <div className="divide-y divide-border">
                 {filteredQueue.map((it) => (
                   <div key={it.id} className="px-5 py-3 flex items-center gap-3">
-                    <span className="text-sm text-foreground flex-1">
-                      {it.label}{it.title ? ` — ${it.title}` : ''}
-                      {it.department && <span className="text-[11px] text-muted-foreground"> · {it.department}</span>}
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm text-foreground">
+                        {it.label}{it.title ? ` — ${it.title}` : ''}
+                        {it.department && <span className="text-[11px] text-muted-foreground"> · {it.department}</span>}
+                      </span>
+                      {it.rationale && <span className="block text-[11px] text-muted-foreground mt-0.5">Why: {it.rationale}</span>}
                     </span>
                     {it.criticality && <Pill tone="muted">{it.criticality.replace('_', ' ')}</Pill>}
                     <ActionLink action={it.action} onOpenProcess={openProcess} />
