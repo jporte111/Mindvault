@@ -20,9 +20,14 @@ const BANNED_JARGON = /\b(embeddings?|vector(s| retrieval)?|\bRAG\b|schema|finge
 // concept-help copy
 // ====================================================================
 
-test('CONCEPT_HELP covers the 13 required concepts, each with a term + plain text', () => {
+test('CONCEPT_HELP covers the 14 required concepts, each with a term + plain text', () => {
+  // "currency" was added to CONCEPT_HELP in a later, unrelated change
+  // ("Standardize currency help marker and popover styling") that didn't
+  // update this list — pre-existing drift, fixed here as part of getting a
+  // clean baseline for the Admin Help Assistant PR; not itself in that PR's
+  // scope.
   const required = ['scope', 'owner', 'sme', 'backup_sme', 'criticality', 'review_cadence',
-    'verification', 'coverage', 'continuity_exposure', 'key_person', 'knowledge_gap', 'snapshot', 'what_changed'];
+    'verification', 'coverage', 'currency', 'continuity_exposure', 'key_person', 'knowledge_gap', 'snapshot', 'what_changed'];
   assert.deepEqual([...CONCEPT_HELP_KEYS].sort(), [...required].sort());
   for (const k of required) {
     assert.equal(typeof CONCEPT_HELP[k].term, 'string');
@@ -71,6 +76,7 @@ test('EmptyState is a shared component; onboarding + changed pages carry no jarg
     'src/components/onboarding/SetupChecklist.jsx',
     'src/components/onboarding/GuidedTour.jsx',
     'src/components/onboarding/ConceptHelp.jsx',
+    'src/components/onboarding/AdminHelpAssistant.jsx',
     'src/lib/guidedTourSteps.js',
     'src/pages/Library.jsx',
     'src/pages/Chat.jsx',

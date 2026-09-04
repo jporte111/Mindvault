@@ -1,0 +1,424 @@
+// Admin Help Assistant — the curated, version-controlled product-help
+// corpus. This is NOT customer knowledge: it teaches an admin how to
+// configure and use MindVault itself. It is plain structured data (no
+// entity, no embeddings), reviewed and shipped with the app, and it is the
+// ONLY source the assistant may answer from.
+//
+// Every topic reuses the existing product vocabulary — Knowledge, Knowledge
+// source, Operational Process, Owner, SME, Backup SME, Criticality, Review
+// Cadence, Verification, Operational Continuity, Knowledge Gap — and never
+// reintroduces "Training(s)". Where a definition already exists in
+// CONCEPT_HELP (the Onboarding-1 popover copy), this corpus reuses that text
+// verbatim rather than writing a second, possibly-drifting definition.
+//
+// Current-semantics discipline (do not relax without re-checking the code):
+//   - no PDF ingestion claim
+//   - key-person dependency is never inferred from Criticality alone
+//   - Operational Continuity has four independent bands, never one combined score
+//   - unverified knowledge is not automatically wrong — it still answers
+//     questions unless an admin turns on a setting requiring verification
+//   - firm-wide / client-specific scope isolation is described as real
+//     isolation, not a soft preference
+//   - no implementation jargon (embeddings, vector, retrieval mode, chunk,
+//     schema, index, fingerprint) — those stay internal
+
+// Neither module below imports from here, so reusing their exports is safe
+// and keeps this corpus from drifting out of sync with the real product.
+// Relative imports (not the @/ alias) so this module stays importable from
+// plain `node --test`, the same way every other pure src/lib file is tested.
+import { CONCEPT_HELP } from '../conceptHelp.js';
+import { SUPPORTED_UPLOAD_HINT } from '../knowledgeSource.js';
+
+const NAV_LIBRARY = { label: 'Open Knowledge Library', route: '/library' };
+const NAV_CHAT = { label: 'Open AI Assistant', route: '/chat' };
+const NAV_ADMIN = { label: 'Open Admin', route: '/admin' };
+const NAV_CONTINUITY = { label: 'Open Operational Continuity', route: '/continuity' };
+
+function topic(t) {
+  return {
+    keywords: [],
+    caveats: '',
+    related: [],
+    navigation: [],
+    ...t,
+  };
+}
+
+export const ADMIN_HELP_TOPICS = [
+  topic({
+    id: 'product_overview',
+    title: 'What MindVault is',
+    keywords: ['overview', 'what is mindvault', 'about mindvault', 'product overview'],
+    summary: 'MindVault turns your team’s know-how into answers employees can trust, and gives leadership a clear view of where operational knowledge is at risk.',
+    whatItIs: 'MindVault has two sides: a Knowledge Library that employees search and ask questions against through the AI Assistant, and an Admin side where you add and classify knowledge, define Operational Processes, and — if it’s turned on — review Operational Continuity.',
+    whyItMatters: 'The Library and AI Assistant are only as good as what an admin has put into them — MindVault does not know anything about your business beyond the knowledge you’ve added and classified.',
+    howToUse: 'Start in Admin: add a few knowledge sources, create your most important Operational Processes, and check the Setup Checklist for what’s left.',
+    whereToFind: 'Library, AI Assistant, Admin, and Operational Continuity are the four main areas — Admin and Operational Continuity are admin-only.',
+    caveats: 'This assistant explains how MindVault works. It does not answer questions from your company’s own knowledge — use the AI Assistant for that.',
+    related: ['getting_started', 'knowledge_library', 'operational_processes', 'operational_continuity'],
+  }),
+
+  topic({
+    id: 'getting_started',
+    title: 'What to set up first',
+    keywords: ['getting started', 'first', 'set up', 'setup', 'configure', 'start', 'where do i start'],
+    summary: 'Add a few knowledge sources, create the 3–5 Operational Processes the business could least afford to lose, then work through the Setup Checklist.',
+    whatItIs: 'A recommended order of operations for a new admin — not a required workflow. You can use MindVault before every step is done.',
+    whyItMatters: 'Doing these in roughly this order means the AI Assistant has something useful to answer from, and Operational Continuity (once enabled) has real data instead of a mostly-empty dashboard.',
+    howToUse: '1) Add knowledge in the Library and classify it as firm-wide or client-specific. 2) Create your most critical Operational Processes and assign an Owner and SME to each. 3) Open the Setup Checklist in Admin and work through what it flags.',
+    whereToFind: 'Admin → the Setup Checklist card is the single best starting point.',
+    caveats: 'There is no scored “health grade” anywhere in MindVault — the checklist only counts how many of its 10 areas are Complete.',
+    related: ['setup_checklist', 'adding_knowledge', 'operational_processes', 'guided_tour'],
+    navigation: [{ ...NAV_ADMIN, topic: 'setup_checklist' }],
+  }),
+
+  topic({
+    id: 'knowledge_library',
+    title: 'Knowledge Library',
+    keywords: ['library', 'knowledge library', 'browse knowledge', 'search knowledge'],
+    summary: 'The Knowledge Library is where every knowledge source lives — SOPs, process docs, policies, recordings, and other operational knowledge the AI Assistant answers from.',
+    whatItIs: 'A searchable, filterable list of every knowledge source your team has added.',
+    whyItMatters: 'It’s the one place to see everything MindVault has to work with, and to spot what’s missing or still unclassified.',
+    howToUse: 'Search by keyword, or use the filters to narrow by topic, client segment, or software. Open any source to review its details.',
+    whereToFind: 'The Library page, in the main navigation.',
+    caveats: 'Only classified, active knowledge answers questions in the AI Assistant — a source still awaiting classification (“Needs review”) is visible here but won’t be used to answer.',
+    related: ['adding_knowledge', 'knowledge_scope', 'ai_assistant'],
+    navigation: [{ ...NAV_LIBRARY, topic: 'knowledge_library' }],
+  }),
+
+  topic({
+    id: 'adding_knowledge',
+    title: 'Adding knowledge',
+    keywords: ['add knowledge', 'upload knowledge', 'add a source', 'submit a recording', 'sync google drive', 'import knowledge'],
+    summary: 'Add knowledge from the Library’s “Add Knowledge” button, or from Admin — upload a file, paste text, or sync a Google Drive folder.',
+    whatItIs: 'A knowledge source can come from an uploaded file, pasted text, a recording, or a Google Drive sync.',
+    whyItMatters: 'The more real operational knowledge you add — and classify — the more the AI Assistant can actually help with.',
+    howToUse: 'Click “Add Knowledge” in the Library, or use the upload / sync tools in Admin. Give it a clear title, and pick the source type when asked.',
+    whereToFind: 'Library → Add Knowledge, or Admin → knowledge management.',
+    caveats: `Newly added knowledge starts out unclassified (“Needs review”) and won’t answer questions until you set its scope. ${SUPPORTED_UPLOAD_HINT} — PDF is not currently a supported upload format.`,
+    related: ['knowledge_library', 'knowledge_scope'],
+    navigation: [{ ...NAV_LIBRARY, topic: 'adding_knowledge' }],
+  }),
+
+  topic({
+    id: 'knowledge_scope',
+    title: CONCEPT_HELP.scope.term,
+    keywords: ['scope', 'firm-wide', 'client-specific', 'client isolation', 'general knowledge', 'make knowledge client specific'],
+    summary: CONCEPT_HELP.scope.text,
+    whatItIs: CONCEPT_HELP.scope.text,
+    whyItMatters: 'Getting scope right keeps one client’s information from ever showing up in another client’s answers, while keeping genuinely firm-wide knowledge available to everyone.',
+    howToUse: 'In Admin, open the classification tool for a source (the “Needs review” list) and choose firm-wide, or a specific client. Unclassified knowledge stays out of the AI Assistant until you do this.',
+    whereToFind: 'Admin → the knowledge scope / classification tool.',
+    caveats: 'There is no partial or fuzzy scope — a source is either firm-wide, tied to exactly one client, or unclassified. Client-specific knowledge is only ever used in that client’s own context; it never crosses over to another client.',
+    related: ['adding_knowledge', 'ai_assistant'],
+    navigation: [{ ...NAV_ADMIN, topic: 'knowledge_scope' }],
+  }),
+
+  topic({
+    id: 'ai_assistant',
+    title: 'AI Assistant',
+    keywords: ['ai assistant', 'chat', 'ask a question', 'chatbot', 'assistant'],
+    summary: 'Employees ask questions in plain language in the AI Assistant and get answers grounded in your classified knowledge, with sources cited.',
+    whatItIs: 'A chat interface for employees, separate from this Admin Help Assistant.',
+    whyItMatters: 'It’s how the knowledge you add and classify actually reaches employees, in their own words.',
+    howToUse: 'Type a real operational question — how to complete a workflow, what approval is needed, what to do for an exception. If a client-context selector is shown, pick the right firm-wide/client scope first.',
+    whereToFind: 'AI Assistant, in the main navigation.',
+    caveats: 'Answers are grounded in your classified knowledge, not automatically organization-“approved” — Verification is a separate, optional signal. If nothing relevant is classified, the assistant says so rather than guessing.',
+    related: ['knowledge_scope', 'verification', 'knowledge_gaps'],
+    navigation: [{ ...NAV_CHAT, topic: 'ai_assistant' }],
+  }),
+
+  topic({
+    id: 'operational_processes',
+    title: 'Operational Processes',
+    keywords: ['operational process', 'process', 'workflow', 'processes', 'operational processes'],
+    summary: 'An Operational Process is a business workflow — like monthly bank reconciliation — not an individual document. Knowledge sources link to the process they document.',
+    whatItIs: 'A process record with an Owner, SME, optional Backup SME, Criticality, and a review cadence. It’s the unit Operational Continuity is organized around.',
+    whyItMatters: 'Linking knowledge to processes is what lets MindVault tell you which important workflows are actually documented, owned, and current — versus which ones are running on nobody’s calendar.',
+    howToUse: 'Create a process, name it after the real workflow, then set its Owner, SME, Backup SME (where it matters), Criticality, and review interval. Link the knowledge sources that document it.',
+    whereToFind: 'Admin → Operational Processes.',
+    caveats: 'Start with the 3–5 workflows the business could least afford to lose — you don’t need to model everything on day one.',
+    related: ['owner', 'sme', 'backup_sme', 'criticality', 'review_cadence'],
+    navigation: [{ ...NAV_ADMIN, topic: 'operational_processes' }],
+  }),
+
+  topic({
+    id: 'owner',
+    title: CONCEPT_HELP.owner.term,
+    keywords: ['owner', 'process owner', 'difference between owner and sme'],
+    summary: CONCEPT_HELP.owner.text,
+    whatItIs: CONCEPT_HELP.owner.text,
+    whyItMatters: 'Without an Owner, nobody is accountable for keeping a process’s knowledge current — it shows up as a gap in both the Setup Checklist and Operational Continuity.',
+    howToUse: 'Set the Owner field when creating or editing an Operational Process.',
+    whereToFind: 'Admin → Operational Processes.',
+    caveats: 'Exactly one Owner per process — it’s a single field, not a list. An Owner and an SME can be the same person on a small team.',
+    related: ['operational_processes', 'sme', 'backup_sme'],
+    navigation: [{ ...NAV_ADMIN, topic: 'owner' }],
+  }),
+
+  topic({
+    id: 'sme',
+    title: CONCEPT_HELP.sme.term,
+    keywords: ['sme', 'subject matter expert', 'subject-matter expert', 'difference between owner and sme'],
+    summary: CONCEPT_HELP.sme.text,
+    whatItIs: CONCEPT_HELP.sme.text,
+    whyItMatters: 'The SME is who you’d actually ask if the documentation didn’t cover something — distinct from the Owner, who is accountable but may not do the work day to day.',
+    howToUse: 'Set the Subject-matter expert field on the Operational Process.',
+    whereToFind: 'Admin → Operational Processes.',
+    caveats: 'MindVault doesn’t require the Owner and SME to be different people.',
+    related: ['owner', 'backup_sme', 'operational_processes'],
+    navigation: [{ ...NAV_ADMIN, topic: 'sme' }],
+  }),
+
+  topic({
+    id: 'backup_sme',
+    title: CONCEPT_HELP.backup_sme.term,
+    keywords: ['backup sme', 'backup', 'when should i assign a backup', 'single point of failure'],
+    summary: CONCEPT_HELP.backup_sme.text,
+    whatItIs: CONCEPT_HELP.backup_sme.text,
+    whyItMatters: 'A process with only one person who can run it is a key-person dependency — the exact thing Operational Continuity’s key-person signal watches for.',
+    howToUse: 'Set the Backup SME field where a real second person could keep the process running if the SME were unavailable.',
+    whereToFind: 'Admin → Operational Processes.',
+    caveats: 'A high or mission-critical process is NOT automatically flagged just because it lacks a Backup SME — MindVault only raises a key-person finding from an actual established dependency in your Owner/SME/Backup data, never from Criticality alone.',
+    related: ['sme', 'key_person_dependency', 'criticality'],
+    navigation: [{ ...NAV_ADMIN, topic: 'backup_sme' }],
+  }),
+
+  topic({
+    id: 'criticality',
+    title: CONCEPT_HELP.criticality.term,
+    keywords: ['criticality', 'priority', 'critical', 'what does criticality mean'],
+    summary: CONCEPT_HELP.criticality.text,
+    whatItIs: CONCEPT_HELP.criticality.text,
+    whyItMatters: 'It decides what shows up first on the Operational Continuity dashboard and in the review queue.',
+    howToUse: 'Set Criticality (low / medium / high / mission critical) when creating or editing an Operational Process.',
+    whereToFind: 'Admin → Operational Processes.',
+    caveats: 'Criticality alone doesn’t imply a Backup SME is required, and it doesn’t feed into any single combined score — MindVault uses it to prioritize attention, not to compute a grade.',
+    related: ['operational_processes', 'operational_continuity'],
+    navigation: [{ ...NAV_ADMIN, topic: 'criticality' }],
+  }),
+
+  topic({
+    id: 'review_cadence',
+    title: CONCEPT_HELP.review_cadence.term,
+    keywords: ['review cadence', 'review interval', 'how often should knowledge be reviewed', 'cadence'],
+    summary: CONCEPT_HELP.review_cadence.text,
+    whatItIs: CONCEPT_HELP.review_cadence.text,
+    whyItMatters: 'It’s what Operational Continuity’s Currency signal is built from — how much of your reviewable knowledge is actually on schedule.',
+    howToUse: 'Set a review interval (for example, every 90 days) on a knowledge source directly, or on its Operational Process — a source without its own cadence inherits its process’s cadence.',
+    whereToFind: 'Admin → Operational Processes, or a knowledge source’s own settings.',
+    caveats: 'There’s no single global cadence — every source or process can have its own, and having none set is treated as “no schedule,” not as overdue.',
+    related: ['verification', 'operational_processes', 'currency'],
+    navigation: [{ ...NAV_ADMIN, topic: 'review_cadence' }],
+  }),
+
+  topic({
+    id: 'verification',
+    title: CONCEPT_HELP.verification.term,
+    keywords: ['verification', 'verified', 'unverified', 'why is knowledge unverified', 'confirm knowledge'],
+    summary: CONCEPT_HELP.verification.text,
+    whatItIs: CONCEPT_HELP.verification.text,
+    whyItMatters: 'It’s the clearest signal to employees and leadership that someone has actually confirmed a piece of knowledge, rather than it just having been collected.',
+    howToUse: 'Mark a source verified from its detail page or the knowledge management tools once you’ve confirmed it’s accurate and current.',
+    whereToFind: 'Admin → knowledge management / lifecycle tools.',
+    caveats: 'Unverified is not the same as wrong — most knowledge starts unverified and still answers questions normally. You can turn on a setting that requires verification before knowledge is used at all, but that setting is off by default.',
+    related: ['review_cadence', 'lifecycle', 'common_troubleshooting'],
+    navigation: [{ ...NAV_ADMIN, topic: 'verification' }],
+  }),
+
+  topic({
+    id: 'lifecycle',
+    title: 'Knowledge Lifecycle',
+    keywords: ['lifecycle', 'draft', 'in review', 'published', 'version history', 'source lifecycle'],
+    summary: 'An optional, flag-gated workflow that moves a knowledge source through draft → in review → verified → published, and keeps its version history.',
+    whatItIs: 'When turned on, editing a published source creates a new draft version; only the active/published version answers questions, and every prior version stays inspectable.',
+    whyItMatters: 'It adds a formal review-and-approve step, and a record of what changed and when, for knowledge that needs tighter governance than “just edit it.”',
+    howToUse: 'Open the lifecycle tools in Admin to send a draft for review, approve it, publish it, or archive an old version.',
+    whereToFind: 'Admin → Knowledge Lifecycle.',
+    caveats: 'This is optional and off by default — most teams can manage knowledge fine without it. Turn it on under Admin → System if you need formal review and versioning.',
+    related: ['verification', 'review_cadence'],
+    navigation: [{ ...NAV_ADMIN, topic: 'lifecycle' }],
+  }),
+
+  topic({
+    id: 'setup_checklist',
+    title: 'Setup Checklist',
+    keywords: ['setup checklist', 'checklist', 'what to configure', 'what does the checklist mean'],
+    summary: 'A derived checklist of 10 firm-wide setup areas — it shows what’s already configured and what still needs attention. There is no score, just a count of Complete items.',
+    whatItIs: 'Ten plain-language checks — things like whether knowledge is classified, whether processes have owners and SMEs, whether review cadence is set, whether knowledge is verified.',
+    whyItMatters: 'It’s the fastest way to see, at a glance, what’s left to configure without digging through every admin screen.',
+    howToUse: 'Open it at the top of Admin, and use each item’s action link to go fix what it flags.',
+    whereToFind: 'Admin → the checklist card at the top of Content Management.',
+    caveats: 'It only reflects firm-wide (general) setup — client-specific setup is reviewed per client in Operational Continuity. You don’t need to finish it before using MindVault; nothing is blocked by an incomplete checklist.',
+    related: ['getting_started', 'operational_processes', 'verification'],
+    navigation: [{ ...NAV_ADMIN, topic: 'setup_checklist' }],
+  }),
+
+  topic({
+    id: 'operational_continuity',
+    title: 'Operational Continuity',
+    keywords: ['operational continuity', 'continuity', 'health dashboard', 'business continuity', 'what is operational continuity'],
+    summary: 'Operational Continuity is an admin dashboard showing where important work depends on stale or missing knowledge, unclear ownership, or a single person with no backup.',
+    whatItIs: 'A dashboard organized around your Operational Processes, with an overview, a filterable process table, a review queue, a key-person view, and knowledge gaps.',
+    whyItMatters: 'It turns “we should probably document more” into a specific, prioritized list of what’s actually at risk.',
+    howToUse: 'Review the overview bands, the “Address first” list, and the review queue for what to tackle next. Switch the scope selector to see a specific client instead of firm-wide.',
+    whereToFind: 'Operational Continuity, in the main navigation — admin-only, and only visible once the feature is turned on.',
+    caveats: 'It’s turned off by default — enable it under Admin → System. It reports four independent signals (Coverage, Currency, Verification, Key-person resilience); there is no single combined score.',
+    related: ['coverage', 'currency', 'key_person_dependency', 'knowledge_gaps', 'snapshots'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'operational_continuity' }],
+  }),
+
+  topic({
+    id: 'coverage',
+    title: CONCEPT_HELP.coverage.term,
+    keywords: ['coverage', 'what does coverage mean'],
+    summary: CONCEPT_HELP.coverage.text,
+    whatItIs: CONCEPT_HELP.coverage.text,
+    whyItMatters: 'It’s the first question for any critical process: does usable, verified knowledge actually exist behind it, or not?',
+    howToUse: 'Check the Coverage band on Operational Continuity’s overview, and the Process Continuity tab for which specific processes are missing documentation.',
+    whereToFind: 'Operational Continuity → Overview.',
+    caveats: 'Coverage needs a handful of critical processes with a known documentation status before it reports a real band — with too few, or too many “unknown,” it shows Unknown rather than guessing.',
+    related: ['operational_continuity', 'verification'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'coverage' }],
+  }),
+
+  topic({
+    id: 'currency',
+    title: CONCEPT_HELP.currency.term,
+    keywords: ['currency', 'current', 'overdue review', 'stale knowledge', 'slipping'],
+    summary: CONCEPT_HELP.currency.text,
+    whatItIs: CONCEPT_HELP.currency.text,
+    whyItMatters: 'It’s the difference between knowledge that was accurate once and knowledge that’s still being kept accurate.',
+    howToUse: 'If Currency is Slipping or Overdue, open the review queue to see which sources need attention.',
+    whereToFind: 'Operational Continuity → Overview.',
+    caveats: 'This is separate from Verification — a source can be verified but overdue for its next review, or current on schedule but never verified.',
+    related: ['review_cadence', 'verification', 'operational_continuity'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'currency' }],
+  }),
+
+  topic({
+    id: 'key_person_dependency',
+    title: CONCEPT_HELP.key_person.term,
+    keywords: ['key person', 'key-person dependency', 'single person', 'no backup', 'what is a key person dependency'],
+    summary: CONCEPT_HELP.key_person.text,
+    whatItIs: CONCEPT_HELP.key_person.text,
+    whyItMatters: 'It’s a resilience question, not a performance one: if this one person were out, could the process still run?',
+    howToUse: 'Check the Key-Person Exposure view on Operational Continuity, and add a Backup SME where it’s genuinely warranted.',
+    whereToFind: 'Operational Continuity → Key-Person Exposure.',
+    caveats: 'This is only raised from an actual established dependency in your Owner/SME/Backup data — never inferred from Criticality alone, and it is not a monitoring tool aimed at any individual.',
+    related: ['backup_sme', 'sme', 'operational_continuity'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'key_person_dependency' }],
+  }),
+
+  topic({
+    id: 'knowledge_gaps',
+    title: CONCEPT_HELP.knowledge_gap.term,
+    keywords: ['knowledge gap', 'knowledge gaps', 'gap', 'what are knowledge gaps', 'didnt answer'],
+    summary: CONCEPT_HELP.knowledge_gap.text,
+    whatItIs: CONCEPT_HELP.knowledge_gap.text,
+    whyItMatters: 'It turns real employee questions the knowledge base couldn’t fully answer into a concrete, prioritized to-do list for admins.',
+    howToUse: 'Review open gaps on Operational Continuity’s Knowledge Gaps tab, and add or correct the knowledge that would resolve each one.',
+    whereToFind: 'Operational Continuity → Knowledge Gaps.',
+    caveats: 'A gap is evidence, never an answer — it doesn’t change what the AI Assistant says until you actually add or update the knowledge behind it.',
+    related: ['ai_assistant', 'operational_continuity'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'knowledge_gaps' }],
+  }),
+
+  topic({
+    id: 'snapshots',
+    title: CONCEPT_HELP.snapshot.term,
+    keywords: ['snapshot', 'snapshots', 'monthly snapshot', 'what are snapshots'],
+    summary: CONCEPT_HELP.snapshot.text,
+    whatItIs: CONCEPT_HELP.snapshot.text,
+    whyItMatters: 'Without a monthly history, leadership only ever sees a single point-in-time picture — snapshots are what make trend and “what changed” views possible.',
+    howToUse: 'Turn on Knowledge Health Snapshots under Admin → System, then check back on Operational Continuity month over month.',
+    whereToFind: 'Operational Continuity → Trends.',
+    caveats: 'Snapshots only exist once the feature is turned on and at least one month has actually been captured; missing months are shown as gaps, never estimated.',
+    related: ['trends', 'what_changed', 'operational_continuity'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'snapshots' }],
+  }),
+
+  topic({
+    id: 'trends',
+    title: 'Trends',
+    keywords: ['trends', 'over time', 'improving', 'slipping over time', 'what are trends'],
+    summary: 'Trends shows each continuity number’s monthly history so you can see whether things are improving or slipping, not just a single point-in-time reading.',
+    whatItIs: 'A per-metric monthly line built from your captured Snapshots.',
+    whyItMatters: 'A single “Coverage: Partial” reading doesn’t tell you if you’re getting better or worse — Trends does.',
+    howToUse: 'Open the Trends panel on Operational Continuity once at least two months are captured.',
+    whereToFind: 'Operational Continuity → Trends.',
+    caveats: 'Deterministic counts only — no interpolation and no prediction for months that weren’t captured.',
+    related: ['snapshots', 'what_changed'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'trends' }],
+  }),
+
+  topic({
+    id: 'what_changed',
+    title: CONCEPT_HELP.what_changed.term,
+    keywords: ['what changed', 'since last month', 'change summary', 'what improved'],
+    summary: CONCEPT_HELP.what_changed.text,
+    whatItIs: CONCEPT_HELP.what_changed.text,
+    whyItMatters: 'It’s the fastest way to answer “is this getting better?” without reading every number yourself.',
+    howToUse: 'Open the What Changed card on Operational Continuity’s overview.',
+    whereToFind: 'Operational Continuity → What Changed.',
+    caveats: 'It compares only the two most recent monthly snapshots — it needs at least two captured periods before it can show anything.',
+    related: ['snapshots', 'trends'],
+    navigation: [{ ...NAV_CONTINUITY, topic: 'what_changed' }],
+  }),
+
+  topic({
+    id: 'notifications',
+    title: 'Notifications',
+    keywords: ['notifications', 'notification bell', 'alerts', 'bell icon'],
+    summary: 'An in-app notification bell surfaces items that need attention — like an overdue review, a knowledge gap that’s become actionable, or a process missing an Owner.',
+    whatItIs: 'A list of deterministic, rule-based notifications tied to specific conditions (overdue reviews, missing governance fields, key-person findings, and similar).',
+    whyItMatters: 'It’s a way to notice something needs attention without having to check Operational Continuity yourself every day.',
+    howToUse: 'Open the bell icon to review, mark read, or dismiss a notification.',
+    whereToFind: 'The bell icon in the top navigation.',
+    caveats: 'Dismissing hides a notification; it only reopens on its own if the underlying condition is still there later. Notifications are in-app only in the current version.',
+    related: ['operational_continuity'],
+  }),
+
+  topic({
+    id: 'permissions',
+    title: 'Permissions and roles',
+    keywords: ['permissions', 'roles', 'admin role', 'employee role', 'who can see what'],
+    summary: 'MindVault has two roles: admin and employee. Admins see Admin, Operational Continuity (when enabled), and the Strategy Engine; employees see the Knowledge Library, AI Assistant, and their own questions.',
+    whatItIs: 'A simple two-role model — there is no finer-grained per-process permission system yet.',
+    whyItMatters: 'It’s what keeps configuration and governance actions restricted to admins, while employees get a focused, simple experience.',
+    howToUse: 'Invite a new admin from Admin → Invite Admin User.',
+    whereToFind: 'Admin → Invite Admin User.',
+    caveats: 'Governance actions (owners, SMEs, criticality, verification, and this Help Assistant itself) are admin-only.',
+    related: ['operational_continuity', 'setup_checklist'],
+    navigation: [{ ...NAV_ADMIN, topic: 'permissions' }],
+  }),
+
+  topic({
+    id: 'common_troubleshooting',
+    title: 'Why a source isn’t showing up in AI answers',
+    keywords: ['not showing up', 'why isnt', 'missing from ai assistant', 'troubleshoot', 'not appearing', 'source not found'],
+    summary: 'The most common reasons a source doesn’t show up in AI Assistant answers: it’s still unclassified (“Needs review”), it’s archived or an older version, it was rejected during verification, it’s outside its effective date window, or — only if your organization requires verification first — it hasn’t been verified yet.',
+    whatItIs: 'A short checklist for the single most common admin support question.',
+    whyItMatters: 'It’s usually one of a handful of causes, and every one of them is fixable from Admin in a couple of clicks.',
+    howToUse: 'Open the source in Admin and check its scope/classification, its status, and (if the lifecycle workflow is on) its version state.',
+    whereToFind: 'Admin → knowledge management / lifecycle tools.',
+    caveats: 'A source being unverified is not, by itself, a reason it’s excluded — unverified knowledge answers questions normally unless your organization has turned on the setting that requires verification first.',
+    related: ['knowledge_scope', 'verification', 'lifecycle'],
+    navigation: [{ ...NAV_ADMIN, topic: 'common_troubleshooting' }],
+  }),
+
+  topic({
+    id: 'guided_tour',
+    title: 'The guided product tour',
+    keywords: ['guided tour', 'product tour', 'restart the tour', 'restart tour', 'walkthrough'],
+    summary: 'The guided product tour is a short, admin-only, page-to-page walkthrough of MindVault’s main screens. You can restart it any time.',
+    whatItIs: 'An orientation tour that highlights real controls across Library, AI Assistant, Admin, and (when enabled) Operational Continuity.',
+    whyItMatters: 'It’s the fastest way for a brand-new admin to see where everything lives, before diving into day-to-day configuration.',
+    howToUse: 'Click Help in the sidebar (or the top bar on mobile) to restart it from the beginning, on any page.',
+    whereToFind: 'The Help button, admin-only.',
+    caveats: 'The guided tour is a one-time orientation; this Admin Help Assistant is for ongoing questions after that.',
+    related: ['product_overview', 'setup_checklist'],
+  }),
+];
+
+export const ADMIN_HELP_TOPIC_IDS = ADMIN_HELP_TOPICS.map((t) => t.id);

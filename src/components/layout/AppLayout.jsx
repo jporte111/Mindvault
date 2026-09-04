@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useIsMobile } from '@/hooks/use-mobile';
 import GuidedTour from '@/components/onboarding/GuidedTour';
+import AdminHelpAssistant from '@/components/onboarding/AdminHelpAssistant';
 
 export default function AppLayout() {
   const [user, setUser] = useState(null);
@@ -43,6 +44,10 @@ export default function AppLayout() {
           route changes and can be restarted from the Help trigger in either
           nav. Renders nothing itself; driver.js portals its own overlay. */}
       <GuidedTour ref={guidedTourRef} />
+      {/* Admin Help Assistant — ongoing conversational product support,
+          separate from the guided tour and from the employee AI Assistant.
+          Self-guards admin-only; renders its own floating launcher. */}
+      <AdminHelpAssistant />
     </div>
   );
 }
