@@ -8,6 +8,12 @@ import {
 import { computeTrend } from '../../shared/health/trend.ts';
 import { priorityRationale } from '../../shared/health/priorityRationale.ts';
 import { governanceCompletenessRow } from '../../shared/health/governanceCompleteness.ts';
+import {
+  computeContinuityChange,
+  computeGapChange,
+  isFingerprintBearing,
+  LONG_UNRESOLVED_PERIODS,
+} from '../../shared/health/continuityChange.ts';
 
 // Phase 7 — admin-only read for the Operational Continuity dashboard. Pure
 // deterministic aggregation over governed entities: NO embeddings, NO LLM, NO
@@ -101,7 +107,23 @@ Deno.serve(async (req) => {
     });
     const trend = computeTrend(current, prior);
 
-    return Response.json({ ...enriched, trend });
+    // Phase 9 P9-3 — persisted-vs-persisted change detection. It compares the
+    // latest fingerprint-bearing monthly snapshot for THIS exact client_scope
+    // against its immediately prior fingerprint-bearing snapshot. It never
+    // builds or compares a live current fingerprint (the live payload has no
+    // resolved gaps). Pre-P9-3 rows carry no fingerprint_version and are
+    // skipped as non-fingerprint-bearing history; a newer incompatible
+    // fingerprint_version yields comparable:false — the newer period is never
+    // silently skipped for an older pair.
+    const fpRows = (priorRows as any[]).filter(isFingerprintBearing); // already '-period_key' newest-first
+    const latestFp = fpRows[0] || null;
+    const priorFp = fpRows[1] || null;
+    const change = {
+      continuity: computeContinuityChange(latestFp, priorFp),
+      gaps: computeGapChange(latestFp, priorFp, fpRows.slice(0, LONG_UNRESOLVED_PERIODS + 2)),
+    };
+
+    return Response.json({ ...enriched, trend, change });
   } catch (error) {
     return Response.json({ error: redact((error as Error).message) }, { status: 500 });
   }
