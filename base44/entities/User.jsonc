@@ -7,6 +7,18 @@
         "admin",
         "user"
       ]
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Denormalized TENANT stamp maintained by the app from TenantMembership (the authoritative mapping). Used ONLY by RLS tenant-match rules for direct record reads; backend functions must resolve the tenant from TenantMembership and never trust this field, because a user could attempt to tamper with their own profile data."
+    },
+    "app_role": {
+      "type": "string",
+      "enum": [
+        "client_admin",
+        "client_user"
+      ],
+      "description": "Denormalized application-role stamp maintained from TenantMembership. Presentation/RLS convenience only \u2014 never authoritative. Absent for Super Admins (Base44 role 'admin')."
     }
   },
   "required": [

@@ -1,0 +1,79 @@
+{
+  "name": "TenantMembership",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "The Tenant this membership belongs to. THE authoritative user->tenant mapping \u2014 user.data.tenant_id is a denormalized RLS stamp maintained FROM this entity, and is never trusted for authorization."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Base44 user id. Null until an invited user first signs in \u2014 pre-provisioned invite rows match on email and are activated by resolveMyTenantContext."
+    },
+    "email": {
+      "type": "string",
+      "description": "Lowercased invitation email. The join key for pending rows until user_id is stamped."
+    },
+    "app_role": {
+      "type": "string",
+      "enum": [
+        "client_admin",
+        "client_user"
+      ],
+      "description": "Application role within the tenant. 'client_admin' can administer their own tenant only; 'client_user' uses the app. A Super Admin (Base44 role 'admin') never has a membership row and can never be assigned one."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "inactive"
+      ],
+      "default": "pending",
+      "description": "'pending' = invited but never signed in. 'active' = current member. 'inactive' = removed/deactivated by a tenant admin or the platform \u2014 access revoked."
+    },
+    "invited_by": {
+      "type": "string",
+      "description": "Base44 user id of the inviter (stable id only)."
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the invited user first signed in and this row became active."
+    }
+  },
+  "required": [
+    "tenant_id",
+    "email",
+    "app_role"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

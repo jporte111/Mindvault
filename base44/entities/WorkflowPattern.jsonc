@@ -2,6 +2,10 @@
   "name": "WorkflowPattern",
   "type": "object",
   "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 RLS requires an exact match with the user's tenant stamp."
+    },
     "name": {
       "type": "string",
       "description": "Name of the repeated workflow"
@@ -50,5 +54,55 @@
   },
   "required": [
     "name"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    }
+  }
 }

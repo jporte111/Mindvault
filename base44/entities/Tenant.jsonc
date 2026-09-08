@@ -1,0 +1,92 @@
+{
+  "name": "Tenant",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Client organization display name."
+    },
+    "slug": {
+      "type": "string",
+      "description": "URL-safe unique identifier (lowercase letters, numbers, hyphens). Reserved for future client-specific URLs/subdomains \u2014 no routing behavior yet."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "default": "active",
+      "description": "Tenant lifecycle status. 'suspended'/'archived' tenants should be excluded from member access at the function layer."
+    },
+    "logo_url": {
+      "type": "string",
+      "description": "Client branding: logo image URL. Presentation only."
+    },
+    "brand_color": {
+      "type": "string",
+      "description": "Client branding: primary brand color (hex). Presentation only."
+    },
+    "config": {
+      "type": "string",
+      "description": "JSON string of tenant-level configuration overrides. Reserved extension point \u2014 presentation/config only, never security."
+    },
+    "plan": {
+      "type": "string",
+      "enum": [
+        "trial",
+        "standard",
+        "pro",
+        "enterprise"
+      ],
+      "default": "standard",
+      "description": "Tenant plan tier. Billing is NOT implemented \u2014 reserved for future plans/usage limits."
+    },
+    "plan_limits": {
+      "type": "string",
+      "description": "JSON string of usage limits (e.g. max members). Reserved \u2014 not enforced yet."
+    },
+    "sso_config": {
+      "type": "string",
+      "description": "Reserved for future SSO configuration for larger clients. Always null today."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Internal platform notes. Never shown to tenant members."
+    }
+  },
+  "required": [
+    "name",
+    "slug"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

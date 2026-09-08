@@ -2,6 +2,10 @@
   "name": "Client",
   "type": "object",
   "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 RLS requires an exact match with the user's tenant stamp. A tenant's own client records (e.g. an accounting firm's own customers) are scoped inside that tenant; different tenants never see each other's client records."
+    },
     "name": {
       "type": "string",
       "description": "Client / end-customer name"
@@ -33,5 +37,55 @@
   },
   "required": [
     "name"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    }
+  }
 }
