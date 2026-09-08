@@ -87,6 +87,27 @@ export default async function(req) {
       return Response.json({ process: updated });
     }
 
+    if (action === 'delete') {
+      const id = String(body?.id || '').trim();
+      if (!id) return Response.json({ error: 'Process id is required' }, { status: 400 });
+
+      const existing = await base44.asServiceRole.entities.OperationalProcess.get(id);
+      if (!existing) return Response.json({ error: 'Process not found' }, { status: 404 });
+
+      // Same cross-tenant guard as update: the record's own tenant must equal
+      // the caller's VERIFIED scope. A Client Admin can only ever delete within
+      // their own tenant; a Super Admin must target the record's tenant explicitly.
+      if (existing.tenant_id !== scope.tenantId) {
+        return Response.json(
+          { error: 'Forbidden — cross-tenant access is not allowed' },
+          { status: 403 },
+        );
+      }
+
+      await base44.asServiceRole.entities.OperationalProcess.delete(id);
+      return Response.json({ ok: true });
+    }
+
     return Response.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
     if (error instanceof TenantAuthError) {
