@@ -2,18 +2,28 @@
   "name": "KnowledgeFeedback",
   "type": "object",
   "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant id (Tenant record), stamped server-side from the reporter's VERIFIED tenant membership in submitKnowledgeFeedback. THE tenant isolation key \u2014 RLS requires an exact match with the user's tenant stamp for non-admin reads. Never set from a request payload."
+    },
     "feedback_type": {
       "type": "string",
-      "enum": ["helpful", "didnt_answer", "missing_detail", "incorrect_or_outdated", "still_need_help"],
+      "enum": [
+        "helpful",
+        "didnt_answer",
+        "missing_detail",
+        "incorrect_or_outdated",
+        "still_need_help"
+      ],
       "description": "Phase 5. One employee's reaction to one answer. Written only via submitKnowledgeFeedback (auth me()), never a direct client write."
     },
     "answer_log_id": {
       "type": "string",
-      "description": "Linked AnswerLog id — present only if answer_logging_enabled was on for that answer."
+      "description": "Linked AnswerLog id \u2014 present only if answer_logging_enabled was on for that answer."
     },
     "normalized_topic": {
       "type": "string",
-      "description": "Deterministic lexical signature of the question (knowledgeGap.normalizeTopic). Always stored — carries no raw phrasing."
+      "description": "Deterministic lexical signature of the question (knowledgeGap.normalizeTopic). Always stored \u2014 carries no raw phrasing."
     },
     "standalone_query": {
       "type": "string",
@@ -21,7 +31,7 @@
     },
     "client_scope": {
       "type": "string",
-      "description": "'general' or 'client:<id>' — copied verbatim from the answer's active scope, never parsed from text."
+      "description": "'general' or 'client:<id>' \u2014 copied verbatim from the answer's active scope, never parsed from text."
     },
     "operational_process_id": {
       "type": "string",
@@ -29,12 +39,17 @@
     },
     "related_source_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "The answer's final_source_ids (Training ids)."
     },
     "answer_mode": {
       "type": "string",
-      "enum": ["prose", "operational"],
+      "enum": [
+        "prose",
+        "operational"
+      ],
       "description": "Which generation path produced the answer being rated."
     },
     "confidence_level": {
@@ -43,7 +58,9 @@
     },
     "reported_missing_facets": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "From the operational answer's missing_facets, or a small fixed employee-selectable list on 'missing_detail'."
     },
     "free_text": {
@@ -64,16 +81,45 @@
     },
     "status": {
       "type": "string",
-      "enum": ["new", "linked", "dismissed"],
+      "enum": [
+        "new",
+        "linked",
+        "dismissed"
+      ],
       "default": "new",
       "description": "Admin triage of the individual report."
     }
   },
-  "required": ["feedback_type"],
+  "required": [
+    "feedback_type"
+  ],
   "rls": {
-    "create": { "user_condition": { "role": "admin" } },
-    "read": { "user_condition": { "role": "admin" } },
-    "update": { "user_condition": { "role": "admin" } },
-    "delete": { "user_condition": { "role": "admin" } }
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
   }
 }
