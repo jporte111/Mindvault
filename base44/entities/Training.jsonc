@@ -2,6 +2,10 @@
   "name": "Training",
   "type": "object",
   "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 RLS requires an exact match with the user's tenant stamp. Creation goes through the createKnowledgeSource backend function (version forking inherits it via the lifecycle engine), which stamps the VERIFIED tenant server-side and never trusts this field from a request payload. tenant_id is immutable after create."
+    },
     "title": {
       "type": "string",
       "description": "Title of the training session"
@@ -240,7 +244,7 @@
         "legacy_unspecified",
         "other"
       ],
-      "description": "What kind of knowledge source this is. Not defaulted for legacy records — set from the Add Knowledge picker, or reliably inferred at ingestion. Never manufactured as 'recording' for records that lack real source metadata."
+      "description": "What kind of knowledge source this is. Not defaulted for legacy records \u2014 set from the Add Knowledge picker, or reliably inferred at ingestion. Never manufactured as 'recording' for records that lack real source metadata."
     },
     "source_format": {
       "type": "string",
@@ -347,42 +351,58 @@
     },
     "exceptions": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): situations where the normal procedure changes. Additive; empty when unsupported."
     },
     "roles_involved": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): job roles or titles that participate. Additive."
     },
     "approvers": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): roles or titles who must approve or sign off, and what they approve. Additive."
     },
     "escalation_paths": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): 'if X then escalate to Y' statements. Additive."
     },
     "prerequisites": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): conditions or steps required before the process can start. Additive."
     },
     "deadlines": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): timing constraints and due dates. Additive."
     },
     "verification_checkpoints": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): checks that confirm a step was done correctly. Additive."
     },
     "prohibited_actions": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Extracted by analyzeTraining (Phase 1): things that must not be done. Additive."
     },
     "process_name": {
@@ -420,7 +440,7 @@
         "failed",
         "skipped"
       ],
-      "description": "Phase 6. Human/ops rollup of the derived-index state. NEVER read by retrieval — retrieval gates only on KnowledgeChunk.index_stale. Missing = lazily treated 'indexed' if the source is classified with >=1 chunk, else 'skipped'/'pending'."
+      "description": "Phase 6. Human/ops rollup of the derived-index state. NEVER read by retrieval \u2014 retrieval gates only on KnowledgeChunk.index_stale. Missing = lazily treated 'indexed' if the source is classified with >=1 chunk, else 'skipped'/'pending'."
     },
     "index_error": {
       "type": "string",
@@ -433,7 +453,7 @@
     },
     "indexed_content_hash": {
       "type": "string",
-      "description": "Phase 6. Fingerprint of the concatenated draft-chunk inputs at last verified success. A match proves CONTENT IDENTITY ONLY — it is necessary but NOT sufficient for an index no-op; the desired chunk set must also be complete and assertResourceMatchesIndex must be clean."
+      "description": "Phase 6. Fingerprint of the concatenated draft-chunk inputs at last verified success. A match proves CONTENT IDENTITY ONLY \u2014 it is necessary but NOT sufficient for an index no-op; the desired chunk set must also be complete and assertResourceMatchesIndex must be clean."
     },
     "indexed_version_number": {
       "type": "number",
@@ -452,7 +472,7 @@
     "next_review_due_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Phase 6. Computed = last_reviewed_at + resolved interval. Missing = source_freshness_status 'unknown'. Consumed only by the admin panel and Phase 7 — never by retrieval or ranking."
+      "description": "Phase 6. Computed = last_reviewed_at + resolved interval. Missing = source_freshness_status 'unknown'. Consumed only by the admin panel and Phase 7 \u2014 never by retrieval or ranking."
     },
     "reviewed_by": {
       "type": "string",
@@ -480,5 +500,34 @@
   },
   "required": [
     "title"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
