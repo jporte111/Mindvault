@@ -42,9 +42,14 @@ for (const [re, rep] of strips) {
 }
 assert.ok(!/:\s*any|Promise<|: string|: number/.test(js), 'tenant.ts still has TS annotations after transform');
 
-const { requireTenantAdminScope, TenantAuthError } = await import(
-  'data:text/javascript;base64,' + Buffer.from(js, 'utf8').toString('base64')
-);
+// Node 20's test runner cannot dynamic-import (known sandbox limitation), so
+// the self-contained module is evaluated directly instead of imported.
+// tenant.ts has no imports of its own, which makes this safe.
+const moduleBody = js.replace(/^export /gm, '') + [
+  '',
+  'return { requireTenantAdminScope, requireTenantMemberScope, resolveTenantContext, TenantAuthError, tenantFilter, withTenant };',
+].join('\n');
+const { requireTenantAdminScope, TenantAuthError } = new Function(moduleBody)();
 
 // --- Fake Base44 client: membership rows live only in memory ---
 const fakeBase44 = (user, memberships) => ({

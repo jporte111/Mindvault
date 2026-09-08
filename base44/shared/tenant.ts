@@ -96,8 +96,10 @@ export async function requireTenantAdminScope(
     }
     return { isSuperAdmin: true, tenantId, appRole: ctx.appRole };
   }
-  if (ctx.appRole !== APP_ROLE_CLIENT_ADMIN || !ctx.tenantId) {
-    throw new TenantAuthError(403, "Forbidden — tenant admins only");
+  // Status is enforced here, not just in hasTenantAccess: a revoked
+  // ('inactive') or never-signed-in ('pending') membership grants nothing.
+  if (!ctx.hasTenantAccess || ctx.appRole !== APP_ROLE_CLIENT_ADMIN || !ctx.tenantId) {
+    throw new TenantAuthError(403, "Forbidden — active tenant admins only");
   }
   if (
     requestedTenantId &&
@@ -124,7 +126,7 @@ export async function requireTenantMemberScope(
   if (ctx.isSuperAdmin) {
     throw new TenantAuthError(400, "No tenant context for this platform account");
   }
-  if (!ctx.tenantId || ctx.appRole !== APP_ROLE_CLIENT_USER && ctx.appRole !== APP_ROLE_CLIENT_ADMIN) {
+  if (!ctx.hasTenantAccess || !ctx.tenantId || ctx.appRole !== APP_ROLE_CLIENT_USER && ctx.appRole !== APP_ROLE_CLIENT_ADMIN) {
     throw new TenantAuthError(403, "Forbidden — no active tenant membership");
   }
   return { isSuperAdmin: false, tenantId: ctx.tenantId, appRole: ctx.appRole };
