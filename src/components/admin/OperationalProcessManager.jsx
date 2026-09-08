@@ -177,7 +177,10 @@ export default function OperationalProcessManager() {
   const create = async () => {
     setSaving(true);
     try {
-      await base44.entities.OperationalProcess.create(buildFields(createForm));
+      await base44.functions.invoke('manageOperationalProcess', {
+        action: 'create',
+        fields: buildFields(createForm),
+      });
       setCreateForm(emptyForm());
       invalidate();
       toast.success('Operational process created');
@@ -191,7 +194,11 @@ export default function OperationalProcessManager() {
   const saveEdit = async () => {
     setSaving(true);
     try {
-      await base44.entities.OperationalProcess.update(editId, buildFields(editForm));
+      await base44.functions.invoke('manageOperationalProcess', {
+        action: 'update',
+        id: editId,
+        fields: buildFields(editForm),
+      });
       setEditId(null);
       invalidate();
       toast.success('Operational process updated');
@@ -204,7 +211,11 @@ export default function OperationalProcessManager() {
 
   const toggleArchive = async (p) => {
     try {
-      await base44.entities.OperationalProcess.update(p.id, { status: p.status === 'archived' ? 'active' : 'archived' });
+      await base44.functions.invoke('manageOperationalProcess', {
+        action: 'update',
+        id: p.id,
+        fields: { status: p.status === 'archived' ? 'active' : 'archived' },
+      });
       invalidate();
     } catch (err) {
       toast.error('Failed to update: ' + (err?.message || 'Unknown error'));

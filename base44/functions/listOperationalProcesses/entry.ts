@@ -1,24 +1,51 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { visibleProcesses } from '../../shared/processAccess.ts';
+import {
+  resolveTenantContext,
+  TenantAuthError,
+  APP_ROLE_CLIENT_ADMIN,
+} from '../../shared/tenant.ts';
 
-// Scoped read helper for OperationalProcess.
+// Scoped read helper for OperationalProcess (multi-tenant).
 //
-// The entity's RLS is admin-only for every operation, so non-admins cannot read
-// it directly. This function returns the subset a caller is allowed to see:
-//   admin           -> all processes
-//   any other user  -> organization-wide ('general') processes only
-// It never exposes 'client-specific' or 'unclassified' processes to non-admins,
-// because the user model has no user<->client authorization data.
+// Authorization comes from the AUTHORITATIVE TenantMembership record via
+// resolveTenantContext — never from user profile stamps or request payloads.
+//   Super Admin  -> all processes across tenants (optionally filtered by tenant_id)
+//   Client Admin -> every process in their own tenant
+//   Client User  -> organization-wide ('general') processes in their own tenant only
+// Cross-tenant results are never returned to tenant members.
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const body = await req.json().catch(() => ({}));
+    const ctx = await resolveTenantContext(base44);
     const all = await base44.asServiceRole.entities.OperationalProcess.list('name', 1000);
-    return Response.json({ processes: visibleProcesses(user, all) });
+
+    let rows = all;
+    if (ctx.isSuperAdmin) {
+      const target = String(body?.tenant_id || '').trim();
+      if (target) rows = rows.filter((p) => p.tenant_id === target);
+    } else {
+      if (!ctx.hasTenantAccess || !ctx.tenantId) {
+        return Response.json(
+          { error: 'Forbidden — no active tenant membership' },
+          { status: 403 },
+        );
+      }
+      rows = rows.filter((p) => p.tenant_id === ctx.tenantId);
+      if (ctx.appRole !== APP_ROLE_CLIENT_ADMIN) {
+        rows = visibleProcesses(user, rows);
+      }
+    }
+    return Response.json({ processes: rows });
   } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 500 });
+    if (error instanceof TenantAuthError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+    return Response.json({ error: error?.message || 'Internal error' }, { status: 500 });
   }
-});
+}
