@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageCircleQuestion, Send } from 'lucide-react';
 import {
@@ -9,37 +9,83 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useTenantRole } from '@/hooks/useTenantRole';
+import { useClientSetup } from '@/hooks/useClientSetup';
 import { answerAdminHelpQuestion, getStarterPrompts } from '@/lib/adminHelp';
+
+// The Help AI opens as a side panel without leaving the current page — the
+// sidebar's Help item and every "Ask MindVault" button dispatch this event.
+export const OPEN_HELP_EVENT = 'mindvault:open-help';
 
 // A bounded local conversation only — never persisted, never sent anywhere.
 // A fresh conversation on refresh is expected and fine for V1.
 const MAX_MESSAGES = 40;
 
-// Admin Help Assistant — ongoing conversational product support for admins,
-// separate from the employee-facing AI Assistant. Entirely client-side and
-// deterministic: it answers only from the curated corpus in
-// src/lib/adminHelp (never customer knowledge), performs no writes, and
-// makes no network call. Admin-only.
+// MindVault Help — the contextual setup copilot for Client Admins and the
+// product-help assistant for platform admins, separate from the
+// employee-facing AI Assistant. Entirely client-side and deterministic: it
+// answers only from the curated corpus in src/lib/adminHelp plus the live
+// setup context derived from the caller's own data (never customer
+// knowledge), performs no writes, and makes no network call.
 export default function AdminHelpAssistant() {
   const isAdmin = useIsAdmin();
   const { isClientAdmin } = useTenantRole();
+  const setup = useClientSetup();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
 
+  useEffect(() => {
+    const openHelp = () => setOpen(true);
+    window.addEventListener(OPEN_HELP_EVENT, openHelp);
+    return () => window.removeEventListener(OPEN_HELP_EVENT, openHelp);
+  }, []);
+
   // Product help is available to platform admins AND Client Admins — both
   // configure MindVault for their organization.
   if (!isAdmin && !isClientAdmin) return null;
-  const helpLabel = isAdmin ? 'Admin Help' : 'Help';
+  const helpLabel = isClientAdmin ? 'Help' : 'Admin Help';
+
+  // Setup context makes answers situational: the copilot knows the tenant's
+  // setup progress, the user's role, the current page, and the live counts of
+  // knowledge, team members, and processes. Read-only derived data only.
+  const buildSetupContext = () => {
+    if (!isClientAdmin) return null;
+    const { items, progressPct, setupComplete, nextItem, sources, members, processes, loading } = setup;
+    return {
+      role: 'client_admin',
+      loading,
+      progressPct,
+      setupComplete,
+      nextItem: nextItem
+        ? {
+            label: nextItem.label,
+            why: nextItem.why,
+            how: nextItem.how,
+            doneWhen: nextItem.doneWhen,
+            actionLabel: nextItem.actionLabel,
+            actionHref: nextItem.actionHref,
+          }
+        : null,
+      items: items.map(({ id, label, state, required }) => ({ id, label, state, required })),
+      counts: {
+        knowledge: Array.isArray(sources) ? sources.length : null,
+        members: Array.isArray(members) ? members.length : null,
+        processes: Array.isArray(processes) ? processes.length : null,
+      },
+    };
+  };
 
   const ask = (question) => {
     const q = String(question || '').trim();
     if (!q) return;
-    // Route is the only "page context" passed in — a route string, nothing
-    // from the DOM, no employee data, no entity payload.
-    const result = answerAdminHelpQuestion(q, { route: location.pathname });
+    // Context is only the current route plus derived, read-only setup state —
+    // nothing from the DOM, no employee data, no entity payload.
+    const result = answerAdminHelpQuestion(q, {
+      route: location.pathname,
+      setup: buildSetupContext(),
+    });
     setMessages((prev) => {
       const next = [
         ...prev,
@@ -76,10 +122,10 @@ export default function AdminHelpAssistant() {
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0 gap-0">
           <SheetHeader className="p-4 border-b border-border text-left space-y-1">
             <SheetTitle>MindVault Help</SheetTitle>
-            <SheetDescription>Ask how to configure and use MindVault.</SheetDescription>
+            <SheetDescription>Ask how to set up and use MindVault.</SheetDescription>
             <p className="text-[11px] text-muted-foreground pt-1">
-              This assistant explains MindVault. It does not answer questions from your company knowledge —
-              use the AI Assistant for that.
+              This assistant explains MindVault and your setup progress. It does not answer questions
+              from your company knowledge — use the AI Assistant for that.
             </p>
           </SheetHeader>
 

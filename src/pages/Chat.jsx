@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Sparkles, Send, Database, AlertCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -185,6 +186,16 @@ export default function Chat() {
             <Send className="w-4 h-4" />
           </button>
         </form>
+        {clarificationsEnabled && (
+          <div className="max-w-3xl mx-auto mt-2 text-center">
+            <Link
+              to="/my-questions"
+              className="text-xs text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
+            >
+              View my past questions
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

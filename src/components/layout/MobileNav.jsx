@@ -1,21 +1,20 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp, Users, Rocket } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, MessageCircleQuestion, Users, Workflow } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
 import { useTenantRole } from '@/hooks/useTenantRole';
 
-const rootTabs = ['/', '/library', '/chat'];
-
 function titleFor(pathname) {
-  if (pathname.startsWith('/training/')) return 'Knowledge Source';
+  if (pathname.startsWith('/training/')) return 'Knowledge';
   if (pathname === '/roadmap') return 'Strategy Engine';
-  if (pathname === '/admin') return 'Admin';
+  if (pathname === '/admin') return 'Settings';
   if (pathname === '/team') return 'Team';
-  if (pathname === '/setup') return 'Getting Started';
-  if (pathname === '/manage') return 'Manage';
-  return 'Knowledge Base';
+  if (pathname === '/processes') return 'Processes';
+  if (pathname === '/setup') return 'Set up MindVault';
+  if (pathname === '/manage') return 'Add knowledge';
+  return 'MindVault';
 }
 
 export default function MobileNav({ user, onOpenHelp }) {
@@ -29,11 +28,10 @@ export default function MobileNav({ user, onOpenHelp }) {
     { path: '/chat', icon: MessageSquare, label: 'Chat' },
     ...(user?.role === 'admin' ? [
       { path: '/roadmap', icon: Compass, label: 'Strategy' },
-      { path: '/admin', icon: Settings, label: 'Admin' },
+      { path: '/admin', icon: Settings, label: 'Settings' },
       { path: '/team', icon: Users, label: 'Team' },
     ] : isClientAdmin ? [
-      { path: '/setup', icon: Rocket, label: 'Setup' },
-      { path: '/manage', icon: Settings, label: 'Manage' },
+      { path: '/processes', icon: Workflow, label: 'Processes' },
       { path: '/team', icon: Users, label: 'Team' },
     ] : []),
   ];
@@ -65,7 +63,7 @@ export default function MobileNav({ user, onOpenHelp }) {
               aria-label="Help"
               title="Help"
             >
-              <CircleHelp className="w-5 h-5" />
+              <MessageCircleQuestion className="w-5 h-5" />
             </button>
           )}
           <button

@@ -174,8 +174,15 @@ export default function TenantMembersManager() {
             </p>
           ) : members.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              No members yet — invite your first team member above.
+              Invite your first team member above.
             </p>
+          ) : members.length === 1 && members[0].user_id === user.id ? (
+            <div className="py-6 text-center">
+              <p className="text-sm font-medium text-foreground">You're the only team member</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Invite the people who should be able to use or manage your MindVault.
+              </p>
+            </div>
           ) : (
             <div>
               {members.map((m) => (

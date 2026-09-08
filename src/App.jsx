@@ -22,6 +22,7 @@ import Roadmap from './pages/Roadmap';
 import TeamMembers from './pages/TeamMembers';
 import GettingStarted from './pages/GettingStarted';
 import Manage from './pages/Manage';
+import Processes from './pages/Processes';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -59,6 +60,7 @@ const AuthenticatedApp = () => {
         <Route path="/team" element={<TeamMembers />} />
         <Route path="/setup" element={<GettingStarted />} />
         <Route path="/manage" element={<Manage />} />
+        <Route path="/processes" element={<Processes />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
       </Route>

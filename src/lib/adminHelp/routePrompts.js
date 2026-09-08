@@ -2,12 +2,11 @@
 // No LLM involved in choosing suggestions; this is a plain lookup table.
 
 export const GENERIC_STARTER_PROMPTS = [
-  'What should I set up first?',
-  'How do Operational Processes work?',
-  'What’s the difference between an Owner and an SME?',
-  'How does verification work?',
-  'How do I make knowledge client-specific?',
-  'What should I look at in Operational Continuity?',
+  'What should I do next?',
+  'What should I upload first?',
+  'How do I invite my team?',
+  'Who can see the knowledge I upload?',
+  'What’s the difference between a Client Admin and a Client User?',
 ];
 
 const ROUTE_PROMPTS = {
@@ -32,14 +31,18 @@ const ROUTE_PROMPTS = {
     'How do I make knowledge client-specific?',
   ],
   '/setup': [
-    'What should I set up first?',
-    'What is an Operational Process?',
+    'What should I do next?',
     'How do I invite my team?',
+    'What should I upload first?',
   ],
   '/manage': [
     'How do I add knowledge?',
-    'What does knowledge scope mean?',
-    'How do I configure an Operational Process?',
+    'Who can see knowledge I upload?',
+  ],
+  '/processes': [
+    'What should I do here?',
+    'What’s the difference between an Owner and an SME?',
+    'What does Review Cadence mean?',
   ],
   '/team': [
     'What’s the difference between a Client Admin and a Client User?',

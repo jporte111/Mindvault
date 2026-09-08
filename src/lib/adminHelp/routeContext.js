@@ -22,6 +22,9 @@ const ROUTE_TOPIC_BIAS = {
     'operational_continuity', 'coverage', 'currency', 'key_person_dependency',
     'knowledge_gaps', 'snapshots', 'trends', 'what_changed',
   ],
+  '/setup': ['setup_checklist', 'adding_knowledge', 'knowledge_scope'],
+  '/manage': ['adding_knowledge', 'knowledge_scope', 'operational_processes'],
+  '/processes': ['operational_processes', 'owner', 'sme', 'review_cadence'],
 };
 
 // /training/:id is a dynamic route, matched by prefix rather than exact string.

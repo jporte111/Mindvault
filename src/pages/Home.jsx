@@ -5,10 +5,14 @@ import { Card } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import PullToRefresh from '@/components/layout/PullToRefresh';
+import { useTenantRole } from '@/hooks/useTenantRole';
+import ClientHome from '@/components/home/ClientHome';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const { user } = useOutletContext() || {};
   const queryClient = useQueryClient();
+  const { isClientAdmin, isLoading: roleLoading } = useTenantRole();
 
   const { data: trainings = [] } = useQuery({
     queryKey: ['trainings-count'],
@@ -17,6 +21,17 @@ export default function Home() {
 
   const readyCount = trainings.filter(t => t.status === 'ready').length;
   const categories = [...new Set(trainings.map(t => t.category).filter(Boolean))];
+
+  // Client Admins get the setup command center (new admins) or a calm
+  // operational dashboard (setup complete) instead of the marketing hero.
+  if (roleLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (isClientAdmin) return <ClientHome />;
 
   return (
     <div className="min-h-screen bg-background">

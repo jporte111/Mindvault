@@ -1,118 +1,100 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, CircleHelp, Users, Rocket } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, Users, Workflow } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import { useTenantRole } from '@/hooks/useTenantRole';
+import { useTenantName } from '@/hooks/useClientSetup';
+import { OPEN_HELP_EVENT } from '@/components/onboarding/AdminHelpAssistant';
 
+// Shared primary navigation — simple for everyone.
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Knowledge' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
 ];
 
-const adminItems = [
+// Super Admin (platform) navigation — the full environment is preserved.
+const superAdminItems = [
   { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
-  { path: '/admin', icon: Settings, label: 'Admin' },
+  { path: '/admin', icon: Settings, label: 'Settings' },
   { path: '/team', icon: Users, label: 'Team' },
 ];
+const continuityItem = { path: '/continuity', icon: ShieldCheck, label: 'Operational Continuity' };
+
+// Client Admin navigation — the simplified, customer-facing experience.
+const clientAdminItems = [
+  ...navItems,
+  { path: '/processes', icon: Workflow, label: 'Processes' },
+  { path: '/team', icon: Users, label: 'Team' },
+];
+
+const linkClass = (active) => cn(
+  'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
+  active
+    ? 'bg-primary text-white shadow-md shadow-primary/30'
+    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+);
 
 export default function Sidebar({ user, onOpenHelp }) {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { clarificationsEnabled, knowledgeHealthEnabled } = useSystemConfig();
+  const { knowledgeHealthEnabled } = useSystemConfig();
   const { isClientAdmin } = useTenantRole();
-  const items = clarificationsEnabled
-    ? [...navItems, { path: '/my-questions', icon: MessageCircleQuestion, label: 'My questions' }]
-    : navItems;
-  const adminNav = knowledgeHealthEnabled
-    ? [{ path: '/continuity', icon: ShieldCheck, label: 'Operational Continuity' }, ...adminItems]
-    : adminItems;
+  const tenantName = useTenantName();
+
+  const isSuperAdmin = user?.role === 'admin';
+  const subtitle = tenantName || (isSuperAdmin ? 'Platform' : '');
+
+  const renderItem = ({ path, icon: Icon, label }) => (
+    <Link key={path} to={path} className={linkClass(location.pathname === path)}>
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      {label}
+    </Link>
+  );
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
-      {/* Logo */}
+      {/* Brand — MindVault, with the member's company beneath it */}
       <div className="px-6 py-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-sidebar-primary flex items-center justify-center shadow-lg">
             <BookOpen className="w-5 h-5 text-sidebar-primary-foreground" />
           </div>
-          <div>
-            <p className="text-sidebar-foreground font-sora font-semibold text-sm leading-tight">Knowledge</p>
-            <p className="text-sidebar-foreground/50 text-xs">Base</p>
+          <div className="min-w-0">
+            <p className="text-sidebar-foreground font-sora font-semibold text-sm leading-tight">MindVault</p>
+            {subtitle && <p className="text-sidebar-foreground/50 text-xs truncate">{subtitle}</p>}
           </div>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {items.map(({ path, icon: Icon, label }) => (
-          <Link
-            key={path}
-            to={path}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
-              location.pathname === path || (path === '/chat' && location.pathname === '/chat')
-                ? 'bg-primary text-white shadow-md shadow-primary/30'
-                : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-            )}
-          >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            {label}
-          </Link>
-        ))}
-
-        {user?.role === 'admin' && (
+        {isSuperAdmin ? (
           <>
+            {navItems.map(renderItem)}
             <div className="pt-4 pb-2 px-3">
-              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Admin</p>
+              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Administration</p>
             </div>
-            {adminNav.map(({ path, icon: Icon, label }) => (
-              <Link
-                key={path}
-                to={path}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
-                  location.pathname === path
-                    ? 'bg-primary text-white shadow-md shadow-primary/30'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </Link>
-            ))}
+            {(knowledgeHealthEnabled ? [continuityItem, ...superAdminItems] : superAdminItems).map(renderItem)}
           </>
-        )}
-
-        {user?.role !== 'admin' && isClientAdmin && (
+        ) : isClientAdmin ? (
           <>
-            <div className="pt-4 pb-2 px-3">
-              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Manage</p>
-            </div>
-            {[
-              { path: '/setup', icon: Rocket, label: 'Getting Started' },
-              { path: '/manage', icon: Settings, label: 'Manage' },
-              { path: '/team', icon: Users, label: 'Team' },
-            ].map(({ path, icon: Icon, label }) => (
-              <Link
-                key={path}
-                to={path}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
-                  location.pathname === path
-                    ? 'bg-primary text-white shadow-md shadow-primary/30'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </Link>
-            ))}
+            {clientAdminItems.map(renderItem)}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent(OPEN_HELP_EVENT))}
+              className={linkClass(false)}
+            >
+              <MessageCircleQuestion className="w-4 h-4 flex-shrink-0" />
+              Help
+            </button>
           </>
+        ) : (
+          navItems.map(renderItem)
         )}
       </nav>
 
@@ -126,18 +108,20 @@ export default function Sidebar({ user, onOpenHelp }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sidebar-foreground text-xs font-medium truncate">{user?.full_name || 'User'}</p>
-            <p className="text-sidebar-foreground/40 text-xs truncate">{user?.role || 'user'}</p>
+            <p className="text-sidebar-foreground/40 text-xs truncate">
+              {isSuperAdmin ? 'Platform admin' : isClientAdmin ? 'Client Admin' : 'Client User'}
+            </p>
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell />
-            {user?.role === 'admin' && (
+            {isSuperAdmin && (
               <button
                 onClick={onOpenHelp}
                 className="flex items-center justify-center w-9 h-9 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 aria-label="Help"
                 title="Help"
               >
-                <CircleHelp className="w-4 h-4" />
+                <MessageCircleQuestion className="w-4 h-4" />
               </button>
             )}
             <button
