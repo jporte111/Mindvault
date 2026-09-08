@@ -31,6 +31,20 @@ const ROUTE_PROMPTS = {
     'Why might the assistant say it doesn’t know something?',
     'How do I make knowledge client-specific?',
   ],
+  '/setup': [
+    'What should I set up first?',
+    'What is an Operational Process?',
+    'How do I invite my team?',
+  ],
+  '/manage': [
+    'How do I add knowledge?',
+    'What does knowledge scope mean?',
+    'How do I configure an Operational Process?',
+  ],
+  '/team': [
+    'What’s the difference between a Client Admin and a Client User?',
+    'How do I invite my team?',
+  ],
 };
 
 /**

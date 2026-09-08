@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useTenantRole } from '@/hooks/useTenantRole';
 import { answerAdminHelpQuestion, getStarterPrompts } from '@/lib/adminHelp';
 
 // A bounded local conversation only — never persisted, never sent anywhere.
@@ -21,13 +22,17 @@ const MAX_MESSAGES = 40;
 // makes no network call. Admin-only.
 export default function AdminHelpAssistant() {
   const isAdmin = useIsAdmin();
+  const { isClientAdmin } = useTenantRole();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
 
-  if (!isAdmin) return null;
+  // Product help is available to platform admins AND Client Admins — both
+  // configure MindVault for their organization.
+  if (!isAdmin && !isClientAdmin) return null;
+  const helpLabel = isAdmin ? 'Admin Help' : 'Help';
 
   const ask = (question) => {
     const q = String(question || '').trim();
@@ -61,16 +66,16 @@ export default function AdminHelpAssistant() {
         type="button"
         onClick={() => setOpen(true)}
         className="fixed z-40 bottom-20 md:bottom-6 right-4 md:right-6 h-12 px-4 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center gap-2 text-sm font-medium hover:bg-primary/90 transition-colors"
-        aria-label="Ask MindVault — Admin Help"
+        aria-label="Ask MindVault — Help"
       >
         <MessageCircleQuestion className="w-4 h-4" />
-        <span className="hidden sm:inline">Admin Help</span>
+        <span className="hidden sm:inline">{helpLabel}</span>
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0 gap-0">
           <SheetHeader className="p-4 border-b border-border text-left space-y-1">
-            <SheetTitle>MindVault Admin Help</SheetTitle>
+            <SheetTitle>MindVault Help</SheetTitle>
             <SheetDescription>Ask how to configure and use MindVault.</SheetDescription>
             <p className="text-[11px] text-muted-foreground pt-1">
               This assistant explains MindVault. It does not answer questions from your company knowledge —

@@ -20,6 +20,8 @@ import Admin from './pages/Admin';
 import TrainingDetail from './pages/TrainingDetail';
 import Roadmap from './pages/Roadmap';
 import TeamMembers from './pages/TeamMembers';
+import GettingStarted from './pages/GettingStarted';
+import Manage from './pages/Manage';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -55,6 +57,8 @@ const AuthenticatedApp = () => {
         <Route path="/training/:id" element={<TrainingDetail />} />
         <Route path="/roadmap" element={<Roadmap />} />
         <Route path="/team" element={<TeamMembers />} />
+        <Route path="/setup" element={<GettingStarted />} />
+        <Route path="/manage" element={<Manage />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
       </Route>

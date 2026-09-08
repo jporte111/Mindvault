@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp, Users } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp, Users, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
@@ -13,6 +13,8 @@ function titleFor(pathname) {
   if (pathname === '/roadmap') return 'Strategy Engine';
   if (pathname === '/admin') return 'Admin';
   if (pathname === '/team') return 'Team';
+  if (pathname === '/setup') return 'Getting Started';
+  if (pathname === '/manage') return 'Manage';
   return 'Knowledge Base';
 }
 
@@ -30,6 +32,8 @@ export default function MobileNav({ user, onOpenHelp }) {
       { path: '/admin', icon: Settings, label: 'Admin' },
       { path: '/team', icon: Users, label: 'Team' },
     ] : isClientAdmin ? [
+      { path: '/setup', icon: Rocket, label: 'Setup' },
+      { path: '/manage', icon: Settings, label: 'Manage' },
       { path: '/team', icon: Users, label: 'Team' },
     ] : []),
   ];
