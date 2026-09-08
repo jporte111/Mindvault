@@ -88,18 +88,25 @@ export default function UploadTraining() {
     const textFile = new File([sourceText], 'source.txt', { type: 'text/plain' });
     const { file_url: sourceTextUrl } = await base44.integrations.Core.UploadFile({ file: textFile });
 
-    // 4. Create the knowledge source immediately with processing status
+    // 4. Create the knowledge source via the guarded backend function, which
+    // stamps the VERIFIED tenant server-side (never the client payload).
     setStatusMsg('Saving to knowledge base...');
-    const newRecord = await base44.entities.Training.create({
-      title: title.trim(),
-      transcript: sourceTextUrl,
-      video_url: videoUrl.trim() || undefined,
-      status: 'processing',
-      source_type: sourceType,
-      source_format: formatFromFilename(sourceFile.name),
-      source_filename: sourceFile.name,
-      ...resolveScopeFields(scopeValue, clients),
+    const createRes = await base44.functions.invoke('createKnowledgeSource', {
+      action: 'create',
+      fields: {
+        title: title.trim(),
+        transcript: sourceTextUrl,
+        video_url: videoUrl.trim() || undefined,
+        source_type: sourceType,
+        source_format: formatFromFilename(sourceFile.name),
+        source_filename: sourceFile.name,
+        ...resolveScopeFields(scopeValue, clients),
+      },
     });
+    const newRecord = createRes?.data?.training ?? createRes?.training;
+    if (!newRecord?.id) {
+      throw new Error('Could not save the knowledge source. Please try again.');
+    }
 
     // 5. Kick off backend analysis (non-blocking — resolves in background)
     setStatusMsg('AI is analyzing the source in the background...');

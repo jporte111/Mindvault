@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, CircleHelp, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
+import { useTenantRole } from '@/hooks/useTenantRole';
 
 const rootTabs = ['/', '/library', '/chat'];
 
@@ -11,6 +12,7 @@ function titleFor(pathname) {
   if (pathname.startsWith('/training/')) return 'Knowledge Source';
   if (pathname === '/roadmap') return 'Strategy Engine';
   if (pathname === '/admin') return 'Admin';
+  if (pathname === '/team') return 'Team';
   return 'Knowledge Base';
 }
 
@@ -18,6 +20,7 @@ export default function MobileNav({ user, onOpenHelp }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { isClientAdmin } = useTenantRole();
   const tabs = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/library', icon: BookOpen, label: 'Knowledge' },
@@ -25,6 +28,9 @@ export default function MobileNav({ user, onOpenHelp }) {
     ...(user?.role === 'admin' ? [
       { path: '/roadmap', icon: Compass, label: 'Strategy' },
       { path: '/admin', icon: Settings, label: 'Admin' },
+      { path: '/team', icon: Users, label: 'Team' },
+    ] : isClientAdmin ? [
+      { path: '/team', icon: Users, label: 'Team' },
     ] : []),
   ];
 

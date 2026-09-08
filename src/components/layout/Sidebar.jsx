@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, CircleHelp } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, CircleHelp, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
+import { useTenantRole } from '@/hooks/useTenantRole';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -16,12 +17,14 @@ const navItems = [
 const adminItems = [
   { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
   { path: '/admin', icon: Settings, label: 'Admin' },
+  { path: '/team', icon: Users, label: 'Team' },
 ];
 
 export default function Sidebar({ user, onOpenHelp }) {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { clarificationsEnabled, knowledgeHealthEnabled } = useSystemConfig();
+  const { isClientAdmin } = useTenantRole();
   const items = clarificationsEnabled
     ? [...navItems, { path: '/my-questions', icon: MessageCircleQuestion, label: 'My questions' }]
     : navItems;
@@ -82,6 +85,26 @@ export default function Sidebar({ user, onOpenHelp }) {
                 {label}
               </Link>
             ))}
+          </>
+        )}
+
+        {user?.role !== 'admin' && isClientAdmin && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Manage</p>
+            </div>
+            <Link
+              to="/team"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-150',
+                location.pathname === '/team'
+                  ? 'bg-primary text-white shadow-md shadow-primary/30'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+            >
+              <Users className="w-4 h-4 flex-shrink-0" />
+              Team
+            </Link>
           </>
         )}
       </nav>

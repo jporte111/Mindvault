@@ -94,6 +94,11 @@ export const AuthProvider = ({ children }) => {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
+      // Multi-tenant: activate any pending tenant membership and sync the
+      // tenant RLS stamps server-side before the app renders.
+      try {
+        await base44.functions.invoke('resolveMyTenantContext');
+      } catch (_) { /* best-effort — never blocks sign-in */ }
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
