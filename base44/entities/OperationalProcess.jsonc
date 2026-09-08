@@ -2,6 +2,10 @@
   "name": "OperationalProcess",
   "type": "object",
   "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 reads require an exact match with the user's tenant stamp. All member writes (create/update/delete) go through the manageOperationalProcess backend function, which verifies the authoritative TenantMembership record server-side and never trusts this field from a request payload."
+    },
     "name": {
       "type": "string",
       "minLength": 1,
@@ -30,7 +34,7 @@
     "review_interval_days": {
       "type": "number",
       "minimum": 1,
-      "description": "How often this process should be reviewed, in days (e.g. 7, 30, 60, 90, 180, 365, or a custom value). No global default — set per process."
+      "description": "How often this process should be reviewed, in days (e.g. 7, 30, 60, 90, 180, 365, or a custom value). No global default \u2014 set per process."
     },
     "last_reviewed_at": {
       "type": "string",
@@ -84,7 +88,7 @@
         "high",
         "mission_critical"
       ],
-      "description": "Business criticality. Used later to prioritize reviews, gaps, and dashboard risk — never to affect retrieval accuracy."
+      "description": "Business criticality. Used later to prioritize reviews, gaps, and dashboard risk \u2014 never to affect retrieval accuracy."
     },
     "tags": {
       "type": "array",
@@ -98,9 +102,32 @@
     "name"
   ],
   "rls": {
-    "create": { "user_condition": { "role": "admin" } },
-    "read": { "user_condition": { "role": "admin" } },
-    "update": { "user_condition": { "role": "admin" } },
-    "delete": { "user_condition": { "role": "admin" } }
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.tenant_id": "{{user.data.tenant_id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
   }
 }
