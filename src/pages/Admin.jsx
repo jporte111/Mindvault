@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,17 @@ const facingColor = {
 };
 
 export default function Admin() {
+  // Checklist action links navigate to /admin#<section-id>. When arriving from
+  // another page, scroll the referenced section into view.
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (!hash) return;
+    const t = setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => clearTimeout(t);
+  }, []);
+
   const [activeTab, setActiveTab] = useState('content');
   const [folderId, setFolderId] = useState('');
   const [syncScope, setSyncScope] = useState(SCOPE_UNCLASSIFIED);
@@ -393,16 +404,24 @@ export default function Admin() {
         </div>
 
         {/* Operational processes: governance owner of knowledge sources */}
-        <OperationalProcessManager />
+        <div id="admin-processes" className="scroll-mt-6">
+          <OperationalProcessManager />
+        </div>
 
         {/* RAG knowledge scope: clients, needs-review queue, re-index */}
-        <KnowledgeScopeManager />
+        <div id="admin-classify" className="scroll-mt-6">
+          <KnowledgeScopeManager />
+        </div>
 
         {/* Phase 6: governed versioning / review / publishing (flag-gated) */}
-        <KnowledgeLifecyclePanel />
+        <div id="admin-verification" className="scroll-mt-6">
+          <KnowledgeLifecyclePanel />
+        </div>
 
         {/* Chatbot engine flag (legacy vs RAG) + rollout + Phase 3 governance flags */}
-        <ChatEngineToggle />
+        <div id="admin-system" className="scroll-mt-6">
+          <ChatEngineToggle />
+        </div>
 
         {/* Phase 3 observability: read-only recent AI answers (admin only) */}
         <AnswerLogInspector />

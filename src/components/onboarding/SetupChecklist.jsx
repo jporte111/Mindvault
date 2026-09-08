@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +38,21 @@ const writeLS = (k, v) => {
 export default function SetupChecklist() {
   const isAdmin = useIsAdmin();
   const { knowledgeHealthEnabled } = useSystemConfig();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(readLS('mv_checklist_collapsed') === 'true');
+
+  // The checklist lives on /admin, so an /admin#<section> action would look
+  // like a dead link. When the destination is the current page, scroll to the
+  // section instead of re-navigating.
+  const handleActionClick = (e, href) => {
+    const i = href.indexOf('#');
+    if (i === -1) return;
+    if (href.slice(0, i) !== location.pathname) return;
+    e.preventDefault();
+    const hash = href.slice(i + 1);
+    window.history.replaceState(null, '', `${location.pathname}#${hash}`);
+    document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const { data: sources = null } = useQuery({
     queryKey: ['all-trainings'],
@@ -101,7 +115,11 @@ export default function SetupChecklist() {
                   <p className="text-xs text-muted-foreground mt-0.5">{it.detail}</p>
                 </div>
                 {it.actionHref && (
-                  <Link to={it.actionHref} className="text-xs font-medium text-primary hover:underline whitespace-nowrap shrink-0 mt-0.5">
+                  <Link
+                    to={it.actionHref}
+                    onClick={(e) => handleActionClick(e, it.actionHref)}
+                    className="text-xs font-medium text-primary hover:underline whitespace-nowrap shrink-0 mt-0.5"
+                  >
                     {it.actionLabel} →
                   </Link>
                 )}

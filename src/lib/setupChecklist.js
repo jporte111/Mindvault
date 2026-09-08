@@ -121,7 +121,7 @@ export function deriveChecklistItems(ctx = {}) {
       state = 'Needs attention';
       detail = `${detail} ${legacy} older sources still need attention before their documentation status can be confirmed.`;
     }
-    push('knowledge_classified', 'Knowledge classified', state, detail, 'Manage knowledge', '/admin');
+    push('knowledge_classified', 'Knowledge classified', state, detail, 'Manage knowledge', '/admin#admin-classify');
   }
 
   // 2 — Operational processes created  (existence only — NOT criticality)
@@ -141,7 +141,7 @@ export function deriveChecklistItems(ctx = {}) {
     if (unclassifiedProcCount > 0 && state !== 'Unknown') {
       detail = `${detail} ${unclassifiedProcCount} process${unclassifiedProcCount === 1 ? '' : 'es'} still need a scope set (firm-wide or client-specific).`;
     }
-    push('processes_created', 'Operational processes created', state, detail, 'Manage processes', '/admin');
+    push('processes_created', 'Operational processes created', state, detail, 'Manage processes', '/admin#admin-processes');
   }
 
   // 3 — Criticality assigned  (separate from "processes created")
@@ -162,7 +162,7 @@ export function deriveChecklistItems(ctx = {}) {
           ? `${activeProcs.length - missing} of ${activeProcs.length} processes have a criticality set.`
           : `All ${activeProcs.length} processes have a criticality set.`;
     }
-    push('criticality_assigned', 'Criticality assigned', state, detail, 'Set criticality', '/admin');
+    push('criticality_assigned', 'Criticality assigned', state, detail, 'Set criticality', '/admin#admin-processes');
   }
 
   // 4 — Owners assigned
@@ -219,7 +219,7 @@ export function deriveChecklistItems(ctx = {}) {
           ? `${genSources.length - missing} of ${genSources.length} firm-wide sources have a review cadence (their own or an inherited one).`
           : `All ${genSources.length} firm-wide sources have a review cadence.`;
     }
-    push('review_cadence', 'Review cadence configured', state, detail, 'Set review cadence', '/admin');
+    push('review_cadence', 'Review cadence configured', state, detail, 'Set review cadence', '/admin#admin-processes');
   }
 
   // 8 — Knowledge linked to processes  (general Training.operational_process_id)
@@ -240,7 +240,7 @@ export function deriveChecklistItems(ctx = {}) {
           ? `${genSources.length - unlinked} of ${genSources.length} firm-wide sources linked to a process · ${unlinked} unlinked.`
           : `All ${genSources.length} firm-wide sources linked to a process.`;
     }
-    push('knowledge_linked', 'Knowledge linked to processes', state, detail, 'Link knowledge', '/admin');
+    push('knowledge_linked', 'Knowledge linked to processes', state, detail, 'Link knowledge', '/admin#admin-processes');
   }
 
   // 9 — Knowledge verification  (describes the actual verification state of
@@ -270,7 +270,7 @@ export function deriveChecklistItems(ctx = {}) {
         detail = `${unverified.length} firm-wide sources are not verified (legacy knowledge counts here; verifying it is optional but recommended for critical processes).`;
       }
     }
-    push('knowledge_verification', 'Knowledge verification', state, detail, 'Review verification', '/admin');
+    push('knowledge_verification', 'Knowledge verification', state, detail, 'Review verification', '/admin#admin-verification');
   }
 
   // 10 — Continuity dashboard reviewed  (flag + visit flag; NEVER snapshot count)
@@ -281,7 +281,7 @@ export function deriveChecklistItems(ctx = {}) {
     if (!flagOn) {
       state = 'Not started';
       detail = 'The Operational Continuity dashboard is turned off. Enable it under Admin → System.';
-      href = '/admin';
+      href = '/admin#admin-system';
     } else if (ctx.continuityVisited === true) {
       state = 'Complete';
       detail = 'You have opened the Operational Continuity dashboard.';
@@ -320,7 +320,7 @@ function personItem(id, label, roleWord, field, activeProcs, criticalProcs, acti
       detail = `All ${activeProcs.length} processes have a ${roleWord} assigned.`;
     }
   }
-  return [id, label, state, detail, actionLabel, '/admin'];
+  return [id, label, state, detail, actionLabel, '/admin#admin-processes'];
 }
 
 /** The header count — the number of items in state 'Complete'. Not a score. */
