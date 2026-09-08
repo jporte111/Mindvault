@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useHashScroll } from '@/hooks/useHashScroll';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -40,14 +41,7 @@ const facingColor = {
 export default function Admin() {
   // Checklist action links navigate to /admin#<section-id>. When arriving from
   // another page, scroll the referenced section into view.
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    if (!hash) return;
-    const t = setTimeout(() => {
-      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 150);
-    return () => clearTimeout(t);
-  }, []);
+  useHashScroll();
 
   const [activeTab, setActiveTab] = useState('content');
   const [folderId, setFolderId] = useState('');

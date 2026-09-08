@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
+import { useHashScroll } from '@/hooks/useHashScroll';
 import { Loader2 } from 'lucide-react';
 import UploadTraining from '@/components/admin/UploadTraining';
 import OperationalProcessManager from '@/components/admin/OperationalProcessManager';
@@ -12,6 +13,8 @@ import OperationalProcessManager from '@/components/admin/OperationalProcessMana
 export default function Manage() {
   const { user } = useAuth();
   const { isClientAdmin, isLoading: roleLoading } = useTenantRole();
+  // Checklist actions link to /manage#manage-knowledge etc. — scroll to them.
+  useHashScroll();
 
   if (roleLoading) {
     return (

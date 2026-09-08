@@ -2,6 +2,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
 import { useClientSetup } from '@/hooks/useClientSetup';
+import { useHashScroll } from '@/hooks/useHashScroll';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle2, Loader2 } from 'lucide-react';
@@ -18,6 +19,8 @@ export default function GettingStarted() {
   const { user } = useAuth();
   const { isClientAdmin, isLoading: roleLoading } = useTenantRole();
   const { items, nextItem, setupComplete, loading, tenant, markStepDone } = useClientSetup();
+  // Checklist actions link to /setup#company-details — scroll to it.
+  useHashScroll();
   const isSuperAdmin = user?.role === 'admin';
 
   if (roleLoading || loading) {

@@ -15,6 +15,9 @@
 // Route bias must never be the sole basis for a result unless (B) holds.
 
 const ROUTE_TOPIC_BIAS = {
+  // ClientHome — the Client Admin's setup command center.
+  '/': ['setup_checklist', 'getting_started', 'adding_knowledge'],
+  '/team': ['permissions'],
   '/library': ['knowledge_library', 'adding_knowledge', 'knowledge_scope'],
   '/chat': ['ai_assistant', 'knowledge_scope', 'knowledge_gaps'],
   '/admin': ['setup_checklist', 'operational_processes', 'owner', 'sme', 'review_cadence', 'verification'],
