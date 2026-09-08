@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -147,10 +147,27 @@ export default function OperationalProcessManager() {
   const [editForm, setEditForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
 
+  // A platform Super Admin must choose which team's workspace they are
+  // managing — every write requires an explicit tenant target server-side,
+  // and the process list follows the same selected team.
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'admin';
+  const [tenantId, setTenantId] = useState('');
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: () => base44.entities.Tenant.list('name'),
+    enabled: isSuperAdmin,
+  });
+  useEffect(() => {
+    if (isSuperAdmin && !tenantId && tenants.length) setTenantId(tenants[0].id);
+  }, [isSuperAdmin, tenants, tenantId]);
+  const tenantTarget = isSuperAdmin && tenantId ? { tenant_id: tenantId } : {};
+
   const { data: processes = [] } = useQuery({
-    queryKey: ['operational-processes'],
+    queryKey: ['operational-processes', isSuperAdmin ? tenantId : 'own'],
+    enabled: !isSuperAdmin || !!tenantId,
     queryFn: async () => {
-      const res = await base44.functions.invoke('listOperationalProcesses');
+      const res = await base44.functions.invoke('listOperationalProcesses', tenantTarget);
       return res?.data?.processes ?? res?.processes ?? [];
     },
   });
@@ -159,8 +176,6 @@ export default function OperationalProcessManager() {
   // People options for owner / SME / backup SME. Platform admins can list app
   // users directly; Client Admins cannot, so their options come from their
   // own tenant's member list (already verified server-side).
-  const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'admin';
   const { data: platformUsers = null } = useQuery({
     queryKey: ['users'],
     queryFn: () => base44.entities.User.list().catch(() => []),
@@ -196,10 +211,15 @@ export default function OperationalProcessManager() {
   });
 
   const create = async () => {
+    if (isSuperAdmin && !tenantId) {
+      toast.error('Choose which team to add this process to');
+      return;
+    }
     setSaving(true);
     try {
       await base44.functions.invoke('manageOperationalProcess', {
         action: 'create',
+        ...tenantTarget,
         fields: buildFields(createForm),
       });
       setCreateForm(emptyForm());
@@ -213,11 +233,16 @@ export default function OperationalProcessManager() {
   };
 
   const saveEdit = async () => {
+    if (isSuperAdmin && !tenantId) {
+      toast.error('Choose which team to save changes to');
+      return;
+    }
     setSaving(true);
     try {
       await base44.functions.invoke('manageOperationalProcess', {
         action: 'update',
         id: editId,
+        ...tenantTarget,
         fields: buildFields(editForm),
       });
       setEditId(null);
@@ -231,10 +256,15 @@ export default function OperationalProcessManager() {
   };
 
   const toggleArchive = async (p) => {
+    if (isSuperAdmin && !tenantId) {
+      toast.error('Choose which team you are managing first');
+      return;
+    }
     try {
       await base44.functions.invoke('manageOperationalProcess', {
         action: 'update',
         id: p.id,
+        ...tenantTarget,
         fields: { status: p.status === 'archived' ? 'active' : 'archived' },
       });
       invalidate();
@@ -262,6 +292,24 @@ export default function OperationalProcessManager() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isSuperAdmin && (
+          <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-2">
+            <Label className="text-xs text-muted-foreground">Team whose processes you're managing</Label>
+            <select
+              className={selectClass}
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              aria-label="Team to manage"
+            >
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground/70">
+              You're a platform admin — every change must target a specific team's workspace.
+            </p>
+          </div>
+        )}
         <p className="text-sm text-muted-foreground">
           A process owns its governance (owner, SME, review cadence, criticality). Knowledge sources link to a process rather than repeating this on every record.
         </p>

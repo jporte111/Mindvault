@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import {
-  requireTenantAdminScope,
+  requireExplicitTenantAdminScope,
   resolveTenantContext,
   TenantAuthError,
   APP_ROLE_CLIENT_ADMIN,
@@ -79,8 +79,9 @@ export default async function (req) {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || '').trim();
 
-    // Authoritative authorization.
-    const scope = await requireTenantAdminScope(base44, body?.tenant_id);
+    // Authoritative authorization. A Super Admin must target a tenant
+    // explicitly (no silent fallback to their own membership tenant).
+    const scope = await requireExplicitTenantAdminScope(base44, body?.tenant_id);
     const ctx = await resolveTenantContext(base44);
 
     if (action === 'list') {

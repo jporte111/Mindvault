@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import {
-  requireTenantAdminScope,
+  requireExplicitTenantAdminScope,
   TenantAuthError,
   withTenant,
 } from '../../shared/tenant.ts';
@@ -42,8 +42,9 @@ export default async function (req) {
     }
 
     // Authoritative authorization: resolves the caller's membership
-    // server-side. A payload tenant_id only widens scope for a Super Admin.
-    const scope = await requireTenantAdminScope(base44, body?.tenant_id);
+    // server-side. A Super Admin must target a tenant explicitly (no silent
+    // fallback); a Client Admin is pinned to their own tenant.
+    const scope = await requireExplicitTenantAdminScope(base44, body?.tenant_id);
 
     // A suspended/archived tenant cannot add knowledge.
     const tenant = await base44.asServiceRole.entities.Tenant.get(scope.tenantId);

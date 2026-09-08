@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/AuthContext';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { isClassified, resolveScopeFields, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 import {
@@ -35,6 +36,20 @@ export default function UploadTraining() {
   const queryClient = useQueryClient();
   const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
 
+  // A platform Super Admin must choose which team's workspace this upload
+  // targets — the backend requires an explicit tenant for the write.
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'admin';
+  const [tenantId, setTenantId] = useState('');
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: () => base44.entities.Tenant.list('name'),
+    enabled: isSuperAdmin,
+  });
+  useEffect(() => {
+    if (isSuperAdmin && !tenantId && tenants.length) setTenantId(tenants[0].id);
+  }, [isSuperAdmin, tenants, tenantId]);
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -53,6 +68,7 @@ export default function UploadTraining() {
     if (!sourceFile) { toast.error('Please select a file'); return; }
     if (!title.trim()) { toast.error('Please enter a title'); return; }
     if (!sourceType) { toast.error('Please choose a knowledge type'); return; }
+    if (isSuperAdmin && !tenantId) { toast.error('Choose which team this knowledge belongs to'); return; }
     if (!hasSupportedExtension(sourceFile.name)) { toast.error(UNSUPPORTED_MESSAGE); return; }
 
     setUploading(true);
@@ -93,6 +109,7 @@ export default function UploadTraining() {
     setStatusMsg('Saving to knowledge base...');
     const createRes = await base44.functions.invoke('createKnowledgeSource', {
       action: 'create',
+      ...(isSuperAdmin ? { tenant_id: tenantId } : {}),
       fields: {
         title: title.trim(),
         transcript: sourceTextUrl,
@@ -139,6 +156,25 @@ export default function UploadTraining() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isSuperAdmin && (
+          <div>
+            <Label className="text-sm text-muted-foreground mb-2 block">Team this knowledge belongs to</Label>
+            <select
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              disabled={uploading}
+              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              aria-label="Team this knowledge belongs to"
+            >
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground/70 mt-1.5">
+              You're a platform admin — uploads must target a specific team's workspace.
+            </p>
+          </div>
+        )}
         <div>
           <Label className="text-sm text-muted-foreground mb-2 block">Title</Label>
           <Input

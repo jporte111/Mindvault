@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import {
-  requireTenantAdminScope,
+  requireExplicitTenantAdminScope,
   TenantAuthError,
   withTenant,
 } from '../../shared/tenant.ts';
@@ -48,9 +48,9 @@ export default async function(req) {
     const action = String(body?.action || '').trim();
 
     // Authoritative authorization: resolves the caller's membership server-side.
-    // A tenant id from the payload only widens scope for a Super Admin; for
-    // everyone else a mismatched value is a hard 403.
-    const scope = await requireTenantAdminScope(base44, body?.tenant_id);
+    // A Super Admin must target a tenant explicitly (no silent fallback to
+    // their own membership tenant); everyone else is pinned or 403.
+    const scope = await requireExplicitTenantAdminScope(base44, body?.tenant_id);
 
     if (action === 'create') {
       const payload = sanitizeFields(body?.fields);

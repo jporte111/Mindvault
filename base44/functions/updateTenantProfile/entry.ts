@@ -1,12 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { requireTenantAdminScope, TenantAuthError } from '../../shared/tenant.ts';
+import { requireExplicitTenantAdminScope, TenantAuthError } from '../../shared/tenant.ts';
 
 // Guarded company-details editing for the multi-tenant model.
 //
 // Client Admins update their OWN workspace's presentation details only —
 // company name, logo, and brand color. The tenant is resolved from the
 // AUTHORITATIVE membership server-side; a tenant_id in the payload is only
-// ever honored for a platform Super Admin targeting a specific tenant.
+// ever honored for a platform Super Admin, who must target a specific
+// tenant EXPLICITLY — there is no silent fallback to their own membership
+// tenant for this write.
 // No security-relevant or internal field (status, plan, config, notes) is
 // writable through this function.
 
@@ -19,7 +21,7 @@ export default async function (req) {
       return Response.json({ error: 'Unknown action' }, { status: 400 });
     }
 
-    const scope = await requireTenantAdminScope(base44, body?.tenant_id);
+    const scope = await requireExplicitTenantAdminScope(base44, body?.tenant_id);
     const tenant = await base44.asServiceRole.entities.Tenant.get(scope.tenantId);
     if (!tenant) {
       return Response.json({ error: 'Workspace not found' }, { status: 404 });

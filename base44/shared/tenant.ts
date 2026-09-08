@@ -112,6 +112,28 @@ export async function requireTenantAdminScope(
 }
 
 /**
+ * Tenant-admin scope for WRITE actions on tenant-specific data. A Super Admin
+ * must target a tenant EXPLICITLY — there is deliberately NO silent fallback
+ * to their own/default membership tenant, so an ambiguous request can never
+ * produce an unintended write. Client Admins are pinned exactly as in
+ * requireTenantAdminScope (own tenant only, mismatched id -> hard 403).
+ */
+export async function requireExplicitTenantAdminScope(
+  base44: any,
+  requestedTenantId?: string | null,
+): Promise<{ isSuperAdmin: boolean; tenantId: string; appRole: string | null }> {
+  const ctx = await resolveTenantContext(base44);
+  if (ctx.isSuperAdmin) {
+    const tenantId = requestedTenantId && String(requestedTenantId).trim();
+    if (!tenantId) {
+      throw new TenantAuthError(400, "A tenant must be specified");
+    }
+    return { isSuperAdmin: true, tenantId, appRole: ctx.appRole };
+  }
+  return requireTenantAdminScope(base44, requestedTenantId);
+}
+
+/**
  * Tenant scope for MEMBER actions (asking the knowledge base, feedback,
  * clarifications). Super Admin falls back to their own membership's tenant
  * (the platform owner's firm, Tenant #1).
