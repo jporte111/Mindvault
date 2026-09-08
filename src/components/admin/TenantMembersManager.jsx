@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,18 +19,40 @@ export default function TenantMembersManager() {
   const [appRole, setAppRole] = useState('client_user');
   const [inviting, setInviting] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'admin';
+  const [tenantId, setTenantId] = useState('');
+
+  // A platform Super Admin has no tenant membership — they must explicitly
+  // target a tenant. Client Admins are scoped to their own tenant server-side.
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: async () => (await base44.entities.Tenant.list('name')) ?? [],
+    enabled: isSuperAdmin,
+  });
+
+  useEffect(() => {
+    if (isSuperAdmin && !tenantId && tenants.length) setTenantId(tenants[0].id);
+  }, [isSuperAdmin, tenants, tenantId]);
 
   const { data: members = [], isLoading, error } = useQuery({
-    queryKey: ['tenant-members'],
+    queryKey: ['tenant-members', isSuperAdmin ? tenantId : 'own'],
+    enabled: !isSuperAdmin || !!tenantId,
     queryFn: async () => {
-      const res = await base44.functions.invoke('manageTenantMembers', { action: 'list' });
+      const res = await base44.functions.invoke('manageTenantMembers', {
+        action: 'list',
+        ...(isSuperAdmin && tenantId ? { tenant_id: tenantId } : {}),
+      });
       return res?.data?.members ?? [];
     },
   });
 
   const callApi = async (payload) => {
     try {
-      const res = await base44.functions.invoke('manageTenantMembers', payload);
+      const res = await base44.functions.invoke('manageTenantMembers', {
+        ...payload,
+        ...(isSuperAdmin && tenantId ? { tenant_id: tenantId } : {}),
+      });
       const message = res?.data?.error;
       if (message) throw new Error(message);
       return true;
@@ -63,6 +86,29 @@ export default function TenantMembersManager() {
 
   return (
     <div className="space-y-6">
+      {isSuperAdmin && (
+        <Card className="border-border">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base font-semibold">Tenant</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <select
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Tenant to manage"
+            >
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground/70 mt-1.5">
+              You're a platform admin — choose which tenant's team you're managing.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Invite */}
       <Card className="border-border">
         <CardHeader className="pb-4">
