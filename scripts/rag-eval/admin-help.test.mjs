@@ -22,6 +22,7 @@ import {
 } from '../../src/lib/adminHelp/answer.js';
 import { getStarterPrompts, GENERIC_STARTER_PROMPTS } from '../../src/lib/adminHelp/routePrompts.js';
 import { topicsForRoute, isPageRelativeIntent, routeBias } from '../../src/lib/adminHelp/routeContext.js';
+import { answerSupportQuestion, SUPPORT_SOURCE } from '../../src/lib/adminHelp/support.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const exists = (p) => existsSync(new URL(`../../${p}`, import.meta.url));
@@ -33,10 +34,10 @@ const BANNED_JARGON = /\b(embeddings?|vector(s| retrieval)?|\bRAG\b|schema|\bchu
 // 1. Access
 // ====================================================================
 
-test('AdminHelpAssistant is admin-only', () => {
+test('AdminHelpAssistant is admin-only (platform admins and Client Admins)', () => {
   const s = read('src/components/onboarding/AdminHelpAssistant.jsx');
   assert.match(s, /useIsAdmin\(\)/);
-  assert.match(s, /if \(!isAdmin\) return null;/);
+  assert.match(s, /if \(!isAdmin && !isClientAdmin\) return null;/);
 });
 
 test('V1 architecture is deliberately client-side: no backend function was created', () => {
@@ -49,6 +50,7 @@ test('no writes anywhere in the admin-help modules — no entity create/update/d
     'src/lib/adminHelp/corpus.js',
     'src/lib/adminHelp/retrieval.js',
     'src/lib/adminHelp/answer.js',
+    'src/lib/adminHelp/support.js',
     'src/lib/adminHelp/routePrompts.js',
     'src/lib/adminHelp/routeContext.js',
     'src/components/onboarding/AdminHelpAssistant.jsx',
@@ -331,6 +333,7 @@ test('isPageRelativeIntent recognizes the small explicit intent set, and nothing
     'What is this page?',
     'What is this?',
     'How does this work?',
+    'What do I do on this page?',
   ];
   for (const q of recognized) {
     assert.equal(isPageRelativeIntent(q), true, `expected "${q}" to be recognized`);
@@ -410,6 +413,7 @@ test('the Admin Help Assistant never imports or invokes the customer retrieval /
     'src/lib/adminHelp/corpus.js',
     'src/lib/adminHelp/retrieval.js',
     'src/lib/adminHelp/answer.js',
+    'src/lib/adminHelp/support.js',
     'src/lib/adminHelp/routePrompts.js',
     'src/lib/adminHelp/routeContext.js',
     'src/lib/adminHelp/index.js',
@@ -434,8 +438,10 @@ test('AdminHelpAssistant.jsx imports only from src/lib/adminHelp — never the e
 // 5. Navigation
 // ====================================================================
 
-test('NAV_ROUTE_ALLOWLIST is exactly the four safe app routes', () => {
-  assert.deepEqual([...NAV_ROUTE_ALLOWLIST].sort(), ['/admin', '/chat', '/continuity', '/library']);
+test('NAV_ROUTE_ALLOWLIST is exactly the current safe app routes', () => {
+  assert.deepEqual([...NAV_ROUTE_ALLOWLIST].sort(), [
+    '/', '/admin', '/chat', '/continuity', '/library', '/manage', '/processes', '/setup', '/team',
+  ]);
 });
 
 test('every navigation entry in the corpus targets an allowlisted route', () => {
@@ -504,8 +510,8 @@ test('route-specific prompts differ meaningfully by page', () => {
 
 test('the drawer is visibly distinct from the employee AI Assistant', () => {
   const s = read('src/components/onboarding/AdminHelpAssistant.jsx');
-  assert.match(s, /MindVault Admin Help/);
-  assert.match(s, /Ask how to configure and use MindVault/);
+  assert.match(s, /MindVault Help/);
+  assert.match(s, /Ask how to set up and use MindVault/);
   assert.match(s, /does not answer questions from your company knowledge/i);
   // never claims to be, or visually labels itself as, the employee assistant
   assert.equal(/>\s*AI Assistant\s*</.test(s), false);
@@ -519,4 +525,190 @@ test('the source indicator is labeled distinctly from employee-assistant citatio
 test('starter prompts and route-suggestion prompts are chosen with no LLM call', () => {
   const s = stripComments(read('src/lib/adminHelp/routePrompts.js'));
   assert.equal(/InvokeLLM|fetch\(|base44/.test(s), false);
+});
+
+// ====================================================================
+// 7. Product support — system errors, internal terminology, page
+//    locations. These run BEFORE the setup copilot and corpus retrieval,
+//    so a question about an error, an internal term, or where a page lives
+//    is never substituted with a generic onboarding response. Answers
+//    must use the CURRENT Client Admin UI (Home, Knowledge, AI Assistant,
+//    Processes, Team, Manage, Getting Started) and never deprecated
+//    navigation ("Admin" page, "Library" page, the old 10-area checklist).
+// ====================================================================
+
+const CLIENT_ADMIN_SETUP = {
+  role: 'client_admin',
+  loading: false,
+  progressPct: 40,
+  setupComplete: false,
+  nextItem: {
+    label: 'Invite your team',
+    why: 'MindVault works best with your whole team.',
+    how: 'Add your first team member by email and choose their role.',
+    doneWhen: 'At least one teammate has been invited.',
+    actionLabel: 'Invite your team',
+    actionHref: '/team',
+  },
+  items: [],
+  counts: { knowledge: 0, members: 1, processes: 0 },
+};
+const CLIENT_ADMIN_CTX = { route: '/', setup: CLIENT_ADMIN_SETUP };
+
+test('"What is a tenant?" gets a plain-English term explanation, not onboarding', () => {
+  const r = answerAdminHelpQuestion('What is a tenant?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /private workspace/i);
+  assert.match(r.answer, /assigned automatically when you sign in/i);
+  assert.doesNotMatch(r.answer, /Setup Checklist|Operational Continuity|knowledge source/i);
+  assert.deepEqual(r.sources, SUPPORT_SOURCE);
+});
+
+test('"Where do I choose my tenant?" is told there is nothing to choose — not treated as an error report', () => {
+  const r = answerAdminHelpQuestion('Where do I choose my tenant?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /never create, choose, or configure/i);
+  assert.doesNotMatch(r.answer, /What page or button produced/i);
+});
+
+test('"It says a tenant must be specified" is treated as troubleshooting context', () => {
+  const r = answerAdminHelpQuestion('It says a tenant must be specified', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /doesn.t mean you need to pick anything/i);
+  assert.match(r.answer, /What page or button produced/i);
+  assert.doesNotMatch(r.answer, /Setup Checklist|knowledge sources|Operational Processes/i);
+});
+
+test('the original failing prompt is answered as troubleshooting, not onboarding', () => {
+  const r = answerAdminHelpQuestion("where is the 'tenant'? it said i need to specify a tenant first", CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /doesn.t mean you need to pick anything/i);
+  assert.match(r.answer, /What page or button produced/i);
+  assert.doesNotMatch(r.answer, /Setup Checklist/i);
+});
+
+test('"What does tenant_id mean?" explains the internal identifier in plain English', () => {
+  const r = answerAdminHelpQuestion('What does tenant_id mean?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /internal record identifier/i);
+  assert.match(r.answer, /never have to find, copy, or type it/i);
+});
+
+test('"What do I do on this page?" is answered from the CURRENT page, not generic onboarding', () => {
+  assert.equal(isPageRelativeIntent('What do I do on this page?'), true);
+  const r = answerAdminHelpQuestion('What do I do on this page?', { ...CLIENT_ADMIN_CTX, route: '/library' });
+  assert.match(r.answer, /Knowledge page/i);
+});
+
+test('"What should I do next?" still uses the live setup copilot', () => {
+  const r = answerAdminHelpQuestion('What should I do next?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /Here's what's next: Invite your team/i);
+  assert.ok(r.navigation.some((n) => n.route === '/team'));
+});
+
+test('"Where is the Admin page?" is answered with the current Client Admin navigation', () => {
+  const r = answerAdminHelpQuestion('Where is the Admin page?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /Getting Started|Manage/i);
+  assert.doesNotMatch(r.answer, /Admin →/);
+  assert.ok(r.navigation.every((n) => n.route !== '/admin'),
+    'client admins are never sent to the deprecated /admin page');
+});
+
+test('"Where is the Library?" gets the current name — Knowledge', () => {
+  const r = answerAdminHelpQuestion('Where is the Library?', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /Knowledge page/i);
+  assert.ok(r.navigation.some((n) => n.route === '/library'));
+});
+
+test('other quoted system errors are treated as troubleshooting, never as setup instructions', () => {
+  const cases = [
+    ['I got an unauthorized error', /role check/i],
+    ['It says active tenant admins only', /reserved for a Client Admin/i],
+    ['It says cross-tenant access is not allowed', /different company.s workspace/i],
+  ];
+  for (const [q, re] of cases) {
+    const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
+    assert.match(r.answer, re, `"${q}" was not treated as troubleshooting`);
+    assert.doesNotMatch(r.answer, /Setup Checklist/i);
+  }
+});
+
+test('an unknown error gets an honest "I can\'t tell" plus ONE targeted follow-up — no invented workflow', () => {
+  const r = answerAdminHelpQuestion('I keep getting an error message when I save', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /can.t tell|rather not guess/i);
+  assert.match(r.answer, /What were you clicking/i);
+});
+
+test('internal terms are explained in plain English and never something the user is told to configure', () => {
+  for (const q of [
+    'What is RLS?',
+    'What does scope resolution mean?',
+    'What is a membership record?',
+    'What is a guarded function?',
+    'What is a Super Admin?',
+  ]) {
+    const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
+    assert.match(r.answer,
+      /nothing for you to configure|not something you configure|nothing for you to do|runs automatically|handled for you|maintains them for you|part of the platform|not something your company uses/i,
+      `"${q}" did not reassure the user there is nothing to configure`);
+    assert.doesNotMatch(r.answer, /Setup Checklist/i);
+  }
+});
+
+test('support navigation never leaves the allowlist and never carries anything but label/route/topic', () => {
+  const questions = [
+    'Where is the Admin page?',
+    'Where is the Library?',
+    'Where is the Manage page?',
+    'Where is the Team page?',
+    'Where is my setup checklist?',
+    'How do I get to the Processes page?',
+    'Where do I enter my company details?',
+  ];
+  for (const q of questions) {
+    const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
+    for (const n of r.navigation) {
+      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route), `"${q}" produced non-allowlisted route ${n.route}`);
+      assert.deepEqual(Object.keys(n).sort(), ['label', 'route', 'topic']);
+    }
+  }
+});
+
+test('support answers reflect the CURRENT Client Admin UI — no deprecated navigation, no old checklist', () => {
+  const answers = [];
+  for (const q of [
+    'What is a tenant?',
+    'Where do I choose my tenant?',
+    'It says a tenant must be specified',
+    'What does tenant_id mean?',
+    'What do I do on this page?',
+    'What should I do next?',
+    'Where is the Admin page?',
+    'Where is the Library?',
+  ]) {
+    const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
+    answers.push(r.answer);
+    assert.doesNotMatch(r.answer, /\b10 areas?\b|\bAdmin →|\bLibrary page\b|Open Admin\b/i,
+      `"${q}" references deprecated navigation`);
+  }
+  // The old 10-area checklist is gone from the corpus too: every mention of
+  // the checklist describes the current 7-step guided setup.
+  const checklist = ADMIN_HELP_TOPICS.find((t) => t.id === 'setup_checklist');
+  const blob = [checklist.summary, checklist.whatItIs, checklist.howToUse, checklist.whereToFind, checklist.caveats].join(' ');
+  assert.match(blob, /7-step guided checklist/i);
+  assert.doesNotMatch(blob, /\b10\b|ten\b/i);
+});
+
+test('the corpus no longer references deprecated page names — audit', () => {
+  for (const t of ADMIN_HELP_TOPICS) {
+    const blob = [t.title, t.summary, t.whatItIs, t.whyItMatters, t.howToUse, t.whereToFind, t.caveats].join(' ');
+    assert.doesNotMatch(blob, /Admin →|Library page\b|\bthe Library\b|\bten (firm-wide )?(setup )?areas?\b/i,
+      `${t.id} still references deprecated navigation: "${blob.match(/Admin →|Library page\b|\bthe Library\b/i)?.[0]}"`);
+  }
+});
+
+test('answerSupportQuestion returns null for questions outside its scope — corpus and setup copilot still handle those', () => {
+  assert.equal(answerSupportQuestion('What is an Operational Process?'), null);
+  assert.equal(answerSupportQuestion('asdkjfh qwoeiruty zzz gibberish'), null);
+});
+
+test('support.js is pure — no imports, no React, no Base44, no network, no LLM', () => {
+  const s = stripComments(read('src/lib/adminHelp/support.js'));
+  assert.equal(/^\s*import\s/m.test(s), false);
+  assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
 });

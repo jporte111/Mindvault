@@ -9,3 +9,4 @@ export { tokenize, scoreTopic, retrieveTopics } from './retrieval.js';
 export { answerAdminHelpQuestion, NAV_ROUTE_ALLOWLIST, INSUFFICIENT_HELP_MESSAGE } from './answer.js';
 export { getStarterPrompts, GENERIC_STARTER_PROMPTS } from './routePrompts.js';
 export { topicsForRoute, isPageRelativeIntent, routeBias } from './routeContext.js';
+export { answerSupportQuestion, SUPPORT_SOURCE } from './support.js';

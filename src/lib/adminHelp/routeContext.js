@@ -64,6 +64,7 @@ const PAGE_RELATIVE_INTENT_PATTERNS = [
   /\bwhat should i (look at|check|review) (on|in) (this|the) (page|section|screen)\b/,
   /\bwhat should i do first\b/,
   /\bwhat should i (do|configure|set up|start with) (here|on this page|in this section)\b/,
+  /\bwhat do i do (on|in) (this|the) (page|screen)\b/,
 ];
 
 /**

@@ -6,12 +6,13 @@
 import { ADMIN_HELP_TOPICS } from './corpus.js';
 import { retrieveTopics } from './retrieval.js';
 import { isPageRelativeIntent } from './routeContext.js';
+import { answerSupportQuestion } from './support.js';
 
 // Every navigation target this assistant can ever suggest. Defense in depth
 // on top of the fact that the corpus is static, curated, and bundled with
 // the app: even a future corpus edit cannot point the assistant at an
 // arbitrary route, because buildNavigation() drops anything not in here.
-export const NAV_ROUTE_ALLOWLIST = ['/library', '/chat', '/admin', '/continuity', '/setup', '/team', '/manage', '/processes'];
+export const NAV_ROUTE_ALLOWLIST = ['/', '/library', '/chat', '/admin', '/continuity', '/setup', '/team', '/manage', '/processes'];
 
 // ---------------------------------------------------------------------------
 // Contextual setup copilot — deterministic composition from the live setup
@@ -165,6 +166,22 @@ export function answerAdminHelpQuestion(question, context = {}) {
   const trimmed = String(question || '').trim();
   if (!trimmed) {
     return { answer: '', sources: [], navigation: [] };
+  }
+
+  // Product-support layer — system errors, internal terminology, and page
+  // locations are answered directly, BEFORE the setup copilot or corpus
+  // retrieval, so a question about an error message, an internal term, or
+  // where a page lives is never substituted with a generic onboarding
+  // response.
+  const support = answerSupportQuestion(trimmed, context);
+  if (support) {
+    return {
+      answer: support.answer,
+      sources: support.sources,
+      navigation: (support.navigation || [])
+        .filter((n) => NAV_ROUTE_ALLOWLIST.includes(n.route))
+        .map((n) => ({ label: n.label, route: n.route, topic: n.topic || 'support' })),
+    };
   }
 
   // Contextual setup copilot — Client Admin setup state takes priority for

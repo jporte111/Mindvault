@@ -10,9 +10,14 @@ export const GENERIC_STARTER_PROMPTS = [
 ];
 
 const ROUTE_PROMPTS = {
+  '/': [
+    'What should I do next?',
+    'What do I do on this page?',
+    'What is a tenant?',
+  ],
   '/admin': [
-    'How should I use the Setup Checklist?',
-    'How do I configure an Operational Process?',
+    'What does Verification mean?',
+    'How do I make knowledge client-specific?',
     'What does Review Cadence mean?',
   ],
   '/continuity': [
