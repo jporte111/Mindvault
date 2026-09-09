@@ -721,10 +721,12 @@ test('answerSupportQuestion returns null for questions outside its scope — cor
   assert.equal(answerSupportQuestion('asdkjfh qwoeiruty zzz gibberish'), null);
 });
 
-test('support.js is deterministic — only reuses the sibling messageEvidence.js, no React/Base44/network/LLM', () => {
+test('support.js is deterministic — only reuses pure sibling modules, no React/Base44/network/LLM', () => {
   const s = stripComments(read('src/lib/adminHelp/support.js'));
-  const imports = [...s.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
-  assert.deepEqual(imports, ['./messageEvidence.js']);
+  const imports = [...s.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]).sort();
+  // messageEvidence.js and routeContext.js are the only permitted deps —
+  // both asserted pure elsewhere in this suite.
+  assert.deepEqual(imports, ['./messageEvidence.js', './routeContext.js']);
   assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
 });
 
