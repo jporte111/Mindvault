@@ -195,17 +195,21 @@ export function answerAdminHelpQuestion(question, context = {}) {
   // next-step and page-relative questions. Deterministic composition from
   // the derived checklist; falls through to the corpus otherwise.
   const lower = trimmed.toLowerCase();
+  // The page-guidance switch and the corpus route bias key off the page
+  // itself — strip any #section hash first so a deep link
+  // (/setup#company-details) still gets the page's guidance.
+  const routeBase = String(context.route || '').split('#')[0].split('?')[0];
   if (context.setup && !context.setup.loading) {
     if (SETUP_NEXT_STEP_PATTERNS.some((re) => re.test(lower))) {
       return setupNextStepAnswer(context.setup);
     }
     if (isPageRelativeIntent(trimmed)) {
-      const guidance = pageGuidanceAnswer(context.setup, context.route);
+      const guidance = pageGuidanceAnswer(context.setup, routeBase);
       if (guidance) return guidance;
     }
   }
 
-  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: context.route });
+  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: routeBase });
   if (matched.length === 0) {
     return { answer: INSUFFICIENT_HELP_MESSAGE, sources: [], navigation: [] };
   }
