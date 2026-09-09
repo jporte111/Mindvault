@@ -234,6 +234,107 @@ test('with no captured error, a bare "what do I do" on /setup falls through to t
 });
 
 // ====================================================================
+// 4b. The recent action/error context spans the main Client Admin
+//     workflows — Team/members, Knowledge, Operational Processes — not
+//     just the current page. Each uses the SAME recordAppAction /
+//     recordAppError mechanism (no new logic), same redaction + TTL.
+// ====================================================================
+
+const AREA_CASES = [
+  {
+    name: 'Team / member invitations + membership actions',
+    file: 'src/components/admin/TenantMembersManager.jsx',
+    route: '/team',
+    err: { action: 'invite a teammate', page: 'Team', section: 'Team members', error: 'A tenant must be specified', code: 400 },
+    expectRoute: '/team',
+    expectPhrase: /invite a teammate/i,
+  },
+  {
+    name: 'Knowledge creation / upload',
+    file: 'src/components/admin/UploadTraining.jsx',
+    route: '/manage',
+    err: { action: 'add a knowledge source', page: 'Manage', section: 'Add knowledge', error: 'A tenant must be specified', code: 400 },
+    expectRoute: '/manage',
+    expectPhrase: /add a knowledge source|company.details/i,
+  },
+  {
+    name: 'Operational Process create / update / delete',
+    file: 'src/components/admin/OperationalProcessManager.jsx',
+    route: '/processes',
+    err: { action: 'save a process', page: 'Processes', section: 'Processes', error: 'A tenant must be specified', code: 400 },
+    expectRoute: '/processes',
+    expectPhrase: /save a process/i,
+  },
+];
+
+for (const c of AREA_CASES) {
+  test(`${c.name}: a captured error reaches Help — troubleshooting for that area, right nav, no re-ask for wording`, () => {
+    __resetSupportContextForTests();
+    recordAppError(c.err);
+    const sc = buildSupportContext({ route: c.route, userRole: 'client_admin', tenantName: 'Acme' });
+    // the structured context carries the recent error for this area
+    assert.equal(sc.recentError.action, c.err.action);
+    assert.equal(sc.recentError.page, c.err.page);
+    assert.equal(sc.recentError.section, c.err.section);
+    assert.equal(sc.recentErrorCode, String(c.err.code));
+
+    const r = answerAdminHelpQuestion('why is this failing', { route: c.route, supportContext: sc });
+    assert.match(r.answer, c.expectPhrase, `answer did not reference the ${c.name} action`);
+    assert.match(r.answer, /doesn.t mean you need to pick anything/i);
+    assert.doesNotMatch(r.answer, /what did the message say|what does the message say/i);
+    assert.ok(r.navigation.some((n) => n.route === c.expectRoute), `navigation should point to ${c.expectRoute}`);
+  });
+
+  test(`${c.name}: a successful action is recorded and clears any stale error`, () => {
+    __resetSupportContextForTests();
+    recordAppError(c.err);
+    recordAppAction({ action: c.err.action, page: c.err.page, section: c.err.section });
+    // recordAppAction on its own does not clear the error; the component
+    // calls clearRecentAppError() first — verify the source does that.
+    const src = read(c.file);
+    assert.match(src, /clearRecentAppError\(\)/, `${c.file} must clear a stale error on success`);
+    const sc = buildSupportContext({ route: c.route, userRole: 'client_admin' });
+    assert.equal(sc.recentAction.action, c.err.action);
+    assert.equal(sc.recentAction.page, c.err.page);
+  });
+
+  test(`${c.name}: the component uses the existing recordAppError/recordAppAction mechanism and leaks no tenant id or raw payload`, () => {
+    const src = read(c.file).replace(/\/\/.*$/gm, '');
+    assert.match(src, /from '@\/lib\/supportContext'/);
+    assert.match(src, /recordAppError\(/);
+    assert.match(src, /recordAppAction\(/);
+    // the recordAppError call sites pass only action/page/section/error/code
+    for (const m of src.matchAll(/recordAppError\(\s*\{([\s\S]*?)\}\s*\)/g)) {
+      const keys = [...m[1].matchAll(/(\w+)\s*:/g)].map((k) => k[1]);
+      for (const k of keys) {
+        assert.ok(['action', 'page', 'section', 'error', 'code'].includes(k),
+          `${c.file}: recordAppError got a disallowed key "${k}"`);
+      }
+      assert.equal(/tenant_id|payload|fields:|response\.data\b(?!\.error)|\.body\b/.test(m[1]), false,
+        `${c.file}: recordAppError call carries a raw payload / tenant id`);
+    }
+  });
+}
+
+test('a redacted (credential-looking) error from ANY area is still redacted before Help sees it', () => {
+  __resetSupportContextForTests();
+  recordAppError({ action: 'invite a teammate', page: 'Team', section: 'Team members', error: 'Authorization: Bearer eyJhbGc... denied' });
+  const sc = buildSupportContext({ route: '/team', userRole: 'client_admin' });
+  assert.equal(sc.recentError.message, 'A system error occurred.');
+  assert.equal(/Bearer|Authorization/.test(JSON.stringify(sc)), false);
+});
+
+test('the recent action/error still expires (~90s TTL preserved) — an old error is dropped', () => {
+  __resetSupportContextForTests();
+  recordAppError({ action: 'save a process', page: 'Processes', section: 'Processes', error: 'A tenant must be specified' });
+  const rec = getRecentAppError();
+  assert.ok(rec);
+  // force the timestamp past the TTL and re-read
+  rec.at -= 91_000;
+  assert.equal(getRecentAppError(), null);
+});
+
+// ====================================================================
 // 5. Scope isolation — the Help AI never touches customer knowledge or
 //    the employee answer pipeline, and carries no cross-tenant state
 // ====================================================================

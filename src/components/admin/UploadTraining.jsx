@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import ClientSelect from '@/components/knowledge/ClientSelect';
 import { isClassified, resolveScopeFields, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
+import { recordAppAction, recordAppError, clearRecentAppError } from '@/lib/supportContext';
 import {
   SOURCE_TYPE_OPTIONS,
   SUPPORTED_UPLOAD_ACCEPT,
@@ -74,6 +75,7 @@ export default function UploadTraining() {
     setUploading(true);
     setDone(false);
 
+    try {
     // 1. Upload the file
     setStatusMsg('Uploading file...');
     const { file_url } = await base44.integrations.Core.UploadFile({ file: sourceFile });
@@ -96,7 +98,7 @@ export default function UploadTraining() {
       toast.error('Could not extract usable text from the file. Please try a .txt file instead.');
       setUploading(false);
       setStatusMsg('');
-      return;
+      return; // finally-block still runs
     }
 
     // 3. Upload extracted text as the source-text file
@@ -131,6 +133,8 @@ export default function UploadTraining() {
 
     queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
     queryClient.invalidateQueries({ queryKey: ['trainings'] });
+    clearRecentAppError();
+    recordAppAction({ action: 'add a knowledge source', page: 'Manage', section: 'Add knowledge' });
     if (isClassified(scopeValue)) {
       toast.success('Knowledge added. Index it for chat from "All Trainings" once analysis finishes.');
     } else {
@@ -142,9 +146,23 @@ export default function UploadTraining() {
     setSourceFile(null);
     setScopeValue(SCOPE_UNCLASSIFIED);
     setSourceType('');
-    setStatusMsg('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-    setUploading(false);
+    } catch (e) {
+      // Recent error context for MindVault Help — short message + code only,
+      // no tenant id, no response payload, no stack trace.
+      const message = e?.response?.data?.error || e?.message || 'Could not add the knowledge source';
+      recordAppError({
+        action: 'add a knowledge source',
+        page: 'Manage',
+        section: 'Add knowledge',
+        error: message,
+        code: e?.response?.status || e?.status,
+      });
+      toast.error(message);
+    } finally {
+      setStatusMsg('');
+      setUploading(false);
+    }
   };
 
   return (

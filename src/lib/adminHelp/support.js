@@ -230,7 +230,16 @@ function composeErrorAnswer(key, evidence, sc, lower) {
   const locus = resolveErrorLocus(evidence, sc);
   const parts = [];
 
-  const where = trigger ? (trigger.locusLabel || `the ${trigger.label} action`) : locusPhrase(locus);
+  // Prefer a specific recorded/extracted action phrase ("revoke a
+  // teammate's access", "save a process") for the sentence; fall back to
+  // the trigger's short label, then to the generic locus phrasing. The
+  // trigger is still used for navigation.
+  const actionPhrase = locus.action && /\s/.test(locus.action) ? locus.action : null;
+  const where = actionPhrase
+    ? `the ${actionPhrase} action`
+    : trigger
+      ? (trigger.locusLabel || `the ${trigger.label} action`)
+      : locusPhrase(locus);
   if (where) {
     parts.push(`That error is coming from ${where}.`);
   }
@@ -510,8 +519,8 @@ function triggerFromEvidence(lower, evidence, sc) {
 function sectionToTrigger(section) {
   if (!section) return null;
   const l = String(section).toLowerCase();
-  if (l.includes('company details')) return triggerForFeature('company_details');
-  if (l.includes('invite')) return triggerForFeature('team');
+  if (l.includes('company')) return triggerForFeature('company_details');
+  if (l.includes('invite') || l.includes('team')) return triggerForFeature('team');
   if (l.includes('knowledge')) return triggerForFeature('manage');
   if (l.includes('process')) return triggerForFeature('processes');
   return null;

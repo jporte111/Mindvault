@@ -10,6 +10,17 @@ import { Workflow, Loader2, Archive, ArchiveRestore, Pencil, Plus, X } from 'luc
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import ConceptHelp from '@/components/onboarding/ConceptHelp';
+import { recordAppAction, recordAppError, clearRecentAppError } from '@/lib/supportContext';
+
+// Recent action/error context for MindVault Help — page + short label only.
+const PROCESS_PAGE = { page: 'Processes', section: 'Processes' };
+const processErr = (action) => (err) =>
+  recordAppError({
+    ...PROCESS_PAGE,
+    action,
+    error: err?.response?.data?.error || err?.message,
+    code: err?.response?.status || err?.status,
+  });
 import {
   PROCESS_CRITICALITY_OPTIONS,
   CRITICALITY_LABEL,
@@ -224,8 +235,11 @@ export default function OperationalProcessManager() {
       });
       setCreateForm(emptyForm());
       invalidate();
+      clearRecentAppError();
+      recordAppAction({ ...PROCESS_PAGE, action: 'save a process' });
       toast.success('Operational process created');
     } catch (err) {
+      processErr('save a process')(err);
       toast.error('Failed to create: ' + (err?.message || 'Unknown error'));
     } finally {
       setSaving(false);
@@ -247,8 +261,11 @@ export default function OperationalProcessManager() {
       });
       setEditId(null);
       invalidate();
+      clearRecentAppError();
+      recordAppAction({ ...PROCESS_PAGE, action: 'save process changes' });
       toast.success('Operational process updated');
     } catch (err) {
+      processErr('save process changes')(err);
       toast.error('Failed to save: ' + (err?.message || 'Unknown error'));
     } finally {
       setSaving(false);
@@ -268,7 +285,10 @@ export default function OperationalProcessManager() {
         fields: { status: p.status === 'archived' ? 'active' : 'archived' },
       });
       invalidate();
+      clearRecentAppError();
+      recordAppAction({ ...PROCESS_PAGE, action: 'archive or restore a process' });
     } catch (err) {
+      processErr('archive or restore a process')(err);
       toast.error('Failed to update: ' + (err?.message || 'Unknown error'));
     }
   };

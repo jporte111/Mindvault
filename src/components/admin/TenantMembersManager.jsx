@@ -8,6 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, UserPlus, Mail, ShieldCheck, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import MemberRow from './MemberRow';
+import { recordAppAction, recordAppError, clearRecentAppError } from '@/lib/supportContext';
+
+// Plain-language label for the recent-action context MindVault Help reads.
+const MEMBER_ACTION_LABELS = {
+  invite: 'invite a teammate',
+  update_role: "change a teammate's role",
+  revoke: "revoke a teammate's access",
+  reactivate: "restore a teammate's access",
+};
 
 // Tenant team management: invite members, change roles, revoke / restore
 // access. Every action goes through the manageTenantMembers backend function,
@@ -48,6 +57,9 @@ export default function TenantMembersManager() {
   });
 
   const callApi = async (payload) => {
+    // Recent action/error context for MindVault Help — page + short label
+    // only, no tenant id, no membership rows, no raw response payload.
+    const label = MEMBER_ACTION_LABELS[payload.action] || 'manage the team';
     try {
       const res = await base44.functions.invoke('manageTenantMembers', {
         ...payload,
@@ -55,9 +67,19 @@ export default function TenantMembersManager() {
       });
       const message = res?.data?.error;
       if (message) throw new Error(message);
+      clearRecentAppError();
+      recordAppAction({ action: label, page: 'Team', section: 'Team members' });
       return true;
     } catch (e) {
-      toast.error(e?.response?.data?.error || e?.message || 'Something went wrong');
+      const message = e?.response?.data?.error || e?.message || 'Something went wrong';
+      recordAppError({
+        action: label,
+        page: 'Team',
+        section: 'Team members',
+        error: message,
+        code: e?.response?.status || e?.status,
+      });
+      toast.error(message);
       return false;
     }
   };
