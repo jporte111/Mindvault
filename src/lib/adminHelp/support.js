@@ -14,6 +14,10 @@
 //     targeted follow-up question
 //   - when the trigger of an error cannot be determined, this says so — it
 //     never invents a workflow
+//   - troubleshooting is CONVERSATION-AWARE: a follow-up reply ("whenever I
+//     click 'save company details'...") is resolved against the thread it
+//     answers — matched to a known action, given real retry steps, or
+//     escalated — never re-answered as a context-free question
 //   - page locations use only the CURRENT Client Admin navigation names:
 //     Home, Knowledge, AI Assistant, Processes, Team, Manage, Getting Started
 
@@ -235,9 +239,157 @@ function matchPageLocation(lower, context) {
 }
 
 // ---------------------------------------------------------------------------
-// Entry point — checked in this exact order: (1) system errors, (2) internal
-// terminology, (3) page locations. Returns null when none applies, and the
-// caller falls through to the setup copilot / corpus retrieval.
+// Conversation awareness. A troubleshooting thread spans turns: the first
+// answer identifies the message and asks ONE follow-up ("What page or button
+// produced it?"); the user's reply is then resolved against that thread. A
+// short reply like "whenever I click 'save company details'" is matched to a
+// known action and answered with what that action does, why the error is on
+// MindVault's side, and concrete retry steps — never a repeat of
+// "I can't tell". History shape: [{ role: 'user'|'assistant', text }].
+// ---------------------------------------------------------------------------
+
+const FOLLOWUP_MARKERS = [
+  /what page or button produced/i,
+  /what were you (clicking|trying to do) when/i,
+  /what action were you trying/i,
+];
+
+// Signatures detect which error a thread is about, across BOTH the user's
+// phrasing and the assistant's own prior answers.
+const ERROR_SIGNATURES = [
+  { id: 'error_tenant_scope', patterns: [/tenant must be (specified|chosen|selected)/, /specif(y|ies|ied|ying) (a |the |my )?tenant/, /lost track of which company/] },
+  { id: 'error_cross_tenant', patterns: [/cross[- ]tenant/, /blocks that on purpose/] },
+  { id: 'error_admin_only', patterns: [/active tenant admins? only/, /reserved for a Client Admin/] },
+  { id: 'error_unauthorized', patterns: [/\bunauthorized\b/, /permission denied/, /role check, not a sign-in problem/] },
+  { id: 'error_unknown', patterns: [/can.?t tell from your description/] },
+];
+
+function findThreadError(history) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const sig = ERROR_SIGNATURES.find((s) => s.patterns.some((re) => re.test(history[i].text)));
+    if (sig) return sig.id;
+  }
+  return null;
+}
+
+// Known actions that can produce a message — each with a plain-English note
+// on why nothing the user enters there can cause a workspace/permission error.
+const TRIGGERS = [
+  {
+    id: 'trigger_company_details',
+    patterns: [/company details/, /company information/, /sav(e|ing) (my |the |our )?company/],
+    label: 'save your company details',
+    where: 'on the Getting Started page, in the "Company details" card',
+    whatItDoes: "Saving company details only updates your company's name, logo, and branding — it never changes which workspace you're in, and nothing you type there can cause this.",
+    navigation: [{ label: 'Open Getting Started', route: '/setup' }],
+  },
+  {
+    id: 'trigger_invite',
+    patterns: [/\binvit(e|ing|ed)\b/, /add(ing)? (a |a new )?(team )?member/],
+    label: 'invite a teammate',
+    where: 'on the Team page',
+    whatItDoes: "Inviting a teammate only creates their invitation — it doesn't touch your workspace settings, so nothing you enter there can cause this.",
+    navigation: [{ label: 'Open Team', route: '/team' }],
+  },
+  {
+    id: 'trigger_add_knowledge',
+    patterns: [/add(ing)? knowledge/, /\bupload(ing)?\b/, /sav(e|ing) (a |the )?source/, /add(ing)? (a |the )?source/],
+    label: 'add a knowledge source',
+    where: 'on the Add knowledge page',
+    whatItDoes: "Adding knowledge only stores the document for your assistant — it doesn't touch your workspace settings, so nothing you enter there can cause this.",
+    navigation: [{ label: 'Open Manage', route: '/manage' }],
+  },
+  {
+    id: 'trigger_process',
+    patterns: [/sav(e|ing) (a |the )?process/, /add(ing)? (a |the )?process/, /\bprocess form\b/],
+    label: 'save a process',
+    where: 'on the Processes page',
+    whatItDoes: "Describing a process only records how the workflow runs — it doesn't touch your workspace settings, so nothing you enter there can cause this.",
+    navigation: [{ label: 'Open Processes', route: '/processes' }],
+  },
+];
+
+function matchTrigger(lower) {
+  for (const t of TRIGGERS) {
+    if (t.patterns.some((re) => re.test(lower))) return t;
+  }
+  return null;
+}
+
+function triggerAnswer(trigger) {
+  return (
+    `Thanks — that pinpoints it. You're seeing the message when you ${trigger.label} ${trigger.where}.\n\n` +
+    `${trigger.whatItDoes} So this is a system problem on MindVault's side — nothing you entered is wrong.\n\n` +
+    `Try this, in order:\n` +
+    `1. Reload the page and try the save once more.\n` +
+    `2. Sign out and sign back in — that refreshes your workspace connection and clears most cases like this.\n` +
+    `3. If it still appears after that, it needs the MindVault team's attention — contact MindVault support with the exact message and the page you were on.`
+  );
+}
+
+function escalationAnswer() {
+  return (
+    `Since it's still happening, work through these in order:\n\n` +
+    `1. Sign out and sign back in — this refreshes your workspace connection and clears most cases.\n` +
+    `2. Try the action once more right after signing back in.\n` +
+    `3. If the message still appears, it needs the MindVault team's attention — contact MindVault support with the exact message and the page or button that produces it.\n\n` +
+    `Nothing in your settings causes this, so there is nothing further to fix on your side.`
+  );
+}
+
+function reAskAnswer() {
+  return (
+    `I still can't tell which action produces the message. Name the button or page you were using — for example ` +
+    `"Save company details" on Getting Started, "Invite" on Team, or "Add knowledge" on Manage — ` +
+    `and I'll tell you what's happening and what to do.`
+  );
+}
+
+function genericTriggerAnswer(trigger) {
+  return (
+    `You're seeing a message when you ${trigger.label} ${trigger.where} — that already narrows it down.\n\n` +
+    `What did the message say, exactly? Even a few words of its wording tell me which of MindVault's checks produced it — then I can tell you what it means and what to do.`
+  );
+}
+
+function answerConversational(lower, history) {
+  if (!Array.isArray(history) || history.length === 0) return null;
+  const errorId = findThreadError(history);
+  if (!errorId) return null;
+
+  let lastAssistant = null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'assistant') {
+      lastAssistant = history[i];
+      break;
+    }
+  }
+  const awaitingFollowUp = !!lastAssistant && FOLLOWUP_MARKERS.some((re) => re.test(lastAssistant.text));
+
+  // A clearly new, unrelated question is never hijacked by the open thread.
+  const newQuestion =
+    /^(what|where|how|why|when|who|which|is|are|can|does|do|should)\b/.test(lower) &&
+    !/\b(when(ever)? i|i (click|click(ed)?|try|tried|was)|the (button|page|form|card))\b/.test(lower);
+  const stillFailing =
+    /\b(still|again)\b/.test(lower) &&
+    /\b(doesn.?t|does not|not work(ing)?|comes up|happens|failing|error|message|issue|problem)\b/.test(lower);
+
+  if (awaitingFollowUp) {
+    if (newQuestion) return null;
+    const trigger = matchTrigger(lower);
+    if (trigger) return { answer: triggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
+    if (stillFailing) return { answer: escalationAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
+    return { answer: reAskAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
+  }
+  if (stillFailing) return { answer: escalationAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Entry point — checked in this exact order: (0) conversation awareness,
+// (1) system errors, (2) internal terminology, (3) page locations. Returns
+// null when none applies, and the caller falls through to the setup copilot /
+// corpus retrieval.
 // ---------------------------------------------------------------------------
 
 /**
@@ -248,8 +400,19 @@ function matchPageLocation(lower, context) {
 export function answerSupportQuestion(question, context = {}) {
   const lower = String(question || '').toLowerCase();
 
+  const convo = answerConversational(lower, context.history);
+  if (convo) return convo;
+
   const error = matchSystemError(lower);
-  if (error) return { answer: error.answer, sources: SUPPORT_SOURCE, navigation: [] };
+  if (error) {
+    if (error === GENERIC_ERROR) {
+      const trigger = matchTrigger(lower);
+      if (trigger) {
+        return { answer: genericTriggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
+      }
+    }
+    return { answer: error.answer, sources: SUPPORT_SOURCE, navigation: [] };
+  }
 
   for (const term of INTERNAL_TERMS) {
     if (term.patterns.some((re) => re.test(lower))) {

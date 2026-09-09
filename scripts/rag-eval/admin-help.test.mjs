@@ -712,3 +712,75 @@ test('support.js is pure — no imports, no React, no Base44, no network, no LLM
   assert.equal(/^\s*import\s/m.test(s), false);
   assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
 });
+
+// ====================================================================
+// 8. Conversation awareness — a troubleshooting thread spans turns. The
+//    follow-up reply ("whenever I click 'save company details'...") must
+//    be resolved against the thread, never re-answered as context-free.
+// ====================================================================
+
+test('the reported failure: the follow-up reply is resolved against the thread, not re-asked', () => {
+  const history = [
+    { role: 'user', text: 'What is a tenant? It says a tenant must be specified' },
+    { role: 'assistant', text: answerAdminHelpQuestion('What is a tenant? It says a tenant must be specified', CLIENT_ADMIN_CTX).answer },
+  ];
+  const r = answerAdminHelpQuestion('whenever i click "save company details" that message comes up', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r.answer, /pinpoints it/i);
+  assert.match(r.answer, /save your company details/i);
+  assert.match(r.answer, /Getting Started/i);
+  assert.match(r.answer, /Sign out and sign back in/i);
+  assert.doesNotMatch(r.answer, /can.?t tell/i, 'must NOT repeat the context-free "I can\'t tell" answer');
+});
+
+test('same for a generic-error thread: the reply names the action and gets a real answer', () => {
+  const history = [
+    { role: 'user', text: 'I keep getting an error message when I save' },
+    { role: 'assistant', text: answerAdminHelpQuestion('I keep getting an error message when I save', CLIENT_ADMIN_CTX).answer },
+  ];
+  const r = answerAdminHelpQuestion('whenever i click "save company details" that message comes up', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r.answer, /save your company details/i);
+  assert.doesNotMatch(r.answer, /can.?t tell/i);
+});
+
+test('a still-failing reply escalates instead of looping on the same question', () => {
+  const h1 = [
+    { role: 'user', text: 'It says a tenant must be specified' },
+    { role: 'assistant', text: answerAdminHelpQuestion('It says a tenant must be specified', CLIENT_ADMIN_CTX).answer },
+  ];
+  const turn2 = answerAdminHelpQuestion('whenever i click "save company details" that message comes up', { ...CLIENT_ADMIN_CTX, history: h1 }).answer;
+  const r = answerAdminHelpQuestion('i tried again and it still does not work', {
+    ...CLIENT_ADMIN_CTX,
+    history: [...h1, { role: 'user', text: 'whenever i click "save company details" that message comes up' }, { role: 'assistant', text: turn2 }],
+  });
+  assert.match(r.answer, /Sign out and sign back in/i);
+  assert.match(r.answer, /contact MindVault support/i);
+  assert.doesNotMatch(r.answer, /what page or button|what were you clicking/i);
+});
+
+test('an unrelated new question is never hijacked by an open thread', () => {
+  const history = [
+    { role: 'user', text: 'It says a tenant must be specified' },
+    { role: 'assistant', text: answerAdminHelpQuestion('It says a tenant must be specified', CLIENT_ADMIN_CTX).answer },
+  ];
+  const r = answerAdminHelpQuestion('What is an Operational Process?', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r.answer, /business workflow/i);
+  const r2 = answerAdminHelpQuestion('Where is the Team page?', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r2.answer, /Team page is in the left navigation/i);
+});
+
+test('a first-turn message that names the action asks for the message text, not a blind "I can\'t tell"', () => {
+  const r = answerAdminHelpQuestion('I get a message whenever I click save company details', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /save your company details/i);
+  assert.match(r.answer, /what did the message say/i);
+});
+
+test('other actions are recognized as triggers too', () => {
+  const history = [
+    { role: 'user', text: 'It says a tenant must be specified' },
+    { role: 'assistant', text: answerAdminHelpQuestion('It says a tenant must be specified', CLIENT_ADMIN_CTX).answer },
+  ];
+  const r = answerAdminHelpQuestion('when i hit invite on the team page', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r.answer, /invite a teammate/i);
+  const r2 = answerAdminHelpQuestion('it happens when i upload a document', { ...CLIENT_ADMIN_CTX, history });
+  assert.match(r2.answer, /add a knowledge source/i);
+});

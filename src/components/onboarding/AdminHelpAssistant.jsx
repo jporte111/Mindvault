@@ -82,9 +82,14 @@ export default function AdminHelpAssistant() {
     if (!q) return;
     // Context is only the current route plus derived, read-only setup state —
     // nothing from the DOM, no employee data, no entity payload.
+    // Context is the current route, derived read-only setup state, and the
+    // recent conversation turns — so a follow-up reply is answered against
+    // the thread it belongs to. Nothing from the DOM, no employee data,
+    // no entity payload.
     const result = answerAdminHelpQuestion(q, {
       route: location.pathname,
       setup: buildSetupContext(),
+      history: messages.slice(-10).map(({ role, text }) => ({ role, text })),
     });
     setMessages((prev) => {
       const next = [

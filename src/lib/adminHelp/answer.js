@@ -158,7 +158,7 @@ function paragraphsFor(topicEntry) {
  * admin question. Never calls an LLM, never touches customer knowledge.
  *
  * @param {string} question
- * @param {{route?: string, topic?: string, topics?: object[]}} [context]
+ * @param {{route?: string, topic?: string, topics?: object[], history?: {role: string, text: string}[]}} [context]
  * @returns {{answer: string, sources: {id:string,title:string}[], navigation: object[]}}
  */
 export function answerAdminHelpQuestion(question, context = {}) {
