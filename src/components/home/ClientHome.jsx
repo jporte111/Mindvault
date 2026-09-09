@@ -8,12 +8,13 @@ import { useClientSetup } from '@/hooks/useClientSetup';
 import { OPEN_HELP_EVENT } from '@/components/onboarding/AdminHelpAssistant';
 import ClientSetupChecklist from '@/components/onboarding/ClientSetupChecklist';
 import NextActionCard from '@/components/onboarding/NextActionCard';
+import TenantLogoMark from '@/components/common/TenantLogoMark';
 
 // Home for Client Admins — a setup command center while setup is incomplete,
 // then a calm operational dashboard once everything is ready.
 export default function ClientHome() {
   const {
-    items, progressPct, nextItem, setupComplete, loading, sources, members, markStepDone,
+    items, progressPct, nextItem, setupComplete, loading, sources, members, tenant, markStepDone,
   } = useClientSetup();
 
   const openHelp = () => window.dispatchEvent(new CustomEvent(OPEN_HELP_EVENT));
@@ -35,9 +36,23 @@ export default function ClientHome() {
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-8 md:py-12 space-y-8">
         {/* Header */}
         <div>
-          <h1 className="font-sora font-semibold text-2xl md:text-3xl text-foreground">
-            {setupComplete ? 'Welcome back' : 'Set up your MindVault'}
-          </h1>
+          <div className="flex items-center gap-3">
+            {tenant && (
+              <TenantLogoMark
+                name={tenant.name}
+                logoUrl={tenant.logo_url}
+                brandColor={tenant.brand_color}
+                className="w-8 h-8 rounded-lg"
+              />
+            )}
+            <h1 className="font-sora font-semibold text-2xl md:text-3xl text-foreground">
+              {setupComplete
+                ? tenant?.name
+                  ? `Welcome back to ${tenant.name}’s MindVault`
+                  : 'Welcome back'
+                : 'Set up your MindVault'}
+            </h1>
+          </div>
           <p className="text-sm md:text-base text-muted-foreground mt-2 leading-relaxed">
             {setupComplete
               ? 'Everything is ready — your team can ask questions and get answers with sources.'

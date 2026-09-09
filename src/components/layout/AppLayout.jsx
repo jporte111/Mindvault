@@ -8,6 +8,7 @@ import { base44 } from '@/api/base44Client';
 import { useIsMobile } from '@/hooks/use-mobile';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import AdminHelpAssistant from '@/components/onboarding/AdminHelpAssistant';
+import TenantBrandTokens from '@/components/common/TenantBrandTokens';
 
 export default function AppLayout() {
   const [user, setUser] = useState(null);
@@ -48,6 +49,10 @@ export default function AppLayout() {
           separate from the guided tour and from the employee AI Assistant.
           Self-guards admin-only; renders its own floating launcher. */}
       <AdminHelpAssistant />
+      {/* Tenant brand accents — recolors primary actions, active states,
+          and progress with the member's saved workspace brand color.
+          Renders nothing; Super Admins keep the default palette. */}
+      <TenantBrandTokens />
     </div>
   );
 }

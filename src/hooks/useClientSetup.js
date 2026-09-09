@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
+import { getTenantBrand } from '@/lib/tenantBrand';
 import {
   deriveClientSetupItems,
   clientSetupCompleteCount,
@@ -34,6 +35,23 @@ export function useTenantName() {
     queryFn: () => fetchMyTenant(membership?.tenant_id),
   });
   return membership ? tenant?.name ?? '' : '';
+}
+
+/**
+ * The signed-in member's own workspace brand — { name, logoUrl,
+ * brandColor }, resolved through the same membership-scoped tenant
+ * lookup (never a client-supplied value, never another workspace).
+ * Null for platform admins and anyone without a tenant membership.
+ */
+export function useTenantBrand() {
+  const { membership } = useTenantRole();
+  const { data: tenant } = useQuery({
+    queryKey: ['client-setup-tenant'],
+    enabled: !!membership,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
+  });
+  return membership ? getTenantBrand(tenant) : null;
 }
 
 /**

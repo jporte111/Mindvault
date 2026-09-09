@@ -7,7 +7,8 @@ import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
 import { useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import { useTenantRole } from '@/hooks/useTenantRole';
-import { useTenantName } from '@/hooks/useClientSetup';
+import { useTenantBrand } from '@/hooks/useClientSetup';
+import TenantLogoMark from '../common/TenantLogoMark';
 import { OPEN_HELP_EVENT } from '@/components/onboarding/AdminHelpAssistant';
 
 // Shared primary navigation — simple for everyone.
@@ -44,10 +45,10 @@ export default function Sidebar({ user, onOpenHelp }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { knowledgeHealthEnabled } = useSystemConfig();
   const { isClientAdmin } = useTenantRole();
-  const tenantName = useTenantName();
+  const brand = useTenantBrand();
 
   const isSuperAdmin = user?.role === 'admin';
-  const subtitle = tenantName || (isSuperAdmin ? 'Platform' : '');
+  const subtitle = brand?.name || (isSuperAdmin ? 'Platform' : '');
 
   const renderItem = ({ path, icon: Icon, label }) => (
     <Link key={path} to={path} className={linkClass(location.pathname === path)}>
@@ -66,7 +67,19 @@ export default function Sidebar({ user, onOpenHelp }) {
           </div>
           <div className="min-w-0">
             <p className="text-sidebar-foreground font-sora font-semibold text-sm leading-tight">MindVault</p>
-            {subtitle && <p className="text-sidebar-foreground/50 text-xs truncate">{subtitle}</p>}
+            {subtitle && (
+              <p className="flex items-center gap-1.5 min-w-0 text-sidebar-foreground/50 text-xs">
+                {brand && (
+                  <TenantLogoMark
+                    name={brand.name}
+                    logoUrl={brand.logoUrl}
+                    brandColor={brand.brandColor}
+                    className="w-4 h-4 rounded"
+                  />
+                )}
+                <span className="truncate">{subtitle}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>

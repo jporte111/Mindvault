@@ -10,6 +10,7 @@ import { CheckCircle2, Loader2 } from 'lucide-react';
 import ClientSetupChecklist from '@/components/onboarding/ClientSetupChecklist';
 import CompanyDetailsForm from '@/components/onboarding/CompanyDetailsForm';
 import NextActionCard from '@/components/onboarding/NextActionCard';
+import TenantLogoMark from '@/components/common/TenantLogoMark';
 
 // Getting Started — the Client Admin's guided setup experience. Every step
 // explains what to do and why, tracks progress live from the tenant's own
@@ -42,9 +43,19 @@ export default function GettingStarted() {
       <div className="max-w-3xl mx-auto px-4 py-8 md:py-12 space-y-8">
         {/* Welcome — what setup involves */}
         <div>
-          <h1 className="font-sora font-semibold text-2xl md:text-3xl text-foreground">
-            Set up your MindVault
-          </h1>
+          <div className="flex items-center gap-3">
+            {tenant && (
+              <TenantLogoMark
+                name={tenant.name}
+                logoUrl={tenant.logo_url}
+                brandColor={tenant.brand_color}
+                className="w-8 h-8 rounded-lg"
+              />
+            )}
+            <h1 className="font-sora font-semibold text-2xl md:text-3xl text-foreground">
+              Set up {tenant?.name ? `${tenant.name}’s` : 'your'} MindVault
+            </h1>
+          </div>
           <p className="text-sm md:text-base text-muted-foreground mt-2 leading-relaxed">
             We'll walk you through the essentials. You can come back to this checklist anytime —
             your progress is saved as you go.
