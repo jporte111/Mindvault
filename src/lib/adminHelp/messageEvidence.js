@@ -27,8 +27,11 @@
 const QUOTE_SPANS = /(.{0,24})["'“‘]([^"'”’\n]{4,200})["'”’]/g;
 // The "it says X" / "the message X" / "an error saying X" forms, quote
 // marks optional.
+// A leading subject ("the message", "an error", "it") is required before the
+// verb — a bare first-person verb like "read" in "can I read …" or "say" in
+// "what should I say" must NOT be treated as an error being quoted.
 const SAYS_LEAD =
-  /\b(?:(?:the |an? |this )?(?:message|error|popup|warning|toast|dialog|box|prompt) (?:says?|said|saying|reads?|is|was|that says?)|it (?:says?|said|saying|reads?)|says?|said|saying|reads?)\s*:?\s*["'“‘]?([a-z][^."'”’\n]{6,160})/i;
+  /\b(?:(?:the |an? |this )?(?:message|error|popup|warning|toast|dialog|box|prompt) (?:says?|said|saying|reads?|is|was|that says?)|it (?:says?|said|saying|reads?))\s*:?\s*["'“‘]?([a-z][^."'”’\n]{6,160})/i;
 
 // A quoted span is an "error quote" if it either reads like a system
 // message, or the words right before it flag it as one.

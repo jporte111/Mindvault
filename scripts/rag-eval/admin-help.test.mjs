@@ -66,13 +66,13 @@ test('no writes anywhere in the admin-help modules — no entity create/update/d
 // ====================================================================
 
 const REQUIRED_TOPIC_IDS = [
-  'product_overview', 'getting_started', 'knowledge_library', 'adding_knowledge',
-  'knowledge_scope', 'ai_assistant', 'operational_processes', 'owner', 'sme',
-  'backup_sme', 'criticality', 'review_cadence', 'verification', 'lifecycle',
-  'setup_checklist', 'operational_continuity', 'coverage', 'currency',
+  'product_overview', 'getting_started', 'company_details', 'knowledge_library',
+  'adding_knowledge', 'knowledge_scope', 'ai_assistant', 'operational_processes',
+  'owner', 'sme', 'backup_sme', 'criticality', 'review_cadence', 'verification',
+  'lifecycle', 'setup_checklist', 'operational_continuity', 'coverage', 'currency',
   'key_person_dependency', 'knowledge_gaps', 'snapshots', 'trends',
-  'what_changed', 'notifications', 'permissions', 'common_troubleshooting',
-  'guided_tour',
+  'what_changed', 'notifications', 'permissions', 'team_management',
+  'question_history', 'mindvault_help', 'common_troubleshooting', 'guided_tour',
 ];
 
 test('every required help topic exists exactly once', () => {
@@ -444,10 +444,11 @@ test('NAV_ROUTE_ALLOWLIST is exactly the current safe app routes', () => {
   ]);
 });
 
-test('every navigation entry in the corpus targets an allowlisted route', () => {
+test('every navigation entry in the corpus targets an allowlisted route (ignoring any #section anchor)', () => {
   for (const t of ADMIN_HELP_TOPICS) {
     for (const n of t.navigation) {
-      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route), `${t.id} navigation route "${n.route}" is not allowlisted`);
+      const path = n.route.split('#')[0];
+      assert.ok(NAV_ROUTE_ALLOWLIST.includes(path), `${t.id} navigation route "${n.route}" is not allowlisted`);
     }
   }
 });
@@ -675,7 +676,8 @@ test('support navigation never leaves the allowlist and never carries anything b
   for (const q of questions) {
     const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
     for (const n of r.navigation) {
-      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route), `"${q}" produced non-allowlisted route ${n.route}`);
+      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route.split('#')[0]),
+        `"${q}" produced non-allowlisted route ${n.route}`);
       assert.deepEqual(Object.keys(n).sort(), ['label', 'route', 'topic']);
     }
   }
@@ -719,10 +721,12 @@ test('answerSupportQuestion returns null for questions outside its scope — cor
   assert.equal(answerSupportQuestion('asdkjfh qwoeiruty zzz gibberish'), null);
 });
 
-test('support.js is deterministic — only reuses the sibling messageEvidence.js, no React/Base44/network/LLM', () => {
+test('support.js is deterministic — only reuses pure sibling modules, no React/Base44/network/LLM', () => {
   const s = stripComments(read('src/lib/adminHelp/support.js'));
-  const imports = [...s.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
-  assert.deepEqual(imports, ['./messageEvidence.js']);
+  const imports = [...s.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]).sort();
+  // messageEvidence.js and routeContext.js are the only permitted deps —
+  // both asserted pure elsewhere in this suite.
+  assert.deepEqual(imports, ['./messageEvidence.js', './routeContext.js']);
   assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
 });
 

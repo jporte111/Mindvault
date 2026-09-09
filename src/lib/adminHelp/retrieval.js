@@ -5,6 +5,7 @@
 // module only ever sees the static, bundled product-help corpus.
 
 import { isPageRelativeIntent, routeBias } from './routeContext.js';
+import { expandSynonyms } from './synonyms.js';
 
 const STOPWORDS = new Set([
   'a', 'an', 'the', 'is', 'are', 'do', 'does', 'did', 'how', 'what', 'when',
@@ -44,7 +45,10 @@ function topicTermCounts(topicEntry) {
     ...(topicEntry.keywords || []),
   ];
   for (const phrase of phrases) {
-    for (const w of tokenize(phrase)) {
+    // Index each keyword through the same synonym map the query is
+    // expanded through, so a topic keyed on "brand color" is also findable
+    // as "branding" and one keyed on "edit" is findable as "update".
+    for (const w of expandSynonyms(tokenize(phrase))) {
       if (GENERIC_TERMS.has(w)) continue;
       counts.set(w, (counts.get(w) || 0) + 1);
     }
@@ -64,9 +68,25 @@ function topicTermCounts(topicEntry) {
  */
 export function scoreTopic(topicEntry, queryWords) {
   const terms = topicTermCounts(topicEntry);
+  // Expand the question through the same synonym map the topic terms went
+  // through, so natural phrasing ("change my logo", "edit our business
+  // name") lands on the canonical concept ("update", "branding", "company").
+  const expanded = expandSynonyms(queryWords);
+  const qset = new Set(expanded);
   let score = 0;
-  for (const w of new Set(queryWords)) {
+  for (const w of qset) {
     if (terms.has(w)) score += 1;
+  }
+  // Phrase intent: a topic that declares a multi-word natural-language
+  // intent it fully answers gets one small bonus when every word of that
+  // phrase (after the same expansion) is present in the question. Capped at
+  // one hit so it re-ranks, never dominates.
+  for (const phrase of topicEntry.phrases || []) {
+    const pw = expandSynonyms(tokenize(phrase));
+    if (pw.length > 0 && pw.every((w) => qset.has(w))) {
+      score += 2;
+      break;
+    }
   }
   const titleWords = tokenize(topicEntry.title);
   if (titleWords.length > 1) {

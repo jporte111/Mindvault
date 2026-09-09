@@ -33,13 +33,28 @@ const NAV_LIBRARY = { label: 'Open Knowledge', route: '/library' };
 const NAV_CHAT = { label: 'Open AI Assistant', route: '/chat' };
 const NAV_ADMIN = { label: 'Open Settings', route: '/admin' };
 const NAV_CONTINUITY = { label: 'Open Operational Continuity', route: '/continuity' };
+const NAV_GETTING_STARTED = { label: 'Open Getting Started', route: '/setup' };
+const NAV_COMPANY_DETAILS = { label: 'Open Company Details', route: '/setup#company-details' };
+const NAV_ADD_KNOWLEDGE = { label: 'Add Knowledge', route: '/manage#manage-knowledge' };
+const NAV_TEAM = { label: 'Open Team', route: '/team' };
+const NAV_PROCESSES = { label: 'Open Processes', route: '/processes' };
+
+// Roles that manage a workspace and can reach the Client Admin pages.
+const ADMIN_ROLES = ['client_admin', 'super_admin'];
 
 function topic(t) {
   return {
     keywords: [],
+    phrases: [],
     caveats: '',
     related: [],
     navigation: [],
+    // Optional deep-link metadata: `route` (+ optional `anchor`) is the
+    // canonical destination for this topic; `roles`, when non-empty, limits
+    // which app roles are offered its navigation action.
+    route: null,
+    anchor: null,
+    roles: [],
     ...t,
   };
 }
@@ -68,8 +83,37 @@ export const ADMIN_HELP_TOPICS = [
     howToUse: 'Follow the 7 guided steps: company details, invite your team, upload your first knowledge source, make it available, describe a process, test the AI Assistant, then optionally review team permissions. Progress is tracked automatically.',
     whereToFind: 'Home shows your progress; the Getting Started page has the full checklist.',
     caveats: 'There is no scored “health grade” anywhere in MindVault — the checklist only counts how many of its 7 steps are Complete.',
-    related: ['setup_checklist', 'adding_knowledge', 'operational_processes', 'guided_tour'],
-    navigation: [{ label: 'Open Getting Started', route: '/setup', topic: 'getting_started' }],
+    related: ['setup_checklist', 'company_details', 'adding_knowledge', 'operational_processes', 'guided_tour'],
+    route: '/setup',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_GETTING_STARTED, topic: 'getting_started' }],
+  }),
+
+  topic({
+    id: 'company_details',
+    title: 'Company details',
+    keywords: [
+      'company details', 'company information', 'company info', 'company profile',
+      'company name', 'business name', 'organization name', 'org name', 'rename company',
+      'logo', 'logo link', 'company logo', 'brand color', 'brand colour', 'branding',
+      'company settings', 'update company details', 'change company information', 'edit company name',
+    ],
+    phrases: [
+      'update company details', 'change company information', 'edit company name',
+      'update company logo', 'change company logo', 'update brand color', 'change brand color',
+      'company name', 'business name', 'company settings',
+    ],
+    summary: 'Your company name, logo, and brand color are set on the Getting Started page in the “Company details” card. You can change them any time — the form is always pre-filled with what’s saved.',
+    whatItIs: 'Three fields that control how your company appears to your team inside MindVault: the company name shown in the sidebar, an optional link to a logo image, and a brand color used for small accents.',
+    whyItMatters: 'It makes the workspace recognisably yours, and your team sees the change everywhere MindVault shows your company identity.',
+    howToUse: 'Open Getting Started → Company details, change the company name, logo link, or brand color, and click “Save company details”. Your updated name, logo, and color then appear across MindVault.',
+    whereToFind: 'Getting Started → the “Company details” card (the first setup step). Reach Getting Started from Home.',
+    caveats: 'There is no separate “Company settings” page — this card is the only place these live. Adding a logo or brand color also marks the “Add your company details” setup step complete.',
+    related: ['getting_started', 'setup_checklist', 'permissions'],
+    route: '/setup',
+    anchor: 'company-details',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_COMPANY_DETAILS, topic: 'company_details' }],
   }),
 
   topic({
@@ -83,21 +127,37 @@ export const ADMIN_HELP_TOPICS = [
     whereToFind: 'The Knowledge page, in the left navigation.',
     caveats: 'Only classified, active knowledge answers questions in the AI Assistant — a source still awaiting classification (“Needs review”) is visible here but won’t be used to answer.',
     related: ['adding_knowledge', 'knowledge_scope', 'ai_assistant'],
+    route: '/library',
+    roles: ADMIN_ROLES,
     navigation: [{ ...NAV_LIBRARY, topic: 'knowledge_library' }],
   }),
 
   topic({
     id: 'adding_knowledge',
     title: 'Adding knowledge',
-    keywords: ['add knowledge', 'upload knowledge', 'add a source', 'submit a recording', 'sync google drive', 'import knowledge'],
+    keywords: [
+      'add knowledge', 'upload knowledge', 'add a source', 'add a knowledge source',
+      'submit a recording', 'sync google drive', 'import knowledge',
+      'sop', 'policy', 'handbook', 'procedure document',
+    ],
+    phrases: [
+      'add knowledge', 'upload knowledge', 'add a knowledge source', 'upload an sop',
+      'add a policy', 'upload a document', 'import a handbook', 'upload a handbook',
+    ],
     summary: 'Add knowledge from the Knowledge page’s “Add Knowledge” button, or from the Manage page — upload a file, paste text, or sync a Google Drive folder.',
-    whatItIs: 'A knowledge source can come from an uploaded file, pasted text, a recording, or a Google Drive sync.',
+    whatItIs: 'A knowledge source can be an SOP, policy, handbook, process document, recording, pasted text, or a Google Drive sync.',
     whyItMatters: 'The more real operational knowledge you add — and classify — the more the AI Assistant can actually help with.',
     howToUse: 'Click “Add Knowledge” on the Knowledge page, or use the upload area on Manage. Give it a clear title, and pick the source type when asked.',
-    whereToFind: 'Knowledge → Add Knowledge, or the Manage page.',
+    whereToFind: 'Knowledge → Add Knowledge, or the Manage page (the “Add knowledge” section).',
     caveats: `Newly added knowledge starts out unclassified (“Needs review”) and won’t answer questions until you set its scope. ${SUPPORTED_UPLOAD_HINT} — PDF is not currently a supported upload format.`,
     related: ['knowledge_library', 'knowledge_scope'],
-    navigation: [{ ...NAV_LIBRARY, topic: 'adding_knowledge' }],
+    route: '/manage',
+    anchor: 'manage-knowledge',
+    roles: ADMIN_ROLES,
+    navigation: [
+      { ...NAV_ADD_KNOWLEDGE, topic: 'adding_knowledge' },
+      { ...NAV_LIBRARY, topic: 'adding_knowledge' },
+    ],
   }),
 
   topic({
@@ -111,7 +171,11 @@ export const ADMIN_HELP_TOPICS = [
     whereToFind: 'Manage → the availability choice on each knowledge source.',
     caveats: 'There is no partial or fuzzy scope — a source is either firm-wide, tied to exactly one client, or unclassified. Client-specific knowledge is only ever used in that client’s own context; it never crosses over to another client.',
     related: ['adding_knowledge', 'ai_assistant'],
-    navigation: [{ label: 'Open Manage', route: '/manage', topic: 'knowledge_scope' }],
+    phrases: ['company wide knowledge', 'client specific knowledge', 'make knowledge client specific', 'who can see knowledge'],
+    route: '/manage',
+    anchor: 'manage-knowledge',
+    roles: ADMIN_ROLES,
+    navigation: [{ label: 'Add Knowledge', route: '/manage#manage-knowledge', topic: 'knowledge_scope' }],
   }),
 
   topic({
@@ -124,7 +188,9 @@ export const ADMIN_HELP_TOPICS = [
     howToUse: 'Type a real operational question — how to complete a workflow, what approval is needed, what to do for an exception. If a client-context selector is shown, pick the right firm-wide/client scope first.',
     whereToFind: 'AI Assistant, in the main navigation.',
     caveats: 'Answers are grounded in your classified knowledge, not automatically organization-“approved” — Verification is a separate, optional signal. If nothing relevant is classified, the assistant says so rather than guessing.',
-    related: ['knowledge_scope', 'verification', 'knowledge_gaps'],
+    related: ['knowledge_scope', 'verification', 'knowledge_gaps', 'question_history'],
+    route: '/chat',
+    roles: ['client_admin', 'client_user', 'super_admin'],
     navigation: [{ ...NAV_CHAT, topic: 'ai_assistant' }],
   }),
 
@@ -132,14 +198,20 @@ export const ADMIN_HELP_TOPICS = [
     id: 'operational_processes',
     title: 'Operational Processes',
     keywords: ['operational process', 'process', 'workflow', 'processes', 'operational processes'],
+    phrases: [
+      'create a process', 'edit a process', 'archive a process', 'restore a process',
+      'add a process', 'update a process',
+    ],
     summary: 'An Operational Process is a business workflow — like monthly bank reconciliation — not an individual document. Knowledge sources link to the process they document.',
     whatItIs: 'A process record with an Owner, SME, optional Backup SME, Criticality, and a review cadence. It’s the unit Operational Continuity is organized around.',
     whyItMatters: 'Linking knowledge to processes is what lets MindVault tell you which important workflows are actually documented, owned, and current — versus which ones are running on nobody’s calendar.',
-    howToUse: 'Create a process, name it after the real workflow, then set its Owner, SME, Backup SME (where it matters), Criticality, and review interval. Link the knowledge sources that document it.',
+    howToUse: 'On the Processes page: click “Add process” to create one, name it after the real workflow, then set its Owner, SME, Backup SME (where it matters), Criticality, and review interval. Use the pencil to edit a process, and Archive / Restore to retire or bring one back. Link the knowledge sources that document it.',
     whereToFind: 'Processes, in the left navigation.',
-    caveats: 'Start with the 3–5 workflows the business could least afford to lose — you don’t need to model everything on day one.',
+    caveats: 'Start with the 3–5 workflows the business could least afford to lose — you don’t need to model everything on day one. Archiving a process keeps its history; it doesn’t delete anything.',
     related: ['owner', 'sme', 'backup_sme', 'criticality', 'review_cadence'],
-    navigation: [{ label: 'Open Processes', route: '/processes', topic: 'operational_processes' }],
+    route: '/processes',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_PROCESSES, topic: 'operational_processes' }],
   }),
 
   topic({
@@ -243,15 +315,18 @@ whereToFind: 'A source’s own detail page, or the knowledge-management tools on
   topic({
     id: 'setup_checklist',
     title: 'Setup Checklist',
-    keywords: ['setup checklist', 'checklist', 'what to configure', 'what does the checklist mean'],
+    keywords: ['setup checklist', 'checklist', 'what to configure', 'what does the checklist mean', 'setup progress', 'review setup progress', 'onboarding progress'],
+    phrases: ['review setup progress', 'setup checklist', 'onboarding progress', 'what is left to set up'],
     summary: 'A 7-step guided checklist on the Getting Started page — it shows what’s already done and what still needs attention. There is no score, just a count of completed steps.',
     whatItIs: 'Seven plain-language steps: add your company details, invite your team, upload your first knowledge source, make it available to your team, describe a process, test MindVault, and review team permissions (optional).',
     whyItMatters: 'It’s the fastest way to see, at a glance, what’s left to configure without digging through every admin screen.',
     howToUse: 'Open Getting Started (linked from Home) — each step’s action link takes you straight to the page where you do it.',
     whereToFind: 'Home → Getting Started.',
     caveats: 'Progress is derived automatically from your own workspace data, so it is always current and resumable. You don’t need to finish it before using MindVault; nothing is blocked by an incomplete checklist.',
-    related: ['getting_started', 'operational_processes', 'verification'],
-    navigation: [{ label: 'Open Getting Started', route: '/setup', topic: 'setup_checklist' }],
+    related: ['getting_started', 'company_details', 'operational_processes', 'verification'],
+    route: '/setup',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_GETTING_STARTED, topic: 'setup_checklist' }],
   }),
 
   topic({
@@ -381,16 +456,53 @@ whereToFind: 'A source’s own detail page, or the knowledge-management tools on
 
   topic({
     id: 'permissions',
-    title: 'Permissions and roles',
-    keywords: ['permissions', 'roles', 'admin role', 'employee role', 'who can see what'],
+    title: 'Client Admin and Client User roles',
+    keywords: [
+      'permissions', 'roles', 'role', 'admin role', 'user role',
+      'client admin', 'client user', 'who can see what', 'who can do what',
+      'difference between client admin and client user', 'what can a client admin do',
+      'what can a client user do',
+    ],
+    phrases: [
+      'difference between client admin and client user', 'client admin vs client user',
+      'what can a client user do', 'what can a client admin do',
+    ],
     summary: 'MindVault has two member roles: Client Admin — who manages their company’s settings, knowledge, and team — and Client User — who asks questions and browses knowledge.',
     whatItIs: 'A simple two-role model — there is no finer-grained per-process permission system yet.',
-    whyItMatters: 'It’s what keeps configuration and governance actions restricted to admins, while employees get a focused, simple experience.',
-    howToUse: 'Invite teammates from the Team page and choose their role when inviting — you can change a role at any time.',
+    whyItMatters: 'It’s what keeps configuration and governance actions restricted to admins, while everyone else gets a focused, simple experience.',
+    howToUse: 'You choose a teammate’s role when you invite them on the Team page, and you can change it any time. See the “Team” help topic for the invite / change-role / revoke steps.',
     whereToFind: 'Team, in the left navigation.',
-    caveats: 'Governance actions (owners, SMEs, criticality, verification, and this Help Assistant itself) are Client Admin-only.',
-    related: ['operational_continuity', 'setup_checklist'],
-    navigation: [{ label: 'Open Team', route: '/team', topic: 'permissions' }],
+    caveats: 'Governance actions (owners, SMEs, criticality, verification, and this Help panel itself) are Client Admin-only. A Client User cannot open Getting Started, Manage, Processes, or Team.',
+    related: ['team_management', 'operational_continuity', 'setup_checklist'],
+    route: '/team',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_TEAM, topic: 'permissions' }],
+  }),
+
+  topic({
+    id: 'team_management',
+    title: 'Team — inviting and managing members',
+    keywords: [
+      'invite', 'invite a teammate', 'invite someone', 'invite a member', 'invite a colleague',
+      'add a team member', 'add a user', 'send an invitation',
+      'change a role', 'change someones role', 'promote to admin', 'make someone an admin',
+      'revoke access', 'remove a teammate', 'deactivate a member', 'take away access',
+      'reactivate', 'restore access', 'reinstate a member', 'manage the team', 'team members',
+    ],
+    phrases: [
+      'invite a teammate', 'invite someone', 'add a team member', 'send an invitation',
+      'change a role', 'revoke access', 'reactivate a member', 'restore access',
+    ],
+    summary: 'Invite, re-role, and revoke or restore teammates on the Team page. Invite by email and pick their role (Client User or Client Admin); change a role or revoke / reactivate access any time from the member list.',
+    whatItIs: 'The Team page has an invite box (email + role) and a list of current members with per-member actions.',
+    whyItMatters: 'It’s how colleagues get access to ask questions, and how you decide who can also manage settings and knowledge.',
+    howToUse: 'Open Team. To invite: enter the email, choose Client User or Client Admin, and send — they join automatically when they first sign in. To change a role, or to revoke or reactivate access, use the controls on that person’s row in the member list.',
+    whereToFind: 'Team, in the left navigation.',
+    caveats: 'A pending invitation activates on its own when the person accepts and signs in. Revoking access doesn’t delete the person’s account — you can reactivate them later.',
+    related: ['permissions', 'setup_checklist'],
+    route: '/team',
+    roles: ADMIN_ROLES,
+    navigation: [{ ...NAV_TEAM, topic: 'team_management' }],
   }),
 
   topic({
@@ -418,6 +530,44 @@ whereToFind: 'A source’s own detail page, or the knowledge-management tools on
     whereToFind: 'The Help button, admin-only.',
     caveats: 'The guided tour is a one-time orientation; this Admin Help Assistant is for ongoing questions after that.',
     related: ['product_overview', 'setup_checklist'],
+  }),
+
+  topic({
+    id: 'question_history',
+    title: 'AI Assistant question history',
+    keywords: [
+      'question history', 'previous questions', 'past questions', 'previous ai questions',
+      'chat history', 'conversation history', 'previous conversations', 'earlier questions',
+      'old questions', 'see what i asked', 'question log', 'my questions',
+    ],
+    phrases: [
+      'previous questions', 'past questions', 'previous ai questions', 'chat history',
+      'conversation history', 'see previous questions',
+    ],
+    summary: 'MindVault does not keep a searchable history of AI Assistant questions. Your current conversation stays on screen, but it is cleared when you reload the page.',
+    whatItIs: 'There is no “past questions” page for ordinary AI Assistant chats — each visit starts a fresh conversation.',
+    whyItMatters: 'If you need to keep an answer, copy it before you leave or reload the page.',
+    howToUse: 'Ask again in the AI Assistant if you need the answer once more — it re-answers from your current knowledge.',
+    whereToFind: 'Normal chat history is not saved anywhere. If your organization has turned on the clarification workflow, questions you deliberately escalated to a subject-matter expert (not ordinary chats) appear under “My questions”, reached from a link on the AI Assistant page.',
+    caveats: '“My questions” only holds questions you escalated to an expert — it is not a log of everything you have asked. A saved, searchable chat history is a possible future addition, not something MindVault does today.',
+    related: ['ai_assistant', 'knowledge_gaps'],
+  }),
+
+  topic({
+    id: 'mindvault_help',
+    title: 'MindVault Help',
+    keywords: [
+      'mindvault help', 'help panel', 'this assistant', 'what is this help', 'admin help',
+      'help assistant', 'what does help do', 'how does help work',
+    ],
+    phrases: ['what is mindvault help', 'what does this assistant do', 'how does help work'],
+    summary: 'MindVault Help — this panel — explains how to set up and use MindVault itself. It is separate from the AI Assistant, which answers from your company’s own knowledge.',
+    whatItIs: 'A deterministic, built-in product guide for the people who configure MindVault. It reads your live setup progress and the page you are on, never your company’s knowledge.',
+    whyItMatters: 'Ask it “how do I …” questions about MindVault; ask the AI Assistant your day-to-day operational questions.',
+    howToUse: 'Type a question about a MindVault screen or task. Where it helps, the answer includes a button that takes you straight to the right page.',
+    whereToFind: 'The Help button in the sidebar (or the top bar on mobile).',
+    caveats: 'It does not answer from your company knowledge and it makes no changes on your behalf — it only explains and links.',
+    related: ['product_overview', 'guided_tour', 'ai_assistant'],
   }),
 ];
 
