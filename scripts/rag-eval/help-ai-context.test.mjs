@@ -282,7 +282,8 @@ for (const c of AREA_CASES) {
     assert.match(r.answer, c.expectPhrase, `answer did not reference the ${c.name} action`);
     assert.match(r.answer, /doesn.t mean you need to pick anything/i);
     assert.doesNotMatch(r.answer, /what did the message say|what does the message say/i);
-    assert.ok(r.navigation.some((n) => n.route === c.expectRoute), `navigation should point to ${c.expectRoute}`);
+    assert.ok(r.navigation.some((n) => n.route.split('#')[0] === c.expectRoute),
+      `navigation should point to ${c.expectRoute}`);
   });
 
   test(`${c.name}: a successful action is recorded and clears any stale error`, () => {

@@ -676,7 +676,8 @@ test('support navigation never leaves the allowlist and never carries anything b
   for (const q of questions) {
     const r = answerAdminHelpQuestion(q, CLIENT_ADMIN_CTX);
     for (const n of r.navigation) {
-      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route), `"${q}" produced non-allowlisted route ${n.route}`);
+      assert.ok(NAV_ROUTE_ALLOWLIST.includes(n.route.split('#')[0]),
+        `"${q}" produced non-allowlisted route ${n.route}`);
       assert.deepEqual(Object.keys(n).sort(), ['label', 'route', 'topic']);
     }
   }

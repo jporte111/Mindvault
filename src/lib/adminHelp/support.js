@@ -334,10 +334,15 @@ const PAGE_LOCATIONS = [
   },
   {
     id: 'loc_company_details',
-    patterns: [/company details/],
+    patterns: [
+      /company details/,
+      /company info(?:rmation)?/,
+      /company name|business name|company logo|brand colou?r/,
+      /company settings/,
+    ],
     answer:
-      'Company details are set on the Getting Started page, in the "Company details" card — you can reach Getting Started from Home.',
-    navigation: [{ label: 'Open Getting Started', route: '/setup' }],
+      'Your company name, logo, and brand color live on the Getting Started page, in the "Company details" card — reach Getting Started from Home. You can change them any time and click "Save company details".',
+    navigation: [{ label: 'Open Company Details', route: '/setup#company-details' }],
   },
   {
     id: 'loc_admin',
@@ -459,7 +464,7 @@ const TRIGGERS = [
     label: 'save your company details',
     where: 'on the Getting Started page, in the "Company details" card',
     whatItDoes: "Saving company details only updates your company's name, logo, and branding — it never changes which workspace you're in, and nothing you type there can cause this.",
-    navigation: [{ label: 'Open Getting Started', route: '/setup' }],
+    navigation: [{ label: 'Open Company Details', route: '/setup#company-details' }],
   },
   {
     id: 'trigger_invite',
@@ -479,7 +484,7 @@ const TRIGGERS = [
     label: 'add a knowledge source',
     where: 'on the Add knowledge page',
     whatItDoes: "Adding knowledge only stores the document for your assistant — it doesn't touch your workspace settings, so nothing you enter there can cause this.",
-    navigation: [{ label: 'Open Manage', route: '/manage' }],
+    navigation: [{ label: 'Add Knowledge', route: '/manage#manage-knowledge' }],
   },
   {
     id: 'trigger_process',
