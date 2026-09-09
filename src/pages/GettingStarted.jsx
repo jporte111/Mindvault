@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
@@ -22,6 +23,9 @@ export default function GettingStarted() {
   // Checklist actions link to /setup#company-details — scroll to it.
   useHashScroll();
   const isSuperAdmin = user?.role === 'admin';
+  const [editingDetails, setEditingDetails] = useState(false);
+  const companyDetailsDone =
+    items.find((i) => i.id === 'company_details')?.state === 'Complete';
 
   if (roleLoading || loading) {
     return (
@@ -49,13 +53,41 @@ export default function GettingStarted() {
 
         {!setupComplete && <NextActionCard item={nextItem} />}
 
-        {/* Step 1 — company details (the Client Admin's own workspace) */}
-        {isClientAdmin && tenant && (
+        {/* Step 1 — company details (the Client Admin's own workspace).
+            Once saved it collapses to a completed summary so the page
+            visibly moves on to the next step. */}
+        {isClientAdmin && tenant && (!companyDetailsDone || editingDetails) && (
           <div id="company-details" className="scroll-mt-6">
             <CompanyDetailsForm
               tenant={tenant}
-              onSaved={() => markStepDone('company_details')}
+              onSaved={() => {
+                setEditingDetails(false);
+                return markStepDone('company_details');
+              }}
             />
+          </div>
+        )}
+        {isClientAdmin && tenant && companyDetailsDone && !editingDetails && (
+          <div id="company-details" className="scroll-mt-6">
+            <Card className="border-emerald-500/30 bg-emerald-500/5">
+              <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">Company details saved</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Your company name and branding are set. You can change them anytime.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 text-xs"
+                  onClick={() => setEditingDetails(true)}
+                >
+                  Edit
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         )}
 
