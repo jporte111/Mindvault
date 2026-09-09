@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
+import { getTenantBrand } from '@/lib/tenantBrand';
 import {
   deriveClientSetupItems,
   clientSetupCompleteCount,
@@ -11,8 +12,13 @@ import {
   CLIENT_SETUP_MANUAL_FLAGS,
 } from '@/lib/clientSetup';
 
-async function fetchMyTenant() {
-  const rows = await base44.entities.Tenant.list('name');
+// Resolve the caller's OWN workspace from their authoritative membership
+// tenant id — never 'the first tenant in the list'. A platform Super Admin
+// can see every workspace, so list()[0] can silently bind the setup UI to a
+// different company's record.
+async function fetchMyTenant(tenantId) {
+  if (!tenantId) return null;
+  const rows = await base44.entities.Tenant.filter({ id: tenantId });
   return rows?.[0] ?? null;
 }
 
@@ -26,9 +32,26 @@ export function useTenantName() {
     queryKey: ['client-setup-tenant'],
     enabled: !!membership,
     staleTime: 60 * 1000,
-    queryFn: fetchMyTenant,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
   });
   return membership ? tenant?.name ?? '' : '';
+}
+
+/**
+ * The signed-in member's own workspace brand — { name, logoUrl,
+ * brandColor }, resolved through the same membership-scoped tenant
+ * lookup (never a client-supplied value, never another workspace).
+ * Null for platform admins and anyone without a tenant membership.
+ */
+export function useTenantBrand() {
+  const { membership } = useTenantRole();
+  const { data: tenant } = useQuery({
+    queryKey: ['client-setup-tenant'],
+    enabled: !!membership,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
+  });
+  return membership ? getTenantBrand(tenant) : null;
 }
 
 /**
@@ -48,7 +71,7 @@ export function useClientSetup() {
     queryKey: ['client-setup-tenant'],
     enabled: dataEnabled && !!membership,
     staleTime: 60 * 1000,
-    queryFn: fetchMyTenant,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
   });
   const membersQuery = useQuery({
     queryKey: ['client-setup-members'],

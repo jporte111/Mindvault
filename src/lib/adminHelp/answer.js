@@ -222,17 +222,21 @@ export function answerAdminHelpQuestion(question, context = {}) {
   // next-step and page-relative questions. Deterministic composition from
   // the derived checklist; falls through to the corpus otherwise.
   const lower = trimmed.toLowerCase();
+  // The page-guidance switch and the corpus route bias key off the page
+  // itself — strip any #section hash first so a deep link
+  // (/setup#company-details) still gets the page's guidance.
+  const routeBase = String(context.route || '').split('#')[0].split('?')[0];
   if (context.setup && !context.setup.loading) {
     if (SETUP_NEXT_STEP_PATTERNS.some((re) => re.test(lower))) {
       return setupNextStepAnswer(context.setup);
     }
     if (isPageRelativeIntent(trimmed)) {
-      const guidance = pageGuidanceAnswer(context.setup, context.route);
+      const guidance = pageGuidanceAnswer(context.setup, routeBase);
       if (guidance) return guidance;
     }
   }
 
-  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: context.route });
+  const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: routeBase });
   if (matched.length === 0) {
     // Before the honest last resort: if this is a recognized "explain this
     // page" question AND the current route is one the corpus knows, answer
@@ -240,8 +244,7 @@ export function answerAdminHelpQuestion(question, context = {}) {
     // never the generic message, never a list of unrelated example topics.
     // Gibberish never matches a page-relative intent, so it still falls
     // through to INSUFFICIENT_HELP_MESSAGE.
-    const baseRoute = String(context.route || '').split('#')[0];
-    const routeTopicIds = topicsForRoute(baseRoute);
+    const routeTopicIds = topicsForRoute(routeBase);
     if (isPageRelativeIntent(trimmed) && routeTopicIds.length > 0) {
       const primaryTopic = topics.find((t) => t.id === routeTopicIds[0]);
       if (primaryTopic) {

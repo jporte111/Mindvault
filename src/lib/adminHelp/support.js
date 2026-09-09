@@ -27,6 +27,7 @@
 //     Home, Knowledge, AI Assistant, Processes, Team, Manage, Getting Started
 
 import { extractEvidence, classifyError } from './messageEvidence.js';
+import { isPageRelativeIntent } from './routeContext.js';
 
 export const SUPPORT_SOURCE = [{ id: 'mindvault_support', title: 'MindVault product support' }];
 
@@ -614,6 +615,59 @@ const HELP_CUE =
   /\b(help|stuck|problem|issue|something.?s wrong|what.?s wrong|not work(ing)?|doesn.?t work|won.?t (save|let|work)|can.?t (save|get|do)|failing|broke(n)?|what do i do)\b/;
 
 // ---------------------------------------------------------------------------
+// Recap questions — "What just happened?", "Why did that fail?", "What went
+// wrong?" The app already captured what the user was doing and the message
+// they hit; these questions are answered from that capture, not from the
+// corpus. The captured message is the sanitized one from supportContext.js
+// (no stack trace, no payload, no security-sensitive keys).
+// ---------------------------------------------------------------------------
+
+const RECAP_CUE =
+  /\bwhat (?:just )?happened\b|\bwhat went wrong\b|\bwhy did (?:that|it) fail\b|\bwhat does (?:that|this) mean\b|\bwhat was that\b/;
+
+function recapAnswer(sc) {
+  const re = sc && sc.recentError;
+  if (re) {
+    // A recognized system error gets the full structured troubleshooting
+    // answer (meaning, verdict, next steps) — same as if the user had
+    // quoted it themselves.
+    const key = classifyError(re.message);
+    if (key) return composeErrorAnswer(key, null, sc, '');
+
+    const where = re.action
+      ? ` when you ${re.action}${re.page ? ` on the ${re.page} page` : ''}`
+      : re.page
+        ? ` on the ${re.page} page`
+        : '';
+    const isSystem = /^a system error occurred/i.test(re.message || '') || String(re.code || '').startsWith('5');
+    const meaning = isSystem
+      ? 'That is a system error, not something you entered — nothing on your side caused it. Reload the page and try the action once more; if it repeats, contact MindVault support with the page you were on.'
+      : String(re.code) === '403'
+        ? 'That looks like a permission check — the action is reserved for a role your account does not currently have. If you expected to be allowed, ask a Client Admin to check your role on the Team page.'
+        : 'That is a validation check, not a system failure — the values entered were not accepted. Check what the message points at and try again.';
+    return {
+      answer:
+        `MindVault reported "${re.message || 'a system message'}"${where}.\n\n${meaning}\n\n` +
+        'If you tell me what you were entering, I can help you get past it.',
+      sources: SUPPORT_SOURCE,
+      navigation: [],
+    };
+  }
+  const act = sc && sc.recentAction;
+  if (act) {
+    return {
+      answer:
+        `Your most recent action was ${act.action} on the ${act.page} page` +
+        `${act.section ? ` (${act.section} section)` : ''} — it completed without an error being recorded.\n\n` +
+        'If something looked wrong anyway, tell me what you saw and I will help.',
+      sources: SUPPORT_SOURCE,
+      navigation: [],
+    };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Entry point. Order: (0) conversation awareness, (1) errors — from the
 // user's own words, a paraphrase + cue, OR a just-captured application
 // error, (2) internal terminology, (3) page locations. Returns null when
@@ -640,7 +694,14 @@ export function answerSupportQuestion(question, context = {}) {
   const convo = answerConversational(lower, context.history, evidence, sc);
   if (convo) return convo;
 
-  // (1) An error the user is asking about — identified from their own words
+  // (1) A recap question about the most recent captured error or action —
+  // answered from the runtime capture, never from the corpus.
+  if (RECAP_CUE.test(lower)) {
+    const recap = recapAnswer(sc);
+    if (recap) return recap;
+  }
+
+  // (1b) An error the user is asking about — identified from their own words
   // (evidence.errorKey), a paraphrase backed by an error cue, or the most
   // recent error the app captured for this session.
   const capturedKey = sc && sc.recentError ? classifyError(sc.recentError.message) : null;
@@ -650,7 +711,11 @@ export function answerSupportQuestion(question, context = {}) {
     // terminology/location question ("where do I choose my tenant?") isn't
     // treated as an error report.
     const viaWords = !!(evidence.errorKey || matchSystemErrorKey(lower));
-    if (viaWords || evidence.isErrorReport || HELP_CUE.test(lower)) {
+    // A page-relative question ("What do I do here?") is never hijacked by a
+    // recently-captured error the user isn't asking about — it falls through
+    // to the page's own guidance.
+    const pageIntentNotAboutError = !viaWords && capturedKey && isPageRelativeIntent(question);
+    if ((viaWords || evidence.isErrorReport || HELP_CUE.test(lower)) && !pageIntentNotAboutError) {
       return composeErrorAnswer(errorKey, evidence, sc, lower);
     }
   }

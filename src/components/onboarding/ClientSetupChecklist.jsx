@@ -48,8 +48,14 @@ export default function ClientSetupChecklist({ items, onMarkDone }) {
         </div>
       </CardHeader>
       <CardContent className="pt-0">
+        {/* Completed steps disappear — the list always shows what's left. */}
+        {items.every((item) => item.state === 'Complete') ? (
+          <p className="py-5 text-sm text-muted-foreground">
+            All steps are complete — nice work.
+          </p>
+        ) : (
         <div className="divide-y divide-border">
-          {items.map((item) => {
+          {items.filter((item) => item.state !== 'Complete').map((item) => {
             const Icon = STATE_ICON[item.state] || Circle;
             const complete = item.state === 'Complete';
             return (
@@ -121,6 +127,7 @@ export default function ClientSetupChecklist({ items, onMarkDone }) {
             );
           })}
         </div>
+        )}
       </CardContent>
     </Card>
   );
