@@ -11,8 +11,13 @@ import {
   CLIENT_SETUP_MANUAL_FLAGS,
 } from '@/lib/clientSetup';
 
-async function fetchMyTenant() {
-  const rows = await base44.entities.Tenant.list('name');
+// Resolve the caller's OWN workspace from their authoritative membership
+// tenant id — never 'the first tenant in the list'. A platform Super Admin
+// can see every workspace, so list()[0] can silently bind the setup UI to a
+// different company's record.
+async function fetchMyTenant(tenantId) {
+  if (!tenantId) return null;
+  const rows = await base44.entities.Tenant.filter({ id: tenantId });
   return rows?.[0] ?? null;
 }
 
@@ -26,7 +31,7 @@ export function useTenantName() {
     queryKey: ['client-setup-tenant'],
     enabled: !!membership,
     staleTime: 60 * 1000,
-    queryFn: fetchMyTenant,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
   });
   return membership ? tenant?.name ?? '' : '';
 }
@@ -48,7 +53,7 @@ export function useClientSetup() {
     queryKey: ['client-setup-tenant'],
     enabled: dataEnabled && !!membership,
     staleTime: 60 * 1000,
-    queryFn: fetchMyTenant,
+    queryFn: () => fetchMyTenant(membership?.tenant_id),
   });
   const membersQuery = useQuery({
     queryKey: ['client-setup-members'],
