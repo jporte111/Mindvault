@@ -9,8 +9,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useTenantRole } from '@/hooks/useTenantRole';
-import { useClientSetup } from '@/hooks/useClientSetup';
+import { useClientSetup, useTenantName } from '@/hooks/useClientSetup';
 import { answerAdminHelpQuestion, getStarterPrompts } from '@/lib/adminHelp';
+import { buildSupportContext } from '@/lib/supportContext';
 
 // The Help AI opens as a side panel without leaving the current page — the
 // sidebar's Help item and every "Ask MindVault" button dispatch this event.
@@ -30,6 +31,7 @@ export default function AdminHelpAssistant() {
   const isAdmin = useIsAdmin();
   const { isClientAdmin } = useTenantRole();
   const setup = useClientSetup();
+  const tenantName = useTenantName();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -77,19 +79,41 @@ export default function AdminHelpAssistant() {
     };
   };
 
+  // The caller's app-level role — the one categorical fact the assistant
+  // needs, never a tenant id or membership row.
+  const userRole = isAdmin ? 'super_admin' : isClientAdmin ? 'client_admin' : 'client_user';
+
   const ask = (question) => {
     const q = String(question || '').trim();
     if (!q) return;
-    // Context is only the current route plus derived, read-only setup state —
-    // nothing from the DOM, no employee data, no entity payload.
-    // Context is the current route, derived read-only setup state, and the
-    // recent conversation turns — so a follow-up reply is answered against
-    // the thread it belongs to. Nothing from the DOM, no employee data,
-    // no entity payload.
+    // Context passed to the planner: the current route + hash, derived
+    // read-only setup state, the recent conversation turns, and a
+    // structured runtime support context (current page/section, role,
+    // workspace name, onboarding progress, and the most recent captured
+    // application error/action). Nothing from the DOM, no employee data,
+    // no entity payload, no security-sensitive fields.
+    const routeWithHash = `${location.pathname}${location.hash || ''}`;
+    const setupCtx = buildSetupContext();
     const result = answerAdminHelpQuestion(q, {
-      route: location.pathname,
-      setup: buildSetupContext(),
+      route: routeWithHash,
+      setup: setupCtx,
       history: messages.slice(-10).map(({ role, text }) => ({ role, text })),
+      supportContext: buildSupportContext({
+        route: routeWithHash,
+        userRole,
+        tenantName: tenantName || null,
+        setup: setupCtx
+          ? {
+              progressPct: setupCtx.progressPct,
+              setupComplete: setupCtx.setupComplete,
+              nextItem: setupCtx.nextItem
+                ? { id: undefined, label: setupCtx.nextItem.label }
+                : null,
+              counts: setupCtx.counts,
+              items: setupCtx.items,
+            }
+          : null,
+      }),
     });
     setMessages((prev) => {
       const next = [

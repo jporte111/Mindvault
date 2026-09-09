@@ -512,7 +512,7 @@ test('the drawer is visibly distinct from the employee AI Assistant', () => {
   const s = read('src/components/onboarding/AdminHelpAssistant.jsx');
   assert.match(s, /MindVault Help/);
   assert.match(s, /Ask how to set up and use MindVault/);
-  assert.match(s, /does not answer questions from your company knowledge/i);
+  assert.match(s, /does not answer questions\s+from your company knowledge/i);
   // never claims to be, or visually labels itself as, the employee assistant
   assert.equal(/>\s*AI Assistant\s*</.test(s), false);
 });
@@ -565,21 +565,25 @@ test('"What is a tenant?" gets a plain-English term explanation, not onboarding'
 
 test('"Where do I choose my tenant?" is told there is nothing to choose — not treated as an error report', () => {
   const r = answerAdminHelpQuestion('Where do I choose my tenant?', CLIENT_ADMIN_CTX);
-  assert.match(r.answer, /never create, choose, or configure/i);
-  assert.doesNotMatch(r.answer, /What page or button produced/i);
+  assert.match(r.answer, /no tenant \(workspace\) selector|never create, choose, or configure|never pick it/i);
+  assert.match(r.answer, /automatically/i);
+  assert.doesNotMatch(r.answer, /page or button produced|Setup Checklist/i);
 });
 
 test('"It says a tenant must be specified" is treated as troubleshooting context', () => {
   const r = answerAdminHelpQuestion('It says a tenant must be specified', CLIENT_ADMIN_CTX);
   assert.match(r.answer, /doesn.t mean you need to pick anything/i);
-  assert.match(r.answer, /What page or button produced/i);
+  assert.match(r.answer, /application issue|MindVault.s side/i);
+  // one missing piece only — the page — never the wording the user gave
+  assert.match(r.answer, /page or button produced/i);
+  assert.doesNotMatch(r.answer, /what did the message say|what does the message say/i);
   assert.doesNotMatch(r.answer, /Setup Checklist|knowledge sources|Operational Processes/i);
 });
 
 test('the original failing prompt is answered as troubleshooting, not onboarding', () => {
   const r = answerAdminHelpQuestion("where is the 'tenant'? it said i need to specify a tenant first", CLIENT_ADMIN_CTX);
   assert.match(r.answer, /doesn.t mean you need to pick anything/i);
-  assert.match(r.answer, /What page or button produced/i);
+  assert.match(r.answer, /application issue|MindVault.s side/i);
   assert.doesNotMatch(r.answer, /Setup Checklist/i);
 });
 
@@ -628,10 +632,18 @@ test('other quoted system errors are treated as troubleshooting, never as setup 
   }
 });
 
-test('an unknown error gets an honest "I can\'t tell" plus ONE targeted follow-up — no invented workflow', () => {
-  const r = answerAdminHelpQuestion('I keep getting an error message when I save', CLIENT_ADMIN_CTX);
+test('an unknown error with no usable detail gets an honest "I can\'t tell" plus ONE targeted follow-up — no invented workflow', () => {
+  const r = answerAdminHelpQuestion('something went wrong and I got an error', CLIENT_ADMIN_CTX);
   assert.match(r.answer, /can.t tell|rather not guess/i);
-  assert.match(r.answer, /What were you clicking/i);
+  assert.match(r.answer, /what were you clicking/i);
+  assert.doesNotMatch(r.answer, /Setup Checklist|invite your team|Getting Started page/i);
+});
+
+test('an error report that DOES name the action asks only for the wording — never a blind "I can\'t tell"', () => {
+  const r = answerAdminHelpQuestion('I keep getting an error message when I save company details', CLIENT_ADMIN_CTX);
+  assert.match(r.answer, /save your company details/i);
+  assert.match(r.answer, /what does the message say/i);
+  assert.doesNotMatch(r.answer, /can.t tell from your description/i);
 });
 
 test('internal terms are explained in plain English and never something the user is told to configure', () => {
@@ -707,10 +719,17 @@ test('answerSupportQuestion returns null for questions outside its scope — cor
   assert.equal(answerSupportQuestion('asdkjfh qwoeiruty zzz gibberish'), null);
 });
 
-test('support.js is pure — no imports, no React, no Base44, no network, no LLM', () => {
+test('support.js is deterministic — only reuses the sibling messageEvidence.js, no React/Base44/network/LLM', () => {
   const s = stripComments(read('src/lib/adminHelp/support.js'));
-  assert.equal(/^\s*import\s/m.test(s), false);
+  const imports = [...s.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
+  assert.deepEqual(imports, ['./messageEvidence.js']);
   assert.equal(/base44|InvokeLLM|fetch\(|localStorage/.test(s), false);
+});
+
+test('messageEvidence.js is pure — no imports, no React/Base44/network/LLM/DOM', () => {
+  const s = stripComments(read('src/lib/adminHelp/messageEvidence.js'));
+  assert.equal(/^\s*import\s/m.test(s), false);
+  assert.equal(/base44|InvokeLLM|fetch\(|localStorage|window\.|document\./.test(s), false);
 });
 
 // ====================================================================
@@ -771,7 +790,8 @@ test('an unrelated new question is never hijacked by an open thread', () => {
 test('a first-turn message that names the action asks for the message text, not a blind "I can\'t tell"', () => {
   const r = answerAdminHelpQuestion('I get a message whenever I click save company details', CLIENT_ADMIN_CTX);
   assert.match(r.answer, /save your company details/i);
-  assert.match(r.answer, /what did the message say/i);
+  assert.match(r.answer, /what does the message say/i);
+  assert.doesNotMatch(r.answer, /can.t tell from your description/i);
 });
 
 test('other actions are recognized as triggers too', () => {

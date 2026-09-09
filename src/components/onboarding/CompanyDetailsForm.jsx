@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Building2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { recordAppError, recordAppAction, clearRecentAppError } from '@/lib/supportContext';
 
 // Step 1 of guided setup — the company details your team sees. Writes go
 // through the guarded updateTenantProfile backend function, which verifies
@@ -42,11 +43,24 @@ export default function CompanyDetailsForm({ tenant, onSaved }) {
           brand_color: brandColor,
         },
       });
+      clearRecentAppError();
+      recordAppAction({ action: 'save company details', page: 'Getting Started', section: 'Company details' });
       await queryClient.invalidateQueries({ queryKey: ['client-setup-tenant'] });
       toast.success('Your details are saved.');
       await onSaved?.();
     } catch (e) {
-      toast.error(e?.response?.data?.error || e?.message || 'Could not save your details');
+      const message = e?.response?.data?.error || e?.message || 'Could not save your details';
+      // Make the failure available to MindVault Help so it can troubleshoot
+      // the actual error the user just hit. No stack trace / payload — only
+      // the short message and where it happened.
+      recordAppError({
+        action: 'save company details',
+        page: 'Getting Started',
+        section: 'Company details',
+        error: message,
+        code: e?.response?.status || e?.status,
+      });
+      toast.error(message);
     } finally {
       setSaving(false);
     }

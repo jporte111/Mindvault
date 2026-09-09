@@ -11,45 +11,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// --- Load the real shared tenant module (TS annotations stripped for Node 20) ---
-// Explicit, exact-string transforms for THIS file; a transform miss fails loudly.
-const raw = readFileSync(new URL('../../base44/shared/tenant.ts', import.meta.url), 'utf8');
-const strips = [
-  [/export interface TenantContext \{[\s\S]*?\n\}/, ''],
-  [/  status: number;\n  constructor\(status: number, message: string\) \{/, '  constructor(status, message) {'],
-  [/resolveTenantContext\(base44: any\): Promise<TenantContext> \{/, 'resolveTenantContext(base44) {'],
-  [/normalizeEmail\(email: string \| null \| undefined\): string \| null \{/, 'normalizeEmail(email) {'],
-  [/let membership: any = null;/, 'let membership = null;'],
-  [/\(m: any\) =>/, '(m) =>'],
-  [
-    /\(\n  base44: any,\n  requestedTenantId\?: string \| null,\n\): Promise<\{ isSuperAdmin: boolean; tenantId: string; appRole: string \| null \}> \{/,
-    '(\n  base44,\n  requestedTenantId,\n) {',
-  ],
-  [
-    /\(\n  base44: any,\n\): Promise<\{ isSuperAdmin: boolean; tenantId: string; appRole: string \| null \}> \{/,
-    '(\n  base44,\n) {',
-  ],
-  [/export function tenantFilter\(tenantId: string\): \{ tenant_id: string \} \{/, 'export function tenantFilter(tenantId) {'],
-  [
-    /export function withTenant<T extends Record<string, any>>\(tenantId: string, payload: T\): T \{/,
-    'export function withTenant(tenantId, payload) {',
-  ],
-];
-let js = raw;
-for (const [re, rep] of strips) {
-  if (!re.test(js)) throw new Error('tenant.ts transform miss: ' + re);
-  js = js.replace(re, rep);
-}
-assert.ok(!/:\s*any|Promise<|: string|: number/.test(js), 'tenant.ts still has TS annotations after transform');
-
-// Node 20's test runner cannot dynamic-import (known sandbox limitation), so
-// the self-contained module is evaluated directly instead of imported.
-// tenant.ts has no imports of its own, which makes this safe.
-const moduleBody = js.replace(/^export /gm, '') + [
-  '',
-  'return { requireTenantAdminScope, requireTenantMemberScope, resolveTenantContext, TenantAuthError, tenantFilter, withTenant };',
-].join('\n');
-const { requireTenantAdminScope, TenantAuthError } = new Function(moduleBody)();
+// The REAL shared authorization module. Node strips the TS types on import —
+// no bespoke transform to drift out of sync with tenant.ts.
+import {
+  requireTenantAdminScope,
+  requireExplicitTenantAdminScope,
+  TenantAuthError,
+} from '../../base44/shared/tenant.ts';
 
 // --- Fake Base44 client: membership rows live only in memory ---
 const fakeBase44 = (user, memberships) => ({
@@ -152,8 +120,32 @@ test('delete handler exists and refuses a record/scope tenant mismatch BEFORE de
 });
 
 test('delete handler authorizes via the authoritative membership scope, never the payload', () => {
-  assert.ok(entry.includes('requireTenantAdminScope(base44, body?.tenant_id)'));
+  assert.ok(entry.includes('requireExplicitTenantAdminScope(base44, body?.tenant_id)'));
   assert.ok(!/tenant_id\s*[:=]\s*body/.test(entry), 'payload tenant_id must never be written to a record');
+});
+
+test('requireExplicitTenantAdminScope: a Super Admin who is ALSO the active Client Admin of one tenant self-scopes to their OWN tenant; a membership-less Super Admin still 400s', async () => {
+  // own client_admin membership -> unambiguous self-scope, no explicit id needed
+  const ok = await requireExplicitTenantAdminScope(
+    fakeBase44(adminUser, active(TENANT_A, 'u-admin', 'client_admin')),
+    undefined,
+  ).then((r) => ({ allowed: true, r }), (e) => ({ allowed: false, e }));
+  assert.ok(ok.allowed, 'super-admin-also-client-admin self-scope denied: ' + ok.e?.message);
+  assert.equal(ok.r.tenantId, TENANT_A);
+
+  // no membership + no explicit id -> hard 400, never a default scope
+  const bad = await requireExplicitTenantAdminScope(fakeBase44(adminUser, []), undefined)
+    .then((r) => ({ allowed: true, r }), (e) => ({ allowed: false, e }));
+  assert.equal(bad.allowed, false);
+  assert.equal(bad.e.status, 400);
+
+  // a client_USER membership does NOT unlock a defaulted admin scope
+  const cu = await requireExplicitTenantAdminScope(
+    fakeBase44(adminUser, active(TENANT_A, 'u-admin', 'client_user')),
+    undefined,
+  ).then((r) => ({ allowed: true, r }), (e) => ({ allowed: false, e }));
+  assert.equal(cu.allowed, false);
+  assert.equal(cu.e.status, 400);
 });
 
 test('create stamps the tenant from the VERIFIED scope (withTenant), not the payload', () => {

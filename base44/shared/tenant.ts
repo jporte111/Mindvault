@@ -124,11 +124,26 @@ export async function requireExplicitTenantAdminScope(
 ): Promise<{ isSuperAdmin: boolean; tenantId: string; appRole: string | null }> {
   const ctx = await resolveTenantContext(base44);
   if (ctx.isSuperAdmin) {
-    const tenantId = requestedTenantId && String(requestedTenantId).trim();
-    if (!tenantId) {
-      throw new TenantAuthError(400, "A tenant must be specified");
+    const explicit = requestedTenantId ? String(requestedTenantId).trim() : "";
+    if (explicit) {
+      return { isSuperAdmin: true, tenantId: explicit, appRole: ctx.appRole };
     }
-    return { isSuperAdmin: true, tenantId, appRole: ctx.appRole };
+    // No explicit target given. A Super Admin who is ALSO the active Client
+    // Admin of exactly one tenant (their own firm) is unambiguously acting
+    // on their own workspace when they use a self-service screen — resolve
+    // to it, exactly as a Client Admin would. This is NOT the removed silent
+    // "default to Tenant #1" fallback: it fires ONLY when the caller
+    // actually holds an active client_admin membership. A Super Admin with
+    // no such membership still gets the hard 400 below, so a membership-less
+    // platform account can never produce an unintended write.
+    if (
+      ctx.tenantId &&
+      ctx.hasTenantAccess &&
+      ctx.appRole === APP_ROLE_CLIENT_ADMIN
+    ) {
+      return { isSuperAdmin: true, tenantId: ctx.tenantId, appRole: ctx.appRole };
+    }
+    throw new TenantAuthError(400, "A tenant must be specified");
   }
   return requireTenantAdminScope(base44, requestedTenantId);
 }

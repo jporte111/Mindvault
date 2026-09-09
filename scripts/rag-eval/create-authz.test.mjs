@@ -1,7 +1,7 @@
 // Create-authorization matrix for createKnowledgeSource (multi-tenant).
 //
 // NO LIVE DATA IS TOUCHED. The dynamic tests exercise the REAL
-// ../../base44/shared/tenant.ts authorization (requireTenantAdminScope) and
+// ../../base44/shared/tenant.ts authorization (requireExplicitTenantAdminScope) and
 // the REAL ../../base44/functions/createKnowledgeSource/entry.ts handler
 // against an in-memory fake Base44 client. Verified matrix:
 //   1. Client Admin in Tenant A creates a source        -> allowed, stamped A
@@ -11,52 +11,24 @@
 //      scope (withTenant), never from the request payload — even when the
 //      payload smuggles a tenant_id inside fields.
 //   5. Super Admin creates across tenants ONLY via the intended explicit
-//      tenant_id path; with no explicit tenant it is a hard 400, never a
-//      silent default.
+//      tenant_id path; with no explicit tenant AND no own client_admin
+//      membership it is a hard 400, never a silent default.
+//   5b. A Super Admin who ALSO holds an active client_admin membership may
+//      make a self-scoped write (no tenant_id) — it resolves to that OWN
+//      membership tenant, exactly as a Client Admin's would.
 //   node --test scripts/rag-eval/create-authz.test.mjs
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// --- Load the real shared tenant module (TS annotations stripped for Node 20) ---
-const raw = readFileSync(new URL('../../base44/shared/tenant.ts', import.meta.url), 'utf8');
-const strips = [
-  [/export interface TenantContext \{[\s\S]*?\n\}/, ''],
-  [/  status: number;\n  constructor\(status: number, message: string\) \{/, '  constructor(status, message) {'],
-  [/resolveTenantContext\(base44: any\): Promise<TenantContext> \{/, 'resolveTenantContext(base44) {'],
-  [/normalizeEmail\(email: string \| null \| undefined\): string \| null \{/, 'normalizeEmail(email) {'],
-  [/let membership: any = null;/, 'let membership = null;'],
-  [/\(m: any\) =>/, '(m) =>'],
-  [
-    /\(\n  base44: any,\n  requestedTenantId\?: string \| null,\n\): Promise<\{ isSuperAdmin: boolean; tenantId: string; appRole: string \| null \}> \{/,
-    '(\n  base44,\n  requestedTenantId,\n) {',
-  ],
-  [
-    /\(\n  base44: any,\n\): Promise<\{ isSuperAdmin: boolean; tenantId: string; appRole: string \| null \}> \{/,
-    '(\n  base44,\n) {',
-  ],
-  [/export function tenantFilter\(tenantId: string\): \{ tenant_id: string \} \{/, 'export function tenantFilter(tenantId) {'],
-  [
-    /export function withTenant<T extends Record<string, any>>\(tenantId: string, payload: T\): T \{/,
-    'export function withTenant(tenantId, payload) {',
-  ],
-];
-let js = raw;
-for (const [re, rep] of strips) {
-  if (!re.test(js)) throw new Error('tenant.ts transform miss: ' + re);
-  js = js.replace(re, rep);
-}
-assert.ok(!/:\s*any|Promise<|: string|: number/.test(js), 'tenant.ts still has TS annotations after transform');
-
-// Node 20's test runner cannot dynamic-import (known sandbox limitation), so
-// the self-contained module is evaluated directly instead of imported.
-// tenant.ts has no imports of its own, which makes this safe.
-const moduleBody = js.replace(/^export /gm, '') + [
-  '',
-  'return { requireTenantAdminScope, requireTenantMemberScope, resolveTenantContext, TenantAuthError, tenantFilter, withTenant };',
-].join('\n');
-const { requireTenantAdminScope, TenantAuthError, withTenant } = new Function(moduleBody)();
+// The REAL shared authorization module. Node strips the TS types on import —
+// no bespoke transform to drift out of sync with tenant.ts.
+import {
+  requireExplicitTenantAdminScope,
+  TenantAuthError,
+  withTenant,
+} from '../../base44/shared/tenant.ts';
 
 // --- Load the REAL createKnowledgeSource handler the same way ---
 // Strip ONLY the import statements — module-level constants (ALLOWED_FIELDS)
@@ -76,7 +48,7 @@ assert.ok(
 
 const handlerFactory = new Function(
   'createClientFromRequest',
-  'requireTenantAdminScope',
+  'requireExplicitTenantAdminScope',
   'TenantAuthError',
   'withTenant',
   entryJs + '\nreturn handler;'
@@ -123,7 +95,7 @@ const activeMembership = (tenant_id, user_id, app_role) => [
 // Invoke the real handler for one identity; returns { status, data, created }.
 const runCreate = ({ user, memberships, tenants }, body) => {
   const { client, created } = makeClient(user, memberships, tenants);
-  const handler = handlerFactory(() => client, requireTenantAdminScope, TenantAuthError, withTenant);
+  const handler = handlerFactory(() => client, requireExplicitTenantAdminScope, TenantAuthError, withTenant);
   return handler({ json: async () => body }).then(async (res) => ({
     status: res.status,
     data: await res.json(),
@@ -211,6 +183,39 @@ test('5. Super Admin creates across tenants ONLY through the intended explicit p
   assert.equal(r2.created.length, 0, 'no record may be written from a defaulted scope');
 });
 
+test('5b. A Super Admin who is ALSO the active Client Admin of one tenant: self-scoped create (no explicit tenant) resolves to their OWN membership tenant', async () => {
+  // The platform-owner account that also runs its own firm's workspace. Using
+  // a self-service screen (no tenant_id in the payload) is unambiguous — it
+  // resolves exactly as a Client Admin would, to their own tenant. This is
+  // NOT the removed "silent default to Tenant #1" fallback: it requires an
+  // active client_admin membership (see test 5, which still 400s without one).
+  const r = await runCreate(
+    { user: adminUser, memberships: activeMembership('tenant-a', 'u-admin', 'client_admin') },
+    { action: 'create', fields: VALID_FIELDS }
+  );
+  assert.equal(r.status, 200, 'super-admin-who-is-also-client-admin self-scoped create denied: ' + JSON.stringify(r.data));
+  assert.equal(r.created.length, 1);
+  assert.equal(r.created[0].tenant_id, 'tenant-a', 'stamped with their OWN membership tenant');
+
+  // but they still cannot self-scope past their membership: an explicit
+  // OTHER tenant is honored only because Super Admins may target explicitly.
+  const r2 = await runCreate(
+    { user: adminUser, memberships: activeMembership('tenant-a', 'u-admin', 'client_admin') },
+    { action: 'create', tenant_id: 'tenant-b', fields: VALID_FIELDS }
+  );
+  assert.equal(r2.status, 200, 'super admin explicit cross-tenant still allowed');
+  assert.equal(r2.created[0].tenant_id, 'tenant-b');
+});
+
+test('5c. A Super Admin whose only membership is client_USER (not admin): self-scoped create still 400s — no admin authority to borrow', async () => {
+  const r = await runCreate(
+    { user: adminUser, memberships: activeMembership('tenant-a', 'u-admin', 'client_user') },
+    { action: 'create', fields: VALID_FIELDS }
+  );
+  assert.equal(r.status, 400, 'a non-admin membership must not unlock a defaulted admin scope');
+  assert.equal(r.created.length, 0);
+});
+
 test('Suspended tenant: create refused 403 regardless of role', async () => {
   const r = await runCreate(
     { user: adminUser, memberships: [] },
@@ -247,7 +252,7 @@ const entry = readFileSync(
 );
 
 test('handler authorizes via the authoritative membership scope, never the payload', () => {
-  assert.ok(entry.includes('requireTenantAdminScope(base44, body?.tenant_id)'));
+  assert.ok(entry.includes('requireExplicitTenantAdminScope(base44, body?.tenant_id)'));
 });
 
 test('create stamps the tenant from the VERIFIED scope (withTenant), and tenant_id is not a writable field', () => {

@@ -30,6 +30,12 @@ export function tokenize(text) {
     .filter((w) => w.length > 1 && !STOPWORDS.has(w));
 }
 
+// Structural / navigational words that appear in titles ("Knowledge page",
+// "AI Assistant screen") but carry no topic-distinguishing meaning — a
+// question like "xyzzy this page" must NOT match a topic just because its
+// title contains "page".
+const GENERIC_TERMS = new Set(['page', 'pages', 'screen', 'section', 'tab', 'view', 'here', 'thing']);
+
 function topicTermCounts(topicEntry) {
   const counts = new Map();
   const phrases = [
@@ -39,6 +45,7 @@ function topicTermCounts(topicEntry) {
   ];
   for (const phrase of phrases) {
     for (const w of tokenize(phrase)) {
+      if (GENERIC_TERMS.has(w)) continue;
       counts.set(w, (counts.get(w) || 0) + 1);
     }
   }

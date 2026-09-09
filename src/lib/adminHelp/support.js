@@ -1,25 +1,32 @@
 // MindVault Help — the product-support layer: system errors, internal
-// terminology, and page locations. Pure and deterministic, with no imports,
-// no network, and no customer data. It runs BEFORE the setup copilot and the
-// corpus retrieval (see answer.js) so a question about an error message, an
-// internal term, or where a page lives always gets THAT answer — never a
-// generic onboarding response.
+// terminology, and page locations. Deterministic, no network, no customer
+// data. It runs BEFORE the setup copilot and the corpus retrieval (see
+// answer.js) so a question about an error, an internal term, or where a
+// page lives always gets THAT answer — never a generic onboarding response.
 //
-// Plain-business-language discipline:
-//   - internal terms (tenant, tenant_id, RLS, scope resolution, membership
-//     record, guarded function, Super Admin) are EXPLAINED, never asked of
-//     the user, and the user is never told to configure them
-//   - a quoted or paraphrased system error is troubleshooting context:
-//     what it means, whether anything is needed, where to go, and ONE
-//     targeted follow-up question
-//   - when the trigger of an error cannot be determined, this says so — it
-//     never invents a workflow
-//   - troubleshooting is CONVERSATION-AWARE: a follow-up reply ("whenever I
-//     click 'save company details'...") is resolved against the thread it
-//     answers — matched to a known action, given real retry steps, or
-//     escalated — never re-answered as a context-free question
+// Response-planner discipline:
+//   - the user's CURRENT message is primary evidence. extractEvidence()
+//     (messageEvidence.js) pulls out any quoted error, the page/feature and
+//     the action named, and whether it is a question. The support layer
+//     answers with what it already knows and asks ONLY for a genuinely
+//     missing piece — it NEVER re-asks for the error wording when the user
+//     has quoted it, nor for the page when the user has named it or the app
+//     just captured it.
+//   - structured runtime context (context.supportContext) carries the
+//     current page/section, the caller's role, the workspace name, setup
+//     progress, and the most recent captured application error/action — no
+//     security-sensitive data (no tenant_id, tokens, membership rows,
+//     stack traces).
+//   - internal terms (tenant, tenant_id, RLS, membership record, Super
+//     Admin) are EXPLAINED, never asked of the user or told to configure.
+//   - a recognized error is TROUBLESHOOTING context: what it means, whether
+//     the user caused it, what to do next, and whether MindVault needs a fix.
+//   - troubleshooting is CONVERSATION-AWARE: a short follow-up in an open
+//     thread is resolved against it, not re-answered from scratch.
 //   - page locations use only the CURRENT Client Admin navigation names:
 //     Home, Knowledge, AI Assistant, Processes, Team, Manage, Getting Started
+
+import { extractEvidence, classifyError } from './messageEvidence.js';
 
 export const SUPPORT_SOURCE = [{ id: 'mindvault_support', title: 'MindVault product support' }];
 
@@ -75,67 +82,216 @@ const INTERNAL_TERMS = [
 ];
 
 // ---------------------------------------------------------------------------
-// System errors — a quoted or paraphrased error message is troubleshooting
-// context, never a request for general setup instructions. "Strong" phrases
-// fire on their own; "soft" paraphrases additionally require an
-// error-reporting cue, so a question like "Where do I choose my tenant?"
-// stays a terminology question rather than being treated as an error report.
+// System errors — driven by the response planner (messageEvidence.js) and
+// the runtime support context. A quoted / reported error, or one the app
+// just captured, is TROUBLESHOOTING context: what it means, whether the user
+// caused it, what to do next, and whether MindVault needs to fix it.
+//
+// The page/action is taken from what the user ALREADY said, then from the
+// app-captured error, then from the page they're on. A follow-up is asked
+// ONLY when none of those is available — and it is never a request for
+// wording the user already supplied.
 // ---------------------------------------------------------------------------
 
 const ERROR_CUE =
-  /\b(says?|said|shows?|showed|told me|gave me|keeps? saying|keeps? getting|error|message|warning|popup|denied|blocked|when i (click|try|save|invite)|tried to|trying to)\b/;
+  /\b(says?|said|shows?|showed|told me|gave me|keeps? (saying|getting)|error|message|warning|popup|toast|denied|blocked|when i (click|try|save|invite)|tried to|trying to|every ?time|whenever)\b/;
 
-const SYSTEM_ERRORS = [
-  {
-    id: 'error_tenant_scope',
-    strong: [/a tenant must be specified/, /tenant must be (specified|chosen|selected)/],
-    soft: [
-      /specif(y|ies|ied|ying) (a |the |my )?tenant/,
-      /\bchoose a tenant\b/,
-      /\bselect a tenant\b/,
-      /\btenant (is )?required\b/,
-    ],
-    answer:
-      "That message doesn't mean you need to pick anything. MindVault assigns your company's workspace — sometimes called a \"tenant\" — automatically when you sign in, and you never choose it manually.\n\nIt usually means one of two things: a system error, or an admin-only action that lost track of which company it was acting on. Either way it is on MindVault's side, not a setting you are missing.\n\nWhat page or button produced the message? Tell me and I can help you fix it.",
+// Plain-language explanation per known error. No trailing question here —
+// the composer decides whether a follow-up is warranted.
+const ERROR_INFO = {
+  error_tenant_scope: {
+    meaning:
+      "That message doesn't mean you need to pick anything. MindVault resolves your company's workspace — sometimes called a \"tenant\" — automatically from your account, and you never choose it by hand.",
+    verdict:
+      "Nothing you typed caused it, and it is not a setup step you are missing. It is an application issue: an admin-only save that briefly lost track of which company it was acting on.",
+    // The underlying cause — a platform account that is also a Client Admin
+    // being asked for an explicit tenant on a self-service save — is fixed.
+    fixed: true,
   },
-  {
-    id: 'error_unauthorized',
-    strong: [/\bunauthorized\b/, /\bnot authorized\b/, /permission denied/],
-    soft: [/\b403\b/, /don'?t have permission/],
-    answer:
-      "That message means your account doesn't have permission for that specific action — it is a role check, not a sign-in problem.\n\nClient Admins manage their company's settings, knowledge, and team; Client Users ask questions and browse knowledge. You don't need to do anything unless you expected the action to be allowed — in that case, ask a Client Admin to check your role on the Team page.\n\nWhat were you trying to do when it appeared?",
+  error_unauthorized: {
+    meaning:
+      "That message means your account does not have permission for that specific action — it is a role check, not a sign-in problem.",
+    verdict:
+      "Client Admins manage settings, knowledge, and the team; Client Users ask questions and browse knowledge. If you expected the action to be allowed, ask a Client Admin to check your role on the Team page — otherwise there is nothing for you to fix.",
+    fixed: false,
   },
-  {
-    id: 'error_admin_only',
-    strong: [/active tenant admins? only/, /tenant admins? only/],
-    soft: [],
-    answer:
-      "That action is reserved for a Client Admin whose membership in your company's workspace is active — it is a role check, not an error in anything you did.\n\nIf you are a Client User, ask one of your company's Client Admins to perform it, or to update your role on the Team page. If you are a Client Admin and still see the message, it is a system problem on MindVault's side.\n\nWhat action were you trying to perform?",
+  error_admin_only: {
+    meaning:
+      "That action is reserved for a Client Admin whose membership in your workspace is active — it is a role check, not an error in anything you did.",
+    verdict:
+      "If you are a Client User, ask a Client Admin to do it or to update your role on the Team page. If you ARE an active Client Admin and still see it, it is an application issue on MindVault's side.",
+    fixed: false,
   },
-  {
-    id: 'error_cross_tenant',
-    strong: [/cross[- ]tenant/],
-    soft: [/cross[- ]company/],
-    answer:
-      "That message means the action touched a different company's workspace than the one you belong to. MindVault blocks that on purpose — it is how each company's information stays private — and it is not something you can or should work around.\n\nNothing you configure causes it, and your own company's data is unaffected. If it appeared during normal use, it is a system problem on MindVault's side.\n\nWhat were you clicking when it appeared?",
+  error_cross_tenant: {
+    meaning:
+      "That message means the action touched a different company's workspace than the one you belong to. MindVault blocks that on purpose — it is how each company's information stays private.",
+    verdict:
+      "Nothing you configure causes it and your own company's data is unaffected. If it appeared during normal use it is an application issue on MindVault's side.",
+    fixed: false,
   },
-];
-
-const GENERIC_ERROR = {
-  id: 'error_unknown',
-  answer:
-    "I can't tell from your description which action produced that message, and I would rather not guess.\n\nWhat were you clicking when it appeared — and what did the message say, exactly? With that I can tell you what it means and what to do.",
 };
 
-function matchSystemError(lower) {
-  for (const e of SYSTEM_ERRORS) {
-    if (e.strong.some((re) => re.test(lower))) return e;
+// Which known error a message describes. Strong phrases fire alone; soft
+// paraphrases additionally need an error-reporting cue, so "Where do I
+// choose my tenant?" stays a terminology question.
+const ERROR_KEY_PATTERNS = {
+  error_tenant_scope: {
+    strong: [
+      /a tenant must be specified/,
+      /tenant must be (specified|chosen|selected|provided|set)/,
+      /no tenant (context|specified|selected)/,
+    ],
+    soft: [
+      /specif(y|ies|ied|ying) (a |the |my )?tenant/,
+      /\b(choose|select|pick|set) a tenant\b/,
+      /\btenant (is )?required\b/,
+    ],
+  },
+  error_unauthorized: {
+    strong: [/\bunauthorized\b/, /\bnot authorized\b/, /permission denied/],
+    soft: [/\b403\b/, /don'?t have permission/, /\bforbidden\b/],
+  },
+  error_admin_only: { strong: [/active tenant admins? only/, /tenant admins? only/], soft: [] },
+  error_cross_tenant: { strong: [/cross[- ]tenant/], soft: [/cross[- ]company/] },
+};
+
+function matchSystemErrorKey(lower) {
+  for (const [key, p] of Object.entries(ERROR_KEY_PATTERNS)) {
+    if (p.strong.some((re) => re.test(lower))) return key;
   }
-  for (const e of SYSTEM_ERRORS) {
-    if (e.soft.length > 0 && ERROR_CUE.test(lower) && e.soft.some((re) => re.test(lower))) return e;
+  if (ERROR_CUE.test(lower)) {
+    for (const [key, p] of Object.entries(ERROR_KEY_PATTERNS)) {
+      if (p.soft.some((re) => re.test(lower))) return key;
+    }
   }
-  if (/\b(error|message|warning)\b/.test(lower) && ERROR_CUE.test(lower)) return GENERIC_ERROR;
   return null;
+}
+
+// Where the error happened: the user's own words first, then the
+// app-captured error, then the page they are currently on.
+function resolveErrorLocus(evidence, sc) {
+  const re = sc && sc.recentError;
+  const page =
+    (evidence && evidence.pageOrFeature && evidence.pageOrFeature.label) ||
+    (re && (re.section || re.page)) ||
+    (sc && (sc.currentSection || sc.currentPage)) ||
+    null;
+  const action =
+    (evidence && evidence.actionAttempted) ||
+    (re && re.action) ||
+    null;
+  const known = !!(
+    (evidence && (evidence.pageOrFeature || evidence.actionAttempted)) ||
+    (re && (re.section || re.page || re.action)) ||
+    (sc && sc.currentSection)
+  );
+  return { page, action, known };
+}
+
+function nextStepsFixed() {
+  return (
+    'What to do now:\n' +
+    '1. Reload the page and save once more — this has already been corrected on MindVault\'s side.\n' +
+    '2. If it still appears, sign out and back in to refresh your session, then try again.\n' +
+    '3. If it still appears after that, contact MindVault support with the page you were on.'
+  );
+}
+function nextStepsGeneric() {
+  return (
+    'What to do now:\n' +
+    '1. Reload the page and try again.\n' +
+    '2. If it persists, sign out and back in, then retry.\n' +
+    '3. If it still appears, contact MindVault support with the exact message and the page or button that produces it.'
+  );
+}
+
+const GENERIC_ACTION = /^(save|saving|click|clicking|clicked|hit|press|pressed|tap|tapped|submit|submitting|open|opening)$/i;
+
+function locusPhrase(locus) {
+  const { page, action } = locus;
+  const generic = !action || GENERIC_ACTION.test(action);
+  if (page && generic) return page; // "coming from Company details."
+  if (action && page) {
+    const a = action.replace(/^(save|saving|click|clicking|clicked|hit|press|pressed|tap|tapped) /i, '').trim();
+    const pl = page.toLowerCase();
+    const al = a.toLowerCase();
+    if (pl.includes(al) || al.includes(pl)) return `the ${page} save`;
+    return `the "${action}" action on ${page}`;
+  }
+  if (action && !generic) return `the ${action} action`;
+  if (action) return `the ${action} button`;
+  if (page) return page;
+  return null;
+}
+
+function composeErrorAnswer(key, evidence, sc, lower) {
+  const info = ERROR_INFO[key] || ERROR_INFO.error_tenant_scope;
+  const trigger = triggerFromEvidence(lower || '', evidence, sc);
+  const locus = resolveErrorLocus(evidence, sc);
+  const parts = [];
+
+  const where = trigger ? (trigger.locusLabel || `the ${trigger.label} action`) : locusPhrase(locus);
+  if (where) {
+    parts.push(`That error is coming from ${where}.`);
+  }
+  parts.push(info.meaning);
+  parts.push(info.verdict);
+  parts.push(info.fixed ? nextStepsFixed() : nextStepsGeneric());
+  // Ask for the one genuinely-missing piece ONLY when we truly don't know
+  // where it happened — and NEVER for the wording, which we already have.
+  if (!trigger && !locus.known) {
+    parts.push('If you can tell me which page or button produced it, I can be more specific.');
+  }
+  return {
+    answer: parts.join('\n\n'),
+    sources: SUPPORT_SOURCE,
+    navigation: trigger ? trigger.navigation : [],
+  };
+}
+
+function composeGenericErrorAnswer(evidence, sc, lower) {
+  const trigger = triggerFromEvidence(lower || '', evidence, sc);
+  const locus = resolveErrorLocus(evidence, sc);
+
+  if (evidence && evidence.quotedError) {
+    // They quoted something we don't recognize — do NOT re-ask for the
+    // wording.
+    const wherePhrase = trigger
+      ? ` You saw it while you ${trigger.label} ${trigger.where}.`
+      : locus.page
+        ? ` You saw it ${locus.action ? `while you ${locus.action} ` : ''}on ${locus.page}.`
+        : '';
+    return {
+      answer:
+        `I don't recognize "${evidence.quotedError}" as one of MindVault's standard messages.${wherePhrase}\n\n` +
+        'Try reloading and repeating the action. If it keeps happening, contact MindVault support with that exact wording and the page.',
+      sources: SUPPORT_SOURCE,
+      navigation: trigger ? trigger.navigation : [],
+    };
+  }
+
+  // The action is known but not the wording — acknowledge the action, ask
+  // ONLY for the message text.
+  if (trigger) {
+    return { answer: genericTriggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
+  }
+  if (locus.page || locus.action) {
+    return {
+      answer:
+        `You're seeing a message ${locus.action ? `when you ${locus.action}` : `on ${locus.page}`}${locus.action && locus.page ? ` on ${locus.page}` : ''} — that already narrows it down.\n\n` +
+        'What does the message say, exactly? Even a few words tell me which of MindVault\'s checks produced it.',
+      sources: SUPPORT_SOURCE,
+      navigation: [],
+    };
+  }
+  // Nothing to go on — an honest "I can't tell" plus ONE targeted follow-up.
+  return {
+    answer:
+      "I can't tell from your description which action produced that message, and I'd rather not guess.\n\n" +
+      'What were you clicking when it appeared, and what did the message say?',
+    sources: SUPPORT_SOURCE,
+    navigation: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +302,13 @@ function matchSystemError(lower) {
 const LOCATOR = /\bwhere\b|\bhow do i (get to|find|open|go to)\b/;
 
 const PAGE_LOCATIONS = [
+  {
+    id: 'loc_tenant',
+    patterns: [/\btenant\b/, /\bworkspace\b/, /\bcompany.? workspace\b/],
+    answer:
+      "There is no tenant (workspace) selector to find — MindVault resolves your company's workspace automatically from your account every time you sign in.\n\nYou never pick it, and there is no screen for it. If a message asked you to specify one, that is an application issue, not a setting you are missing.",
+    navigation: [],
+  },
   {
     id: 'loc_knowledge',
     patterns: [/\blibrary\b/, /\bknowledge page\b/],
@@ -250,8 +413,12 @@ function matchPageLocation(lower, context) {
 
 const FOLLOWUP_MARKERS = [
   /what page or button produced/i,
+  /which page or button produced/i,
+  /tell me which page or button/i,
+  /if you can tell me which page or button/i,
   /what were you (clicking|trying to do) when/i,
   /what action were you trying/i,
+  /what does the message say/i,
 ];
 
 // Signatures detect which error a thread is about, across BOTH the user's
@@ -277,6 +444,8 @@ function findThreadError(history) {
 const TRIGGERS = [
   {
     id: 'trigger_company_details',
+    feature: 'company_details',
+    locusLabel: 'the company-details save',
     patterns: [/company details/, /company information/, /sav(e|ing) (my |the |our )?company/],
     label: 'save your company details',
     where: 'on the Getting Started page, in the "Company details" card',
@@ -285,6 +454,8 @@ const TRIGGERS = [
   },
   {
     id: 'trigger_invite',
+    feature: 'team',
+    locusLabel: 'the Team invite',
     patterns: [/\binvit(e|ing|ed)\b/, /add(ing)? (a |a new )?(team )?member/],
     label: 'invite a teammate',
     where: 'on the Team page',
@@ -293,6 +464,8 @@ const TRIGGERS = [
   },
   {
     id: 'trigger_add_knowledge',
+    feature: 'manage',
+    locusLabel: 'the add-knowledge save',
     patterns: [/add(ing)? knowledge/, /\bupload(ing)?\b/, /sav(e|ing) (a |the )?source/, /add(ing)? (a |the )?source/],
     label: 'add a knowledge source',
     where: 'on the Add knowledge page',
@@ -301,6 +474,8 @@ const TRIGGERS = [
   },
   {
     id: 'trigger_process',
+    feature: 'processes',
+    locusLabel: 'the process save',
     patterns: [/sav(e|ing) (a |the )?process/, /add(ing)? (a |the )?process/, /\bprocess form\b/],
     label: 'save a process',
     where: 'on the Processes page',
@@ -314,6 +489,42 @@ function matchTrigger(lower) {
     if (t.patterns.some((re) => re.test(lower))) return t;
   }
   return null;
+}
+
+function triggerForFeature(featureId) {
+  if (!featureId) return null;
+  return TRIGGERS.find((t) => t.feature === featureId) || null;
+}
+
+// A known trigger from the message text, then from the page/feature the
+// planner already extracted, then from a captured error's section.
+function triggerFromEvidence(lower, evidence, sc) {
+  return (
+    matchTrigger(lower) ||
+    (evidence && evidence.pageOrFeature && triggerForFeature(evidence.pageOrFeature.id)) ||
+    (sc && sc.recentError && sectionToTrigger(sc.recentError.section)) ||
+    null
+  );
+}
+
+function sectionToTrigger(section) {
+  if (!section) return null;
+  const l = String(section).toLowerCase();
+  if (l.includes('company details')) return triggerForFeature('company_details');
+  if (l.includes('invite')) return triggerForFeature('team');
+  if (l.includes('knowledge')) return triggerForFeature('manage');
+  if (l.includes('process')) return triggerForFeature('processes');
+  return null;
+}
+
+// The action already names both a page and an action, but the user has NOT
+// told us what the message said — acknowledge the action, ask only for the
+// wording. Never used when the user already quoted an error.
+function genericTriggerAnswer(trigger) {
+  return (
+    `You're seeing a message when you ${trigger.label} ${trigger.where} — that already narrows it down.\n\n` +
+    `What does the message say, exactly? Even a few words of its wording tell me which of MindVault's checks produced it — then I can tell you what it means and what to do.`
+  );
 }
 
 function triggerAnswer(trigger) {
@@ -345,14 +556,7 @@ function reAskAnswer() {
   );
 }
 
-function genericTriggerAnswer(trigger) {
-  return (
-    `You're seeing a message when you ${trigger.label} ${trigger.where} — that already narrows it down.\n\n` +
-    `What did the message say, exactly? Even a few words of its wording tell me which of MindVault's checks produced it — then I can tell you what it means and what to do.`
-  );
-}
-
-function answerConversational(lower, history) {
+function answerConversational(lower, history, evidence, sc) {
   if (!Array.isArray(history) || history.length === 0) return null;
   const errorId = findThreadError(history);
   if (!errorId) return null;
@@ -364,64 +568,95 @@ function answerConversational(lower, history) {
       break;
     }
   }
-  const awaitingFollowUp = !!lastAssistant && FOLLOWUP_MARKERS.some((re) => re.test(lastAssistant.text));
+  const askedForMore = !!lastAssistant && FOLLOWUP_MARKERS.some((re) => re.test(lastAssistant.text));
 
-  // A clearly new, unrelated question is never hijacked by the open thread.
-  const newQuestion =
-    /^(what|where|how|why|when|who|which|is|are|can|does|do|should)\b/.test(lower) &&
-    !/\b(when(ever)? i|i (click|click(ed)?|try|tried|was)|the (button|page|form|card))\b/.test(lower);
+  // Is THIS message a contextual follow-up in the open thread, rather than a
+  // brand-new unrelated question? A named action, "when(ever) I …", or a
+  // "that message / it happens" reference all count.
+  const isFollowUp =
+    /\b(when(ever)? i|i (click|clicked|try|tried|was|hit|press|pressed)|the (button|page|form|card)|that (message|error)|it (happens|comes up|does that|still)|happens when|only when)\b/.test(lower) ||
+    !!(evidence && evidence.actionAttempted && !evidence.isQuestion) ||
+    !!(evidence && evidence.pageOrFeature && !evidence.isQuestion);
+  const newUnrelatedQuestion =
+    /^(what|where|how|why|when|who|which|is|are|can|does|do|should)\b/.test(lower) && !isFollowUp;
   const stillFailing =
-    /\b(still|again)\b/.test(lower) &&
+    /\b(still|again|tried (that|again)|did that)\b/.test(lower) &&
     /\b(doesn.?t|does not|not work(ing)?|comes up|happens|failing|error|message|issue|problem)\b/.test(lower);
 
-  if (awaitingFollowUp) {
-    if (newQuestion) return null;
-    const trigger = matchTrigger(lower);
-    if (trigger) return { answer: triggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
-    if (stillFailing) return { answer: escalationAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
-    return { answer: reAskAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
-  }
+  if (newUnrelatedQuestion) return null;
   if (stillFailing) return { answer: escalationAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
+
+  if (isFollowUp || askedForMore) {
+    const trigger = triggerFromEvidence(lower, evidence, sc);
+    if (trigger) return { answer: triggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
+    if (askedForMore) return { answer: reAskAnswer(), sources: SUPPORT_SOURCE, navigation: [] };
+  }
   return null;
 }
 
+// A generic "I need help" cue that isn't itself a definition/how-to/location
+// question — used only to route a message to the recently-captured error.
+const HELP_CUE =
+  /\b(help|stuck|problem|issue|something.?s wrong|what.?s wrong|not work(ing)?|doesn.?t work|won.?t (save|let|work)|can.?t (save|get|do)|failing|broke(n)?|what do i do)\b/;
+
 // ---------------------------------------------------------------------------
-// Entry point — checked in this exact order: (0) conversation awareness,
-// (1) system errors, (2) internal terminology, (3) page locations. Returns
-// null when none applies, and the caller falls through to the setup copilot /
-// corpus retrieval.
+// Entry point. Order: (0) conversation awareness, (1) errors — from the
+// user's own words, a paraphrase + cue, OR a just-captured application
+// error, (2) internal terminology, (3) page locations. Returns null when
+// none applies and the caller falls through to the setup copilot / corpus.
 // ---------------------------------------------------------------------------
 
 /**
  * @param {string} question
- * @param {{route?: string, setup?: object, topics?: object[]}} [context]
+ * @param {{
+ *   route?: string,
+ *   setup?: object,
+ *   topics?: object[],
+ *   history?: {role:string,text:string}[],
+ *   supportContext?: object,
+ * }} [context]
  * @returns {{answer: string, sources: object[], navigation: object[]} | null}
  */
 export function answerSupportQuestion(question, context = {}) {
   const lower = String(question || '').toLowerCase();
+  const evidence = extractEvidence(question);
+  const sc = context.supportContext || null;
 
-  const convo = answerConversational(lower, context.history);
+  // (0) An in-thread follow-up reply.
+  const convo = answerConversational(lower, context.history, evidence, sc);
   if (convo) return convo;
 
-  const error = matchSystemError(lower);
-  if (error) {
-    if (error === GENERIC_ERROR) {
-      const trigger = matchTrigger(lower);
-      if (trigger) {
-        return { answer: genericTriggerAnswer(trigger), sources: SUPPORT_SOURCE, navigation: trigger.navigation };
-      }
+  // (1) An error the user is asking about — identified from their own words
+  // (evidence.errorKey), a paraphrase backed by an error cue, or the most
+  // recent error the app captured for this session.
+  const capturedKey = sc && sc.recentError ? classifyError(sc.recentError.message) : null;
+  const errorKey = evidence.errorKey || matchSystemErrorKey(lower) || capturedKey;
+  if (errorKey) {
+    // The paraphrase path must still require an error cue so a plain
+    // terminology/location question ("where do I choose my tenant?") isn't
+    // treated as an error report.
+    const viaWords = !!(evidence.errorKey || matchSystemErrorKey(lower));
+    if (viaWords || evidence.isErrorReport || HELP_CUE.test(lower)) {
+      return composeErrorAnswer(errorKey, evidence, sc, lower);
     }
-    return { answer: error.answer, sources: SUPPORT_SOURCE, navigation: [] };
+  }
+  // A clear error report we can't classify — never re-ask for wording the
+  // user already quoted.
+  if (evidence.isErrorReport && (/\b(error|message|warning|popup|toast|dialog)\b/.test(lower) || evidence.quotedError)) {
+    return composeGenericErrorAnswer(evidence, sc, lower);
   }
 
+  // (2) Page locations — a "where is X?" question is a location answer even
+  // when X is also an internal term (e.g. "where do I select my tenant?").
+  const location = matchPageLocation(lower, context);
+  if (location) return { answer: location.answer, sources: SUPPORT_SOURCE, navigation: location.navigation };
+
+  // (3) Internal terminology.
   for (const term of INTERNAL_TERMS) {
     if (term.patterns.some((re) => re.test(lower))) {
       return { answer: term.answer, sources: SUPPORT_SOURCE, navigation: [] };
     }
   }
-
-  const location = matchPageLocation(lower, context);
-  if (location) return { answer: location.answer, sources: SUPPORT_SOURCE, navigation: location.navigation };
 
   return null;
 }
