@@ -5,7 +5,7 @@
 
 import { ADMIN_HELP_TOPICS } from './corpus.js';
 import { retrieveTopics } from './retrieval.js';
-import { isPageRelativeIntent } from './routeContext.js';
+import { isPageRelativeIntent, topicsForRoute } from './routeContext.js';
 import { answerSupportQuestion } from './support.js';
 
 // Every navigation target this assistant can ever suggest. Defense in depth
@@ -135,12 +135,30 @@ function pageGuidanceAnswer(setup, route) {
   }
 }
 
+// The true last resort — used only when there is genuinely nothing to go on
+// (no corpus match, no recognized page-relative intent, no runtime context).
+// It never dumps a list of unrelated example topics; it asks for the one
+// thing that would let the assistant help.
 export const INSUFFICIENT_HELP_MESSAGE =
-  'I don’t have enough product documentation to answer that reliably. Try rephrasing, or ask about a specific screen or concept — for example Operational Processes, Verification, or Operational Continuity.';
+  "I don’t have documentation on that yet. Tell me which page you’re on or what you’re trying to do — for example changing your company details, inviting a teammate, or adding knowledge — and I can walk you through it.";
 
-function buildNavigation(topicEntry) {
+// Client-Admin-only destinations. A Client User cannot open these pages, so
+// a navigation action pointing at one is never offered when the caller's
+// role is client_user.
+const ADMIN_ONLY_ROUTES = new Set(['/setup', '/manage', '/processes', '/team', '/continuity', '/admin']);
+
+// A navigation route is allowed when its path (ignoring any #section anchor)
+// is on the static allowlist AND the caller's role can actually reach it.
+function routeAllowed(route, role) {
+  const path = String(route || '').split('#')[0];
+  if (!NAV_ROUTE_ALLOWLIST.includes(path)) return false;
+  if (role === 'client_user' && ADMIN_ONLY_ROUTES.has(path)) return false;
+  return true;
+}
+
+function buildNavigation(topicEntry, role) {
   return (topicEntry.navigation || [])
-    .filter((n) => NAV_ROUTE_ALLOWLIST.includes(n.route))
+    .filter((n) => routeAllowed(n.route, role))
     .map((n) => ({ label: n.label, route: n.route, topic: n.topic || topicEntry.id }));
 }
 
@@ -175,6 +193,11 @@ export function answerAdminHelpQuestion(question, context = {}) {
     return { answer: '', sources: [], navigation: [] };
   }
 
+  // The caller's app-level role — used only to withhold navigation actions
+  // that point at pages the role cannot open (a Client User never gets an
+  // "Open Team" / "Open Processes" button). Never affects the answer text.
+  const role = context.setup?.role || context.supportContext?.currentUserRole || null;
+
   // Product-support layer — system errors, internal terminology, and page
   // locations are answered directly, BEFORE the setup copilot or corpus
   // retrieval, so a question about an error message, an internal term, or
@@ -186,7 +209,7 @@ export function answerAdminHelpQuestion(question, context = {}) {
       answer: support.answer,
       sources: support.sources,
       navigation: (support.navigation || [])
-        .filter((n) => NAV_ROUTE_ALLOWLIST.includes(n.route))
+        .filter((n) => routeAllowed(n.route, role))
         .map((n) => ({ label: n.label, route: n.route, topic: n.topic || 'support' })),
     };
   }
@@ -207,6 +230,24 @@ export function answerAdminHelpQuestion(question, context = {}) {
 
   const matched = retrieveTopics(topics, trimmed, { limit: 3, minScore: 1, route: context.route });
   if (matched.length === 0) {
+    // Before the honest last resort: if this is a recognized "explain this
+    // page" question AND the current route is one the corpus knows, answer
+    // from that route's primary topic and ask one specific follow-up —
+    // never the generic message, never a list of unrelated example topics.
+    // Gibberish never matches a page-relative intent, so it still falls
+    // through to INSUFFICIENT_HELP_MESSAGE.
+    const baseRoute = String(context.route || '').split('#')[0];
+    const routeTopicIds = topicsForRoute(baseRoute);
+    if (isPageRelativeIntent(trimmed) && routeTopicIds.length > 0) {
+      const primaryTopic = topics.find((t) => t.id === routeTopicIds[0]);
+      if (primaryTopic) {
+        return {
+          answer: `${primaryTopic.summary}\n\nWhat would you like to do here? Tell me the task and I’ll give you the exact steps.`,
+          sources: [{ id: primaryTopic.id, title: primaryTopic.title }],
+          navigation: buildNavigation(primaryTopic, role),
+        };
+      }
+    }
     return { answer: INSUFFICIENT_HELP_MESSAGE, sources: [], navigation: [] };
   }
 
@@ -231,6 +272,6 @@ export function answerAdminHelpQuestion(question, context = {}) {
   return {
     answer: lines.join('\n\n'),
     sources: matched.map((t) => ({ id: t.id, title: t.title })),
-    navigation: buildNavigation(primary),
+    navigation: buildNavigation(primary, role),
   };
 }
