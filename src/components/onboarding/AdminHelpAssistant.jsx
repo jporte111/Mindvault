@@ -200,7 +200,13 @@ export default function AdminHelpAssistant() {
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs"
-                          onClick={() => navigate(n.route)}
+                          onClick={() => {
+                            // Close the panel so the destination is actually
+                            // visible — otherwise a deep link to the page
+                            // you're already on looks like a dead button.
+                            setOpen(false);
+                            navigate(n.route);
+                          }}
                         >
                           {n.label}
                         </Button>
