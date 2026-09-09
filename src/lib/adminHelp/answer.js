@@ -157,6 +157,10 @@ function routeAllowed(route, role) {
 }
 
 function buildNavigation(topicEntry, role) {
+  // A topic may restrict which roles are offered its navigation action
+  // (e.g. an Operational Continuity topic only makes sense for a platform
+  // admin). An unknown role is treated permissively, as before.
+  if (role && topicEntry.roles?.length && !topicEntry.roles.includes(role)) return [];
   return (topicEntry.navigation || [])
     .filter((n) => routeAllowed(n.route, role))
     .map((n) => ({ label: n.label, route: n.route, topic: n.topic || topicEntry.id }));
