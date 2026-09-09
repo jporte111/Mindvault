@@ -166,13 +166,58 @@ function buildNavigation(topicEntry, role) {
     .map((n) => ({ label: n.label, route: n.route, topic: n.topic || topicEntry.id }));
 }
 
-function paragraphsFor(topicEntry) {
-  const parts = [topicEntry.summary];
-  if (topicEntry.whatItIs && topicEntry.whatItIs !== topicEntry.summary) {
-    parts.push(topicEntry.whatItIs);
+// ---------------------------------------------------------------------------
+// Concise answer composition. A how-to question gets a one-line summary plus
+// a numbered step list built from the topic's own instructions; anything
+// else (concepts, definitions) gets the short explanation — summary plus
+// where to go. The old multi-paragraph topic dump is intentionally gone.
+// ---------------------------------------------------------------------------
+
+const STEP_INTENT_PATTERNS = [
+  /\bhow (?:do|can|could|would) (?:i|we|you)\b/i,
+  /\bhow to\b/i,
+  /\bstep[- ]by[- ]step\b/i,
+  /\bwalk me through\b/i,
+  /\bsteps (?:to|for)\b/i,
+  /\bwhere do (?:i|we) (?:change|update|add|create|edit|set|invite|remove|upload|manage|revoke|restore)\b/i,
+];
+
+function isStepIntent(question) {
+  return STEP_INTENT_PATTERNS.some((re) => re.test(question));
+}
+
+// Splits a topic's howToUse prose into steps on sentence boundaries, so the
+// numbered list reads as actions in order.
+function splitIntoSteps(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?]["”]?)\s+(?=["“]?[A-Z0-9])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// hasNavigation: when the topic offers a deep-link button, the steps answer
+// relies on it instead of repeating the location in text.
+function composeAnswer(topicEntry, question, hasNavigation) {
+  if (isStepIntent(question)) {
+    const steps = splitIntoSteps(topicEntry.howToUse);
+    if (steps.length > 0) {
+      const lines = [
+        topicEntry.summary,
+        steps.map((s, i) => `${i + 1}. ${s}`).join('\n'),
+      ];
+      if (!hasNavigation && topicEntry.whereToFind) {
+        lines.push(`Where to go: ${topicEntry.whereToFind}`);
+      }
+      return lines.join('\n\n');
+    }
   }
-  if (topicEntry.howToUse) parts.push(topicEntry.howToUse);
-  return parts.filter(Boolean);
+  const lines = [topicEntry.summary];
+  if (topicEntry.whereToFind) {
+    lines.push(`Where to go: ${topicEntry.whereToFind}`);
+  }
+  return lines.join('\n\n');
 }
 
 /**
@@ -259,26 +304,11 @@ export function answerAdminHelpQuestion(question, context = {}) {
   }
 
   const primary = matched[0];
-  const lines = [...paragraphsFor(primary)];
-
-  if (primary.whereToFind) {
-    lines.push(`Where to go: ${primary.whereToFind}`);
-  }
-  if (primary.caveats) {
-    lines.push(primary.caveats);
-  }
-
-  const relatedTitles = matched
-    .slice(1)
-    .map((t) => t.title)
-    .filter(Boolean);
-  if (relatedTitles.length > 0) {
-    lines.push(`Related help: ${relatedTitles.join(', ')}`);
-  }
+  const navigation = buildNavigation(primary, role);
 
   return {
-    answer: lines.join('\n\n'),
+    answer: composeAnswer(primary, trimmed, navigation.length > 0),
     sources: matched.map((t) => ({ id: t.id, title: t.title })),
-    navigation: buildNavigation(primary, role),
+    navigation,
   };
 }
