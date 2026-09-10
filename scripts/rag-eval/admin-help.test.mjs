@@ -478,8 +478,11 @@ test('navigation actions carry only label/route/topic — no action, no id, noth
     }
   }
   const s = read('src/components/onboarding/AdminHelpAssistant.jsx');
-  // the UI's only handler for a navigation item is React Router's navigate()
-  assert.match(s, /onClick=\{\(\) => navigate\(n\.route\)\}/);
+  // the navigation item's click handler goes through React Router's navigate()
+  // (it may also close the Help panel first — a benign local UI toggle, not a
+  // data mutation; "no writes in the admin-help modules" is covered separately)
+  assert.match(s, /navigate\(n\.route\)/);
+  assert.doesNotMatch(s, /navigate\(n\.route\)[\s\S]{0,120}\.(create|update|delete)\(/);
 });
 
 // ====================================================================

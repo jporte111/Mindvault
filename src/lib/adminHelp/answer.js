@@ -306,8 +306,15 @@ export function answerAdminHelpQuestion(question, context = {}) {
   const primary = matched[0];
   const navigation = buildNavigation(primary, role);
 
+  // The "Where to go" text line is added only when the TOPIC has no navigable
+  // destination at all — never merely because the current role isn't offered
+  // the deep-link button. This keeps the explanation identical across roles:
+  // a Client User gets the same answer text as a Client Admin, just without
+  // the admin-only action.
+  const topicHasDestination = (primary.navigation || []).length > 0;
+
   return {
-    answer: composeAnswer(primary, trimmed, navigation.length > 0),
+    answer: composeAnswer(primary, trimmed, topicHasDestination),
     sources: matched.map((t) => ({ id: t.id, title: t.title })),
     navigation,
   };
