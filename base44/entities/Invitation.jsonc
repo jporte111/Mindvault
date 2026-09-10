@@ -1,0 +1,102 @@
+{
+  "name": "Invitation",
+  "type": "object",
+  "properties": {
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 hex digest of the single-use invitation token. The RAW token exists only in the emailed accept URL and is NEVER stored — a database read yields no usable token. This is the lookup key for getInvitePreview / acceptTenantInvite."
+    },
+    "email": {
+      "type": "string",
+      "description": "Lowercased invitee email. The invitation binds to this address: acceptTenantInvite activates the membership only when the authenticated Base44 account's email matches."
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Authoritative target Tenant. Tenant and role are resolved for activation ONLY from this record — never from the browser, the URL, or the request body."
+    },
+    "app_role": {
+      "type": "string",
+      "enum": [
+        "client_admin",
+        "client_user"
+      ],
+      "description": "Role assigned on acceptance. Copied verbatim into the activated TenantMembership."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "expired",
+        "revoked"
+      ],
+      "default": "pending",
+      "description": "'pending' = sent, not yet used. 'accepted' = consumed (single-use — a second accept is a no-op). 'expired' = past expires_at. 'revoked' = cancelled by a tenant admin (e.g. the member was removed before accepting)."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hard expiry. After this instant the token cannot be used regardless of status; expireTenantInvites also flips the row to 'expired'."
+    },
+    "invited_by": {
+      "type": "string",
+      "description": "Base44 user id of the Client Admin who sent the invitation (stable id only)."
+    },
+    "membership_id": {
+      "type": "string",
+      "description": "The pre-provisioned TenantMembership row this invitation corresponds to. acceptTenantInvite activates that row (or, defensively, re-resolves by tenant+email)."
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the branded email was handed to the provider (or the mock)."
+    },
+    "email_message_id": {
+      "type": "string",
+      "description": "Provider message id (or 'mock-…' during development). Audit + resend idempotency only — never security-relevant."
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the invitation was consumed."
+    },
+    "accepted_user_id": {
+      "type": "string",
+      "description": "Base44 user id that accepted. Set once, together with the status flip to 'accepted'."
+    }
+  },
+  "required": [
+    "token_hash",
+    "email",
+    "tenant_id",
+    "app_role"
+  ],
+  // Admin-only RLS, exactly like TenantMembership / AuditEvent. Every read and
+  // write goes through a guarded backend function using asServiceRole:
+  //   - sendTenantInvite / manageTenantMembers  (Client-Admin scoped, create + revoke)
+  //   - getInvitePreview                         (anonymous, service-role lookup, returns NO ids)
+  //   - acceptTenantInvite                       (authenticated, email-match activation)
+  //   - expireTenantInvites                      (service, lazy + scheduled)
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
