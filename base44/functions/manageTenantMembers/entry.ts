@@ -210,6 +210,38 @@ export default async function (req) {
       return Response.json({ member: updated });
     }
 
+    // Hard delete — permanently removes the membership row (and with it the
+    // email) from the team. Same safeguards as revoke: the last active Client
+    // Admin cannot be deleted, and an admin cannot delete their own
+    // membership. Any still-open invitation link is cancelled first.
+    if (action === 'delete') {
+      const scoped = await getScopedMembership(base44, scope, body?.id);
+      if (scoped.error) return scoped.error;
+      const row = scoped.row;
+      if (row.user_id && row.user_id === ctx.userId) {
+        return Response.json(
+          { error: "You can't delete your own membership — ask another Client Admin to remove you" },
+          { status: 400 },
+        );
+      }
+      if (row.status === 'active' && row.app_role === APP_ROLE_CLIENT_ADMIN) {
+        const others = await countOtherActiveClientAdmins(base44, scope.tenantId, row.id);
+        if (others === 0) {
+          return Response.json(
+            { error: 'A team must keep at least one active Client Admin' },
+            { status: 400 },
+          );
+        }
+      }
+      try {
+        await revokeOpenInvitations(base44, scope.tenantId, row.email, ctx.userId);
+      } catch (_) {
+        // Best-effort — the membership deletion below is the real gate.
+      }
+      await base44.asServiceRole.entities.TenantMembership.delete(row.id);
+      return Response.json({ deleted: true, email: row.email });
+    }
+
     if (action === 'reactivate') {
       const scoped = await getScopedMembership(base44, scope, body?.id);
       if (scoped.error) return scoped.error;

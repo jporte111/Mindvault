@@ -17,6 +17,7 @@ const MEMBER_ACTION_LABELS = {
   revoke: "revoke a teammate's access",
   reactivate: "restore a teammate's access",
   resend: 'resend an invitation',
+  delete: 'delete a teammate from the team',
 };
 
 // Tenant team management: invite members, change roles, revoke / restore
@@ -248,7 +249,7 @@ export default function TenantMembersManager() {
               {members.map((m) => (
                 <MemberRow
                   key={m.id}
-                  member={m}
+                  member={{ ...m, isSelf: !!m.user_id && m.user_id === user.id }}
                   busy={busyId === m.id}
                   onAction={handleRowAction}
                 />

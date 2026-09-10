@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { UserMinus, UserPlus, Mail } from 'lucide-react';
+import DeleteMemberButton from './DeleteMemberButton';
 
 // One tenant-member row: role select + revoke / reactivate. All actions run
 // through the manageTenantMembers backend function — the UI never writes a
@@ -72,6 +73,8 @@ export default function MemberRow({ member, onAction, busy }) {
             <UserMinus className="w-4 h-4" /> Revoke
           </Button>
         )}
+
+        <DeleteMemberButton member={member} busy={busy} onAction={onAction} />
       </div>
     </div>
   );
