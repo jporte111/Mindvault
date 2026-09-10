@@ -64,10 +64,21 @@ set as Base44 secrets:
 | `INVITE_EMAIL_MODE` | must be the exact string `live` |
 | `INVITE_ESP_API_KEY` | Resend-compatible API key |
 | `INVITE_FROM` | e.g. `MindVault <invite@send.mindvault.app>` (domain must be verified: SPF/DKIM/DMARC) |
-| `INVITE_ACCEPT_BASE_URL` | https origin for the accept link (else `https://mindvault.app`) |
+| `INVITE_ACCEPT_BASE_URL` | **Required for live send.** The published MindVault app's https origin (no trailing slash, no query), e.g. `https://<app>.base44.app` or a custom domain. There is no reliable Base44 runtime signal for this, so it must be explicit. |
 
 Otherwise every send records to an in-memory outbox and returns a `mock-…`
 id. Development and the whole test suite never send real mail.
+
+**Fail-closed on the accept URL.** `createAndSendInvitation` calls
+`acceptBaseUrlFromEnv()` before it writes anything. If a **live** send is in
+effect (`INVITE_EMAIL_MODE=live` + key + from) and `INVITE_ACCEPT_BASE_URL` is
+missing or not a valid https origin, it throws `InviteConfigError` — no
+`Invitation` row is created and no email is sent. `manageTenantMembers`
+surfaces this as `{ member, email_error }` (the pending membership still
+exists; use **Resend invite** once the secret is set). In mock mode the
+resolver returns `https://invite.mock.invalid` — an unmistakably fake
+placeholder that can never be confused for a real link. The production domain
+is **not** hard-coded anywhere.
 
 ### Enabling a live test (only when explicitly authorised)
 

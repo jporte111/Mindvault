@@ -1,12 +1,13 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { UserMinus, UserPlus } from 'lucide-react';
+import { UserMinus, UserPlus, Mail } from 'lucide-react';
 
 // One tenant-member row: role select + revoke / reactivate. All actions run
 // through the manageTenantMembers backend function — the UI never writes a
 // TenantMembership row directly.
 export default function MemberRow({ member, onAction, busy }) {
   const isInactive = member.status === 'inactive';
+  const isPending = member.status === 'pending';
   const statusStyles = {
     active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-transparent',
     pending: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-transparent',
@@ -37,6 +38,18 @@ export default function MemberRow({ member, onAction, busy }) {
           <option value="client_user">Client User</option>
           <option value="client_admin">Client Admin</option>
         </select>
+
+        {isPending ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 gap-1.5"
+            disabled={busy}
+            onClick={() => onAction(member, 'resend', {})}
+          >
+            <Mail className="w-4 h-4" /> Resend invite
+          </Button>
+        ) : null}
 
         {isInactive ? (
           <Button

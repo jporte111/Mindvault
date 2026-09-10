@@ -23,8 +23,16 @@ import {
   normalizeInviteEmail,
   classifyInviteAcceptability,
 } from "./inviteToken.ts";
-import { renderInviteEmail, sendTransactionalEmail } from "./emailProvider.ts";
+import { renderInviteEmail, sendTransactionalEmail, emailSendingIsLive } from "./emailProvider.ts";
 import { APP_ROLE_CLIENT_ADMIN, APP_ROLE_CLIENT_USER } from "./tenant.ts";
+
+/** Thrown when a LIVE send is attempted without a usable accept base URL. */
+export class InviteConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InviteConfigError";
+  }
+}
 
 const ROLE_LABELS: Record<string, string> = {
   [APP_ROLE_CLIENT_ADMIN]: "Client Admin",
@@ -46,20 +54,59 @@ export function maskEmail(email: string): string {
   return `${head}@${domain}`;
 }
 
-function acceptBaseUrl(): string {
-  let raw = "";
+// A strict https origin, optionally with a path prefix, no query / fragment /
+// trailing slash. e.g. https://app.example.com  or  https://example.com/mv
+const HTTPS_ORIGIN_RE = /^https:\/\/[a-z0-9][a-z0-9.-]*[a-z0-9](:\d{2,5})?(\/[a-z0-9._~%/-]*)?$/i;
+
+function readAcceptBaseEnv(): string {
   try {
     // @ts-ignore Deno is only defined in the Base44 runtime
-    if (typeof Deno !== "undefined" && Deno?.env?.get) raw = Deno.env.get("INVITE_ACCEPT_BASE_URL") || "";
+    if (typeof Deno !== "undefined" && Deno?.env?.get) {
+      return String(Deno.env.get("INVITE_ACCEPT_BASE_URL") || "").trim();
+    }
   } catch {
     /* not the Deno runtime */
   }
-  const s = String(raw).trim().replace(/\/+$/, "");
-  return /^https:\/\//i.test(s) ? s : "https://mindvault.app";
+  return "";
+}
+
+// Never a plausible production domain — if this ever appears in a real inbox
+// it is unmistakably a misconfiguration, not a working link.
+const MOCK_ACCEPT_BASE = "https://invite.mock.invalid";
+
+/**
+ * The https origin the accept link is built on. There is NO reliable Base44
+ * runtime signal for an app's canonical public URL (createClientFromRequest
+ * only exposes the API host), so this MUST be provided explicitly via the
+ * INVITE_ACCEPT_BASE_URL secret.
+ *
+ * Pure and injectable for tests: pass the raw configured value and whether a
+ * live send is in effect.
+ *   - valid https origin            -> that origin (trailing slash trimmed)
+ *   - missing / invalid + live send -> throws InviteConfigError (fail closed)
+ *   - missing / invalid + mock mode -> an obviously-fake placeholder so
+ *                                      dev/tests still produce a URL
+ */
+export function resolveAcceptBaseUrl(baseUrlRaw: string, live: boolean): string {
+  const raw = String(baseUrlRaw || "").trim().replace(/\/+$/, "");
+  if (raw && HTTPS_ORIGIN_RE.test(raw)) return raw;
+  if (live) {
+    throw new InviteConfigError(
+      raw
+        ? `INVITE_ACCEPT_BASE_URL is not a valid https origin: "${raw}". Set it to the published MindVault app URL before sending live invitations.`
+        : "INVITE_ACCEPT_BASE_URL is not set — refusing to send a live invitation with an unknown accept URL. Set it to the published MindVault app URL.",
+    );
+  }
+  return MOCK_ACCEPT_BASE;
+}
+
+/** Env-backed resolver used by createAndSendInvitation. */
+export function acceptBaseUrlFromEnv(): string {
+  return resolveAcceptBaseUrl(readAcceptBaseEnv(), emailSendingIsLive());
 }
 
 export function buildAcceptUrl(rawToken: string): string {
-  return `${acceptBaseUrl()}/invite/accept?token=${encodeURIComponent(rawToken)}`;
+  return `${acceptBaseUrlFromEnv()}/invite/accept?token=${encodeURIComponent(rawToken)}`;
 }
 
 async function writeAudit(
@@ -119,6 +166,11 @@ export async function createAndSendInvitation(
     throw new Error("invalid role");
   }
 
+  // Fail CLOSED before any write: a live send with no valid INVITE_ACCEPT_BASE_URL
+  // throws here, so no Invitation row is created and no email goes out with a
+  // wrong / placeholder domain. In mock mode this returns the fake placeholder.
+  const acceptBase = acceptBaseUrlFromEnv();
+
   const tenant = await base44.asServiceRole.entities.Tenant.get(input.tenantId);
   if (!tenant) throw new Error("tenant not found");
   if (tenant.status && tenant.status !== "active") throw new Error("tenant is not active");
@@ -165,7 +217,7 @@ export async function createAndSendInvitation(
   const rendered = renderInviteEmail({
     tenantName: tenant.name || "your company",
     roleLabel: inviteRoleLabel(input.appRole),
-    acceptUrl: buildAcceptUrl(rawToken),
+    acceptUrl: `${acceptBase}/invite/accept?token=${encodeURIComponent(rawToken)}`,
     expiresAt,
     tenantLogoUrl: tenant.logo_url || "",
     brandColor: tenant.brand_color || "",

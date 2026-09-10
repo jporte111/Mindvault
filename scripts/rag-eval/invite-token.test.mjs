@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   generateRawInviteToken,
@@ -24,6 +25,7 @@ import {
   clearMockOutbox,
   emailSendingIsLive,
 } from "../../base44/shared/emailProvider.ts";
+import { resolveAcceptBaseUrl, InviteConfigError } from "../../base44/shared/invite.ts";
 
 // ---------------------------------------------------------------------------
 // Token generation + hashing
@@ -197,6 +199,47 @@ test("email sending is NOT live in dev/test, and a send records to the mock outb
   assert.equal(outbox[0].to, "invitee@acme.test");
   assert.equal(outbox[0].subject, rendered.subject);
   clearMockOutbox();
+});
+
+// ---------------------------------------------------------------------------
+// Accept base URL — no hard-coded production domain; fail closed on live send
+// ---------------------------------------------------------------------------
+
+test("a live send CANNOT proceed without a valid INVITE_ACCEPT_BASE_URL", () => {
+  assert.throws(() => resolveAcceptBaseUrl("", true), InviteConfigError, "missing must fail closed");
+  assert.throws(() => resolveAcceptBaseUrl("   ", true), InviteConfigError, "blank must fail closed");
+  assert.throws(() => resolveAcceptBaseUrl("mindvault.app", true), InviteConfigError, "no scheme must fail closed");
+  assert.throws(() => resolveAcceptBaseUrl("http://app.mindvault.app", true), InviteConfigError, "non-https must fail closed");
+  assert.throws(() => resolveAcceptBaseUrl("https://app.mindvault.app?x=1", true), InviteConfigError, "query string must fail closed");
+  assert.throws(() => resolveAcceptBaseUrl("javascript:alert(1)", true), InviteConfigError);
+  const err = (() => {
+    try {
+      resolveAcceptBaseUrl("", true);
+    } catch (e) {
+      return e;
+    }
+  })();
+  assert.match(err.message, /INVITE_ACCEPT_BASE_URL is not set/);
+});
+
+test("a live send accepts a valid https origin and trims a trailing slash / path", () => {
+  assert.equal(resolveAcceptBaseUrl("https://app.mindvault.app", true), "https://app.mindvault.app");
+  assert.equal(resolveAcceptBaseUrl("https://app.mindvault.app/", true), "https://app.mindvault.app");
+  assert.equal(resolveAcceptBaseUrl("https://team.acme.example.com/mv", true), "https://team.acme.example.com/mv");
+  assert.equal(resolveAcceptBaseUrl("  https://x.base44.app  ", true), "https://x.base44.app");
+});
+
+test("mock mode stays usable without config — and never yields a plausible production domain", () => {
+  const url = resolveAcceptBaseUrl("", false);
+  assert.equal(url, "https://invite.mock.invalid");
+  assert.doesNotMatch(url, /mindvault\.app|base44\.app/, "the mock fallback must not look real");
+  // an invalid configured value in mock mode also degrades to the placeholder
+  assert.equal(resolveAcceptBaseUrl("not-a-url", false), "https://invite.mock.invalid");
+});
+
+test("the source carries NO hard-coded production domain as a fallback", () => {
+  const src = readFileSync(new URL("../../base44/shared/invite.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /https:\/\/mindvault\.app/, "invite.ts must not hard-code a production domain");
 });
 
 test("sendTransactionalEmail refuses an empty recipient", async () => {

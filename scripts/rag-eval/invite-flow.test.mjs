@@ -126,6 +126,10 @@ test("createAndSendInvitation stores only the token HASH, binds email/tenant/rol
   assert.equal(outbox[0].to, "invitee@acme.test");
   assert.match(outbox[0].subject, /join Acme Books's MindVault/);
   assert.doesNotMatch(outbox[0].html, /tenant-a|tenant_id/);
+  // mock mode with no INVITE_ACCEPT_BASE_URL -> the fake placeholder, never a
+  // plausible production domain.
+  assert.match(outbox[0].text, /https:\/\/invite\.mock\.invalid\/invite\/accept\?token=/);
+  assert.doesNotMatch(outbox[0].html, /https:\/\/mindvault\.app/);
   // audit
   assert.ok(audits(stores).includes("invite_sent"));
 });
@@ -367,6 +371,16 @@ test("manageTenantMembers no longer sends the generic Base44 invite, and wires t
   assert.doesNotMatch(s, /\.users\.inviteUser\(|\.auth\.inviteUser\(/, "the generic Base44 invite must be gone");
   assert.match(s, /createAndSendInvitation\(/);
   assert.match(s, /revokeOpenInvitations\(/, "revoke must cancel open invitations");
+});
+
+test("the Team UI offers a Resend invite action for pending members, wired to sendTenantInvite", () => {
+  const mgr = read("src/components/admin/TenantMembersManager.jsx");
+  assert.match(mgr, /invoke\('sendTenantInvite'/);
+  assert.match(mgr, /action === 'resend'/);
+  const row = read("src/components/admin/MemberRow.jsx");
+  assert.match(row, /member\.status === 'pending'/);
+  assert.match(row, /Resend invite/);
+  assert.match(row, /onAction\(member, 'resend'/);
 });
 
 test("getInvitePreview is anonymous and leaks no ids", () => {

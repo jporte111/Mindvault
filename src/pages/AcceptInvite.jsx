@@ -390,7 +390,16 @@ export default function AcceptInvite() {
                     <p className="text-[11px] text-muted-foreground text-center">
                       You’ll get a one-time verification code by email to confirm your address.
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="text-[11px] text-center">
+                      <a
+                        href="/forgot-password"
+                        className="text-muted-foreground hover:text-foreground underline underline-offset-2"
+                      >
+                        Forgot your password?
+                      </a>
+                    </p>
+                  )}
                 </form>
               )}
             </div>

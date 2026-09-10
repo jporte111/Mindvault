@@ -96,6 +96,15 @@ test('AcceptInvite performs no entity writes and never uses asServiceRole', () =
   assert.doesNotMatch(page, /asServiceRole|\.entities\.[A-Za-z]+\.(create|update|delete)\(/);
 });
 
+test('the sign-in surface links to the branded Forgot Password screen', () => {
+  assert.match(page, /href="\/forgot-password"/);
+  assert.match(page, /Forgot your password\?/);
+  // it belongs to the sign-in path, not the create-account path
+  const linkIdx = page.indexOf('/forgot-password');
+  const createHintIdx = page.indexOf('one-time verification code by email');
+  assert.ok(linkIdx > createHintIdx, 'the forgot-password link is in the sign-in branch');
+});
+
 // --- App.jsx public route wiring -----------------------------------
 
 const app = read('src/App.jsx');

@@ -16,6 +16,7 @@ const MEMBER_ACTION_LABELS = {
   update_role: "change a teammate's role",
   revoke: "revoke a teammate's access",
   reactivate: "restore a teammate's access",
+  resend: 'resend an invitation',
 };
 
 // Tenant team management: invite members, change roles, revoke / restore
@@ -96,9 +97,45 @@ export default function TenantMembersManager() {
     setInviting(false);
   };
 
+  // Re-issue a pending member's invitation. The backend (sendTenantInvite)
+  // mints a fresh single-use token, supersedes the old one, and re-sends the
+  // branded email. Separate function from manageTenantMembers.
+  const resendInvite = async (member) => {
+    try {
+      const res = await base44.functions.invoke('sendTenantInvite', {
+        email: member.email,
+        ...(isSuperAdmin && tenantId ? { tenant_id: tenantId } : {}),
+      });
+      const message = res?.data?.error;
+      if (message) throw new Error(message);
+      clearRecentAppError();
+      recordAppAction({ action: 'resend an invitation', page: 'Team', section: 'Team members' });
+      toast.success(
+        res?.data?.mocked === false
+          ? `Invitation re-sent to ${member.email}`
+          : `Invitation prepared for ${member.email} (email is in test mode)`,
+      );
+      return true;
+    } catch (e) {
+      const message = e?.response?.data?.error || e?.message || 'Could not resend the invitation';
+      recordAppError({
+        action: 'resend an invitation',
+        page: 'Team',
+        section: 'Team members',
+        error: message,
+        code: e?.response?.status || e?.status,
+      });
+      toast.error(message);
+      return false;
+    }
+  };
+
   const handleRowAction = async (member, action, extra) => {
     setBusyId(member.id);
-    const ok = await callApi({ action, id: member.id, ...extra });
+    const ok =
+      action === 'resend'
+        ? await resendInvite(member)
+        : await callApi({ action, id: member.id, ...extra });
     if (ok) refresh();
     setBusyId(null);
   };
