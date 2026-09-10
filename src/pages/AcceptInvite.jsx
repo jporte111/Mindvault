@@ -55,6 +55,7 @@ export default function AcceptInvite() {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [busy, setBusy] = useState(false);
+  const [usedPassword, setUsedPassword] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,9 +104,10 @@ export default function AcceptInvite() {
       if (data?.accepted) {
         setPhase('accepted');
         // Full reload so AuthContext + membership hooks re-resolve cleanly.
+        // A few seconds so the account confirmation below can be read.
         setTimeout(() => {
           window.location.href = '/';
-        }, 1200);
+        }, 4000);
         return;
       }
       setError(acceptErrorMessage(data?.reason));
@@ -132,6 +134,7 @@ export default function AcceptInvite() {
     try {
       await base44.auth.loginViaEmailPassword(email.trim(), password);
       setSessionEmail(email.trim());
+      setUsedPassword(true);
       await doAccept();
     } catch (err) {
       setError(
@@ -171,6 +174,7 @@ export default function AcceptInvite() {
       // Get a clean session token, then accept.
       await base44.auth.loginViaEmailPassword(email.trim(), password);
       setSessionEmail(email.trim());
+      setUsedPassword(true);
       await doAccept();
     } catch (err) {
       setError('That code didn’t work. Check your email for the latest code and try again.');
@@ -212,8 +216,22 @@ export default function AcceptInvite() {
           <MailCheck className="w-8 h-8 text-primary mx-auto mb-3" />
           <h1 className="text-xl font-bold text-foreground">You’re in</h1>
           <p className="text-sm text-muted-foreground mt-2">
+            Your account is set up with{' '}
+            <span className="font-medium text-foreground">{sessionEmail || preview?.emailMasked}</span>.
             Taking you to {preview?.tenantName || 'your workspace'}…
           </p>
+          {usedPassword ? (
+            <p className="text-xs text-muted-foreground mt-3">
+              Your password is the one you just created. To update it later, use{' '}
+              <a href="/forgot-password" className="underline underline-offset-2 hover:text-foreground">
+                Forgot password?
+              </a>{' '}
+              on the sign-in page.
+            </p>
+          ) : null}
+          <Button asChild variant="outline" className="mt-6 w-full h-11">
+            <a href="/">Go to MindVault now</a>
+          </Button>
         </div>
       </Shell>
     );
