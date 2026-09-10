@@ -1,0 +1,45 @@
+{
+  "name": "Daily Invitation Expiry Sweep",
+  "description": "Once-daily tidy-up: invokes expireTenantInvites, which flips every past-due PENDING Invitation row to 'expired' and writes an invite_expired AuditEvent. Idempotent and side-effect-free beyond that (never touches memberships, tenants, or non-expired rows). getInvitePreview and acceptTenantInvite also expire lazily, so this only keeps the table tidy.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "15 6 * * *",
+      "one_time_date": null,
+      "timezone": "America/New_York",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_invitation_expiry_sweep",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "sweep_expired_invitations": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "expireTenantInvites",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Expire stale invitations",
+            "description": "Flips past-due pending invitations to 'expired'"
+          }
+        }
+      }
+    ]
+  }
+}
