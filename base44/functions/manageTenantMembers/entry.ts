@@ -6,6 +6,7 @@ import {
   APP_ROLE_CLIENT_ADMIN,
   APP_ROLE_CLIENT_USER,
 } from '../../shared/tenant.ts';
+import { createAndSendInvitation, revokeOpenInvitations } from '../../shared/invite.ts';
 
 // Guarded TenantMembership administration for the multi-tenant model.
 //
@@ -136,15 +137,28 @@ export default async function (req) {
         invited_by: ctx.userId,
       });
 
-      // Send the email invitation (best-effort — activation is by email match
-      // at first sign-in regardless of whether the email send succeeds).
+      // Send the MindVault-branded invitation. The generic Base44 platform
+      // invite (base44.users.inviteUser) is intentionally NOT sent. Email is
+      // mocked unless the deployment is explicitly configured for live send
+      // (INVITE_EMAIL_MODE=live + INVITE_ESP_API_KEY + INVITE_FROM). Activation
+      // is authoritative via acceptTenantInvite (email match), with
+      // resolveMyTenantContext as a fallback, so a send failure never blocks
+      // the pending row.
       try {
-        await base44.users.inviteUser(email, 'user');
-      } catch (_) {
-        // Already-invited or send-unavailable: the pending row still works.
+        const sent = await createAndSendInvitation(base44, {
+          tenantId: scope.tenantId,
+          email,
+          appRole: app_role,
+          invitedByUserId: ctx.userId,
+          membershipId: member.id,
+        });
+        return Response.json({ member, email_mocked: sent.mocked });
+      } catch (err) {
+        return Response.json(
+          { member, email_error: err?.message || 'Invitation email could not be sent' },
+          { status: 200 },
+        );
       }
-
-      return Response.json({ member });
     }
 
     if (action === 'update_role') {
@@ -186,6 +200,13 @@ export default async function (req) {
       const updated = await base44.asServiceRole.entities.TenantMembership.update(row.id, {
         status: 'inactive',
       });
+      // Cancel any still-open invitation so a not-yet-accepted link cannot be
+      // used after the member has been removed.
+      try {
+        await revokeOpenInvitations(base44, scope.tenantId, row.email, ctx.userId);
+      } catch (_) {
+        // Best-effort — the membership is already inactive, which is the gate.
+      }
       return Response.json({ member: updated });
     }
 
@@ -199,6 +220,25 @@ export default async function (req) {
       const updated = await base44.asServiceRole.entities.TenantMembership.update(row.id, {
         status,
       });
+      // A never-signed-in member returning to 'pending' needs a fresh, valid
+      // invitation link (the prior one was revoked when they were removed).
+      if (status === 'pending' && VALID_ROLES.has(row.app_role)) {
+        try {
+          const sent = await createAndSendInvitation(base44, {
+            tenantId: scope.tenantId,
+            email: row.email,
+            appRole: row.app_role,
+            invitedByUserId: ctx.userId,
+            membershipId: row.id,
+          });
+          return Response.json({ member: updated, email_mocked: sent.mocked });
+        } catch (err) {
+          return Response.json(
+            { member: updated, email_error: err?.message || 'Invitation email could not be sent' },
+            { status: 200 },
+          );
+        }
+      }
       return Response.json({ member: updated });
     }
 
