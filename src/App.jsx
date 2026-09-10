@@ -3,10 +3,20 @@ import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+
+// Public, MindVault-branded routes that must render WITHOUT the auth gate —
+// an invitee / password-reset user has no session yet and must be able to
+// choose Google / Microsoft / email+password here.
+import AcceptInvite from './pages/AcceptInvite';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+
+const PUBLIC_PATHS = ['/invite/accept', '/forgot-password', '/reset-password'];
+const isPublicPath = (p) => PUBLIC_PATHS.some((x) => p === x || p.startsWith(`${x}/`));
 
 // Layout
 import AppLayout from './components/layout/AppLayout';
@@ -29,6 +39,20 @@ import Contact from './pages/Contact';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { pathname } = useLocation();
+
+  // Public branded pages bypass the auth gate entirely — no spinner wait, no
+  // redirect to the Base44 login, no "not registered" screen.
+  if (isPublicPath(pathname)) {
+    return (
+      <Routes>
+        <Route path="/invite/accept" element={<AcceptInvite />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    );
+  }
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
