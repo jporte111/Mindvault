@@ -169,6 +169,17 @@ function formatExpiry(iso: string): string {
   }
 }
 
+// Hosted icon assets. Email clients (Gmail, Outlook) don't render inline SVG
+// or data URIs, so the feature icons are public PNG URLs.
+const IMG_ICON_RESOURCES =
+  "https://media.base44.com/images/public/6a0211352401fa8c3c1ed722/591f75c79_generated_image.png";
+const IMG_ICON_TEAM =
+  "https://media.base44.com/images/public/6a0211352401fa8c3c1ed722/437179243_generated_image.png";
+const IMG_ICON_SHIELD =
+  "https://media.base44.com/images/public/6a0211352401fa8c3c1ed722/2abc1d051_generated_image.png";
+const IMG_ICON_CALENDAR =
+  "https://media.base44.com/images/public/6a0211352401fa8c3c1ed722/131247dc5_generated_image.png";
+
 export function renderInviteEmail(input: InviteEmailInput): RenderedEmail {
   const tenantName = String(input.tenantName || "your company");
   const roleLabel = String(input.roleLabel || "team member");
@@ -184,49 +195,83 @@ export function renderInviteEmail(input: InviteEmailInput): RenderedEmail {
   const eRole = escapeHtml(roleLabel);
   const eInviter = escapeHtml(inviter);
   const eUrl = escapeHtml(acceptUrl);
+  const eExpiry = escapeHtml(expiry);
 
-  const logoBlock = logo
-    ? `<img src="${escapeHtml(logo)}" alt="${eTenant}" height="40" style="max-height:40px;border:0;display:block;margin:0 auto 8px" />`
-    : "";
+  // Header: the tenant's own logo; a MindVault wordmark fallback when none.
+  const headerBlock = logo
+    ? `<tr><td style="padding:32px 32px 0;text-align:center">
+          <img src="${escapeHtml(logo)}" alt="${eTenant}" height="56" style="height:56px;width:auto;border:0;display:block;margin:0 auto" />
+        </td></tr>`
+    : `<tr><td style="padding:32px 32px 0;text-align:center">
+          <div style="font-weight:700;font-size:15px;letter-spacing:.2px;color:#4F46E5">MindVault</div>
+        </td></tr>`;
+
+  const inviterLine = inviter
+    ? `${eInviter} invited you to join ${eTenant} as a <strong>${eRole}</strong>.`
+    : `You've been invited to join ${eTenant} as a <strong>${eRole}</strong>.`;
 
   const html = `<!doctype html>
-<html><body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2430">
+<html><body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0">
     <tr><td align="center">
-      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e6e6ec">
-        <tr><td style="padding:28px 32px 8px;text-align:center">
-          <div style="font-weight:700;font-size:15px;letter-spacing:.2px;color:#4F46E5">MindVault</div>
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+        ${headerBlock}
+        <tr><td style="padding:20px 32px 0;text-align:center">
+          <h1 style="margin:0;font-size:22px;line-height:1.3;color:#1f2937">You're invited to join<br/>${eTenant}'s MindVault</h1>
         </td></tr>
-        <tr><td style="padding:8px 32px 0;text-align:center">
-          ${logoBlock}
-          <h1 style="margin:8px 0 4px;font-size:20px;line-height:1.3">You've been invited to join<br/>${eTenant}'s MindVault</h1>
-          <p style="margin:8px 0 0;font-size:14px;color:#5b6472">
-            ${eInviter ? `${eInviter} invited you` : "You've been invited"} as <strong>${eRole}</strong>.
+        <tr><td style="padding:12px 40px 0;text-align:center">
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#5b6472">${inviterLine}</p>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#5b6472">MindVault is our centralized knowledge hub where you'll have access to important resources, documents, and tools.</p>
+        </td></tr>
+        <tr><td style="padding:24px 32px 0;text-align:center">
+          <a href="${eUrl}" style="display:inline-block;background:${brand};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 32px;border-radius:10px">Join MindVault &rarr;</a>
+        </td></tr>
+        <tr><td style="padding:28px 40px 0">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="33.33%" align="center" style="padding:0 6px;vertical-align:top">
+                <img src="${IMG_ICON_RESOURCES}" width="48" height="48" alt="" style="border:0;display:block;margin:0 auto" />
+                <p style="margin:10px 0 0;font-size:12px;line-height:1.4;color:#5b6472">Access key resources</p>
+              </td>
+              <td width="33.33%" align="center" style="padding:0 6px;vertical-align:top">
+                <img src="${IMG_ICON_TEAM}" width="48" height="48" alt="" style="border:0;display:block;margin:0 auto" />
+                <p style="margin:10px 0 0;font-size:12px;line-height:1.4;color:#5b6472">Collaborate with your team</p>
+              </td>
+              <td width="33.33%" align="center" style="padding:0 6px;vertical-align:top">
+                <img src="${IMG_ICON_SHIELD}" width="48" height="48" alt="" style="border:0;display:block;margin:0 auto" />
+                <p style="margin:10px 0 0;font-size:12px;line-height:1.4;color:#5b6472">Stay aligned and informed</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:28px 32px 0;text-align:center">
+          <p style="margin:0;font-size:13px;color:#5b6472">
+            <img src="${IMG_ICON_CALENDAR}" width="14" height="14" alt="" style="border:0;vertical-align:-2px" />&nbsp;This invitation expires on <strong>${eExpiry}</strong>.
           </p>
         </td></tr>
-        <tr><td style="padding:24px 32px;text-align:center">
-          <a href="${eUrl}" style="display:inline-block;background:${brand};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:10px">Join MindVault</a>
-        </td></tr>
-        <tr><td style="padding:0 32px 8px;text-align:center">
-          <p style="margin:0;font-size:12px;color:#8a93a2">This invitation expires on ${escapeHtml(expiry)}.</p>
-        </td></tr>
-        <tr><td style="padding:8px 32px 28px;text-align:center">
-          <p style="margin:0;font-size:12px;color:#8a93a2">If the button doesn't work, copy this link:<br/><span style="color:#5b6472;word-break:break-all">${eUrl}</span></p>
+        <tr><td style="padding:16px 32px 32px">
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;text-align:center">
+            <p style="margin:0 0 6px;font-size:12px;color:#8a93a2">If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="margin:0;font-size:12px;color:#5b6472;word-break:break-all">${eUrl}</p>
+          </div>
         </td></tr>
       </table>
-      <p style="margin:16px 0 0;font-size:11px;color:#a0a7b4">Powered by MindVault. If you weren't expecting this, you can ignore it.</p>
+      <p style="margin:16px 0 0;font-size:11px;color:#a0a7b4">Powered by MindVault.<br/>If you weren't expecting this, you can ignore this email.</p>
     </td></tr>
   </table>
 </body></html>`;
 
   const text = [
     `You've been invited to join ${tenantName}'s MindVault.`,
-    inviter ? `${inviter} invited you as ${roleLabel}.` : `You've been invited as ${roleLabel}.`,
+    inviter
+      ? `${inviter} invited you to join ${tenantName} as a ${roleLabel}.`
+      : `You've been invited to join ${tenantName} as a ${roleLabel}.`,
+    `MindVault is our centralized knowledge hub where you'll have access to important resources, documents, and tools.`,
     ``,
     `Join MindVault: ${acceptUrl}`,
     ``,
     `This invitation expires on ${expiry}.`,
-    `Powered by MindVault. If you weren't expecting this, you can ignore it.`,
+    `Powered by MindVault. If you weren't expecting this, you can ignore this email.`,
   ].join("\n");
 
   return { subject, html, text };
