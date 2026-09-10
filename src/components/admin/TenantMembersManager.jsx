@@ -168,8 +168,9 @@ export default function TenantMembersManager() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground/70">
-            They'll get an email invitation and join your team automatically when they sign in.
-            A Client Admin can manage the team and knowledge; a Client User can search and ask questions.
+            They'll get a MindVault invitation email with a link to join {'—'} they can sign in with
+            Google, Microsoft, or an email and password. A Client Admin can manage the team and
+            knowledge; a Client User can search and ask questions.
           </p>
         </CardContent>
       </Card>
