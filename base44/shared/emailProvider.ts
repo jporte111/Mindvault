@@ -189,7 +189,9 @@ export function renderInviteEmail(input: InviteEmailInput): RenderedEmail {
   const expiry = formatExpiry(input.expiresAt);
   const inviter = input.inviterName ? String(input.inviterName) : "";
 
-  const subject = `You're invited to join ${tenantName}'s MindVault`;
+  const subject = inviter
+    ? `${inviter} invited you to join ${tenantName}'s MindVault`
+    : `You're invited to join ${tenantName}'s MindVault`;
 
   const eTenant = escapeHtml(tenantName);
   const eRole = escapeHtml(roleLabel);
