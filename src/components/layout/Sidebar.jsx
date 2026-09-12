@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, Users, Workflow } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, Users, Workflow, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
@@ -16,6 +16,7 @@ const navItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Knowledge' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
+  { path: '/connect', icon: Bot, label: 'Connect AI' },
 ];
 
 // Super Admin (platform) navigation — the full environment is preserved.
