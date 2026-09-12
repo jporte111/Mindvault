@@ -50,9 +50,20 @@ export default function Connect() {
 
         <TabsContent value="chatgpt" className="space-y-3">
           <h2 className="font-sora font-semibold text-foreground">ChatGPT</h2>
+          <div className="p-3 rounded-lg bg-muted text-sm text-muted-foreground">
+            Custom MCP apps in ChatGPT require <strong>Developer Mode</strong>,
+            which is only offered on paid plans (Plus, Pro, Business,
+            Enterprise, or Edu) and only on the ChatGPT website — a free
+            account shows just the built-in app/plugin directory. On a
+            Business or Enterprise workspace, an admin can also turn Developer
+            Mode off org-wide; in that case ask your workspace admin. If
+            Developer Mode isn&apos;t available to you, use the Claude, Cursor,
+            or Custom tabs instead — they connect to the same MindVault server
+            with no plan requirements.
+          </div>
           <ol className="space-y-2 text-sm text-muted-foreground leading-relaxed list-decimal list-inside">
-            <li>Open ChatGPT and go to <strong>Apps</strong>.</li>
-            <li>Enable <strong>Developer mode</strong>. ChatGPT will warn that developer apps are intended for development and testing — only continue if you accept that.</li>
+            <li>Open ChatGPT (web) and go to <strong>Apps</strong>.</li>
+            <li>Enable <strong>Developer mode</strong> in Settings (under Connectors &rarr; Advanced, or Security and login). ChatGPT will warn that developer apps are intended for development and testing — only continue if you accept that.</li>
             <li>Click <strong>Create app</strong>, name it, paste the server URL above, and click <strong>Create</strong>.</li>
             <li>Enable the app from the chat composer (the + menu) before prompting it.</li>
             <li>Finish the connection using step 1 under &ldquo;One last step&rdquo; below.</li>
