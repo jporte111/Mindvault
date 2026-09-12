@@ -15,7 +15,12 @@ import AcceptInvite from './pages/AcceptInvite';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
-const PUBLIC_PATHS = ['/invite/accept', '/forgot-password', '/reset-password'];
+// MCP OAuth consent — the AI client lands here mid-authorization. The page
+// gates itself on the session (redirecting to login while preserving the
+// ctx handle), so it must stay outside the auth gate.
+import OAuthConsent from './pages/OAuthConsent';
+
+const PUBLIC_PATHS = ['/invite/accept', '/forgot-password', '/reset-password', '/oauth/consent'];
 const isPublicPath = (p) => PUBLIC_PATHS.some((x) => p === x || p.startsWith(`${x}/`));
 
 // Layout
@@ -49,6 +54,7 @@ const AuthenticatedApp = () => {
         <Route path="/invite/accept" element={<AcceptInvite />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/oauth/consent" element={<OAuthConsent />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     );

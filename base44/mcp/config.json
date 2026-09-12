@@ -1,0 +1,49 @@
+{
+  "auth": "oauth",
+  "tools": {
+    "functions": [
+      {
+        "name": "ask_knowledge_base",
+        "title": "Ask the knowledge base",
+        "description": "Answers an operational question from MindVault's governed internal knowledge base (SOPs, trainings, procedures, decision rules). Returns a grounded answer with cited sources and a confidence level. Omit clientId to search firm-wide (general) knowledge; pass a Client record id to also include that client's client-specific knowledge.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "description": "The question to answer. Required."
+            },
+            "clientId": {
+              "type": "string",
+              "description": "Optional Client record id. Pass to include that client's client-specific knowledge in scope; omit for firm-wide general knowledge only."
+            },
+            "conversation": {
+              "type": "array",
+              "description": "Optional prior conversation turns for context, newest last. Each item is an object with a 'role' ('user' or 'assistant') and a 'content' string.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "description": "Either 'user' or 'assistant'."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The message text."
+                  }
+                }
+              }
+            }
+          },
+          "required": ["question"]
+        },
+        "handler": "askKnowledgeBaseV2",
+        "annotations": {
+          "read_only_hint": true,
+          "destructive_hint": false,
+          "idempotent_hint": false
+        }
+      }
+    ]
+  }
+}
