@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Users, ShieldQuestion, Loader2, RefreshCw, Archive, ArchiveRestore } from 'lucide-react';
 import { toast } from 'sonner';
 import ClientSelect from '@/components/knowledge/ClientSelect';
+import DeleteClientButton from '@/components/admin/DeleteClientButton';
 import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   classifyTraining,
@@ -148,6 +149,13 @@ export default function KnowledgeScopeManager() {
                     {c.status === 'archived' ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
                     {c.status === 'archived' ? 'Restore' : 'Archive'}
                   </Button>
+                  <DeleteClientButton
+                    client={c}
+                    linkedCount={trainings.filter(
+                      (t) => t.knowledge_scope === 'client-specific' && t.client_id === c.id,
+                    ).length}
+                    onDeleted={invalidate}
+                  />
                 </div>
               ))}
             </div>
