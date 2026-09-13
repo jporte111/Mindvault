@@ -4,12 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { 
   RefreshCw, Trash2, CheckCircle2, AlertCircle, 
-  Clock, BookOpen, Settings, Cloud, Zap, Download, ExternalLink
+  Clock, BookOpen, Settings, Zap, Download, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -21,10 +19,9 @@ import ChatEngineToggle from '@/components/admin/ChatEngineToggle';
 import AnswerLogInspector from '@/components/admin/AnswerLogInspector';
 import KnowledgeGapManager from '@/components/admin/KnowledgeGapManager';
 import ClarificationQueue from '@/components/admin/ClarificationQueue';
-import ClientSelect from '@/components/knowledge/ClientSelect';
+import DriveSyncCard from '@/components/admin/DriveSyncCard';
 import SetupChecklist from '@/components/onboarding/SetupChecklist';
 import EmptyState from '@/components/common/EmptyState';
-import { SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
 
 const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
 const priorityColor = {
@@ -44,10 +41,6 @@ export default function Admin() {
   useHashScroll();
 
   const [activeTab, setActiveTab] = useState('content');
-  const [folderId, setFolderId] = useState('');
-  const [syncScope, setSyncScope] = useState(SCOPE_UNCLASSIFIED);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
   const [filterPriority, setFilterPriority] = useState('All');
   const [filterFacing, setFilterFacing] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
@@ -69,26 +62,6 @@ export default function Admin() {
     },
     onError: (err) => toast.error('Failed to delete: ' + err.message),
   });
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
-    const scopeArg = syncScope === SCOPE_GENERAL
-      ? { scope: 'general' }
-      : syncScope.startsWith('client:')
-        ? { clientId: syncScope.slice('client:'.length) }
-        : {};
-    const res = await base44.functions.invoke('syncFromDrive', { folderId: folderId.trim() || undefined, ...scopeArg });
-    setSyncResult(res.data);
-    setSyncing(false);
-    if (res.data.synced > 0) {
-      queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-      queryClient.invalidateQueries({ queryKey: ['trainings'] });
-      toast.success(`Synced ${res.data.synced} new knowledge source${res.data.synced === 1 ? '' : 's'}!`);
-    } else {
-      toast.info('No new knowledge sources found.');
-    }
-  };
 
   const statusConfig = {
     ready: { icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50 border-green-200', label: 'Ready' },
@@ -178,8 +151,10 @@ export default function Admin() {
               <Settings className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h1 className="font-sora text-2xl font-bold text-foreground">Admin Panel</h1>
-              <p className="text-muted-foreground text-sm">Manage your knowledge base content</p>
+              <h1 className="font-sora text-2xl font-bold text-foreground">Platform settings</h1>
+              <p className="text-muted-foreground text-sm">
+                Advanced platform controls — content management, engines, diagnostics, and feature flags
+              </p>
             </div>
           </div>
           {/* Tabs */}
@@ -376,62 +351,7 @@ export default function Admin() {
         <ClarificationQueue />
 
         {/* Sync Card */}
-        <Card className="border-border">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Cloud className="w-4 h-4 text-primary" />
-              Sync from Google Drive
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label className="text-sm text-muted-foreground mb-2 block">
-                Google Drive Folder ID (optional — leave blank to search all transcript files)
-              </Label>
-              <Input
-                value={folderId}
-                onChange={e => setFolderId(e.target.value)}
-                placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs"
-                className="font-mono text-sm bg-background"
-              />
-              <p className="text-xs text-muted-foreground/70 mt-1.5">
-                Find your folder ID in the Google Drive URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong>
-              </p>
-            </div>
-
-            <div>
-              <Label className="text-sm text-muted-foreground mb-2 block">
-                Knowledge scope for everything synced in this run
-              </Label>
-              <ClientSelect value={syncScope} onChange={setSyncScope} disabled={syncing} />
-              <p className="text-xs text-muted-foreground/70 mt-1.5">
-                "Needs review" (default) keeps synced trainings out of the chatbot until you classify them below.
-              </p>
-            </div>
-
-            <Button
-              onClick={handleSync}
-              disabled={syncing}
-              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync Now'}
-            </Button>
-
-            {syncResult && (
-              <div className={`p-4 rounded-xl border text-sm ${syncResult.error ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
-                {syncResult.error ? (
-                  <p>Error: {syncResult.error}</p>
-                ) : (
-                  <p>
-                    ✓ Synced <strong>{syncResult.synced}</strong> new knowledge source(s) ·
-                    Skipped <strong>{syncResult.skipped}</strong> already-imported
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <DriveSyncCard />
 
         {/* Knowledge source list */}
         <Card className="border-border">

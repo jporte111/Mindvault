@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, Users, Workflow, Bot } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Home, LogOut, Compass, MessageCircleQuestion, ShieldCheck, Users, Workflow, Bot, LayoutDashboard, Cable } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { base44 } from '@/api/base44Client';
 import AccountSettingsDialog from './AccountSettingsDialog';
@@ -11,27 +11,29 @@ import { useTenantBrand } from '@/hooks/useClientSetup';
 import TenantLogoMark from '../common/TenantLogoMark';
 import { OPEN_HELP_EVENT } from '@/components/onboarding/AdminHelpAssistant';
 
-// Shared primary navigation — simple for everyone.
-const navItems = [
+// Employee navigation — simple for everyone.
+const employeeItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Knowledge' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
   { path: '/connect', icon: Bot, label: 'Connect AI' },
 ];
 
-// Super Admin (platform) navigation — the full environment is preserved.
-const superAdminItems = [
-  { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
-  { path: '/admin', icon: Settings, label: 'Settings' },
-  { path: '/team', icon: Users, label: 'Team' },
+// Company administration — six clear areas for the company admin.
+const companyAdminItems = [
+  { path: '/overview', icon: LayoutDashboard, label: 'Overview' },
+  { path: '/knowledge', icon: BookOpen, label: 'Knowledge' },
+  { path: '/processes', icon: Workflow, label: 'Processes' },
+  { path: '/assistant', icon: Bot, label: 'Assistant' },
+  { path: '/company', icon: Users, label: 'Company & Team' },
+  { path: '/connections', icon: Cable, label: 'Connections' },
 ];
 const continuityItem = { path: '/continuity', icon: ShieldCheck, label: 'Operational Continuity' };
 
-// Client Admin navigation — the simplified, customer-facing experience.
-const clientAdminItems = [
-  ...navItems,
-  { path: '/processes', icon: Workflow, label: 'Processes' },
-  { path: '/team', icon: Users, label: 'Team' },
+// Platform administration — separate from company administration.
+const platformItems = [
+  { path: '/roadmap', icon: Compass, label: 'Strategy Engine' },
+  { path: '/admin', icon: Settings, label: 'Platform settings' },
 ];
 
 const linkClass = (active) => cn(
@@ -57,6 +59,17 @@ export default function Sidebar({ user, onOpenHelp }) {
       {label}
     </Link>
   );
+
+  const renderSection = (title, items) => (
+    <>
+      <div className="pt-4 pb-2 px-3">
+        <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">{title}</p>
+      </div>
+      {items.map(renderItem)}
+    </>
+  );
+
+  const companySection = knowledgeHealthEnabled ? [...companyAdminItems, continuityItem] : companyAdminItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar hidden md:flex flex-col z-50 border-r border-sidebar-border">
@@ -86,18 +99,16 @@ export default function Sidebar({ user, onOpenHelp }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {isSuperAdmin ? (
           <>
-            {navItems.map(renderItem)}
-            <div className="pt-4 pb-2 px-3">
-              <p className="text-sidebar-foreground/30 text-xs font-semibold uppercase tracking-widest">Administration</p>
-            </div>
-            {(knowledgeHealthEnabled ? [continuityItem, ...superAdminItems] : superAdminItems).map(renderItem)}
+            {employeeItems.map(renderItem)}
+            {renderSection('Company administration', companySection)}
+            {renderSection('Platform administration', platformItems)}
           </>
         ) : isClientAdmin ? (
           <>
-            {clientAdminItems.map(renderItem)}
+            {companySection.map(renderItem)}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent(OPEN_HELP_EVENT))}
@@ -108,7 +119,7 @@ export default function Sidebar({ user, onOpenHelp }) {
             </button>
           </>
         ) : (
-          navItems.map(renderItem)
+          employeeItems.map(renderItem)
         )}
       </nav>
 
@@ -123,7 +134,7 @@ export default function Sidebar({ user, onOpenHelp }) {
           <div className="flex-1 min-w-0">
             <p className="text-sidebar-foreground text-xs font-medium truncate">{user?.full_name || 'User'}</p>
             <p className="text-sidebar-foreground/40 text-xs truncate">
-              {isSuperAdmin ? 'Platform admin' : isClientAdmin ? 'Client Admin' : 'Client User'}
+              {isSuperAdmin ? 'Platform admin' : isClientAdmin ? 'Company admin' : 'Member'}
             </p>
           </div>
           <div className="flex items-center gap-1">

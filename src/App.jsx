@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -35,13 +35,19 @@ import Continuity from './pages/Continuity';
 import Admin from './pages/Admin';
 import TrainingDetail from './pages/TrainingDetail';
 import Roadmap from './pages/Roadmap';
-import TeamMembers from './pages/TeamMembers';
-import GettingStarted from './pages/GettingStarted';
-import Manage from './pages/Manage';
+
 import Processes from './pages/Processes';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Connect from './pages/Connect';
+
+// Consolidated company-admin areas. Old admin URLs (/manage, /team, /setup)
+// redirect to these so existing links and invitations keep working.
+import Overview from './pages/Overview';
+import Company from './pages/Company';
+import KnowledgeAdmin from './pages/KnowledgeAdmin';
+import AssistantSettings from './pages/AssistantSettings';
+import Connections from './pages/Connections';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -89,13 +95,19 @@ const AuthenticatedApp = () => {
         <Route path="/admin" element={<Admin />} />
         <Route path="/training/:id" element={<TrainingDetail />} />
         <Route path="/roadmap" element={<Roadmap />} />
-        <Route path="/team" element={<TeamMembers />} />
-        <Route path="/setup" element={<GettingStarted />} />
-        <Route path="/manage" element={<Manage />} />
         <Route path="/processes" element={<Processes />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/connect" element={<Connect />} />
+        <Route path="/overview" element={<Overview />} />
+        <Route path="/company" element={<Company />} />
+        <Route path="/knowledge" element={<KnowledgeAdmin />} />
+        <Route path="/assistant" element={<AssistantSettings />} />
+        <Route path="/connections" element={<Connections />} />
+        {/* Compatibility redirects from the previous admin navigation */}
+        <Route path="/manage" element={<Navigate to="/knowledge" replace />} />
+        <Route path="/team" element={<Navigate to="/company" replace />} />
+        <Route path="/setup" element={<Navigate to="/overview" replace />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

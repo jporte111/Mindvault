@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, MessageCircleQuestion, Users, Workflow } from 'lucide-react';
+import { Home, BookOpen, MessageSquare, ChevronLeft, Settings, Compass, MessageCircleQuestion, Users, Workflow, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import NotificationBell from '../notifications/NotificationBell';
@@ -9,11 +9,14 @@ import { useTenantRole } from '@/hooks/useTenantRole';
 function titleFor(pathname) {
   if (pathname.startsWith('/training/')) return 'Knowledge';
   if (pathname === '/roadmap') return 'Strategy Engine';
-  if (pathname === '/admin') return 'Settings';
-  if (pathname === '/team') return 'Team';
+  if (pathname === '/admin') return 'Platform settings';
+  if (pathname === '/overview') return 'Overview';
+  if (pathname === '/company') return 'Company & Team';
+  if (pathname === '/knowledge') return 'Knowledge';
+  if (pathname === '/assistant') return 'Assistant';
+  if (pathname === '/connections') return 'Connections';
   if (pathname === '/processes') return 'Processes';
-  if (pathname === '/setup') return 'Set up MindVault';
-  if (pathname === '/manage') return 'Add knowledge';
+  if (pathname === '/continuity') return 'Operational Continuity';
   return 'MindVault';
 }
 
@@ -27,12 +30,14 @@ export default function MobileNav({ user, onOpenHelp }) {
     { path: '/library', icon: BookOpen, label: 'Knowledge' },
     { path: '/chat', icon: MessageSquare, label: 'Chat' },
     ...(user?.role === 'admin' ? [
+      { path: '/overview', icon: LayoutDashboard, label: 'Overview' },
       { path: '/roadmap', icon: Compass, label: 'Strategy' },
       { path: '/admin', icon: Settings, label: 'Settings' },
-      { path: '/team', icon: Users, label: 'Team' },
     ] : isClientAdmin ? [
+      { path: '/overview', icon: LayoutDashboard, label: 'Overview' },
+      { path: '/knowledge', icon: BookOpen, label: 'Manage' },
       { path: '/processes', icon: Workflow, label: 'Processes' },
-      { path: '/team', icon: Users, label: 'Team' },
+      { path: '/company', icon: Users, label: 'Team' },
     ] : []),
   ];
 

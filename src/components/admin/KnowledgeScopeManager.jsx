@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, ShieldQuestion, Loader2, RefreshCw, Archive, ArchiveRestore } from 'lucide-react';
+import { ShieldQuestion, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import ClientSelect from '@/components/knowledge/ClientSelect';
-import DeleteClientButton from '@/components/admin/DeleteClientButton';
+import ClientsCard from '@/components/admin/ClientsCard';
 import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import {
   classifyTraining,
@@ -30,9 +29,6 @@ function scopeLabel(training, clients) {
 }
 
 export default function KnowledgeScopeManager() {
-  const queryClient = useQueryClient();
-  const [newClient, setNewClient] = useState('');
-  const [addingClient, setAddingClient] = useState(false);
   const [rowScope, setRowScope] = useState({}); // trainingId -> scope value
   const [busyRow, setBusyRow] = useState(null);
 
@@ -45,45 +41,11 @@ export default function KnowledgeScopeManager() {
     queryFn: () => base44.entities.Training.list('-created_date'),
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-    queryClient.invalidateQueries({ queryKey: ['trainings'] });
-    queryClient.invalidateQueries({ queryKey: ['clients'] });
-  };
-
-  const addClient = async () => {
-    const name = newClient.trim();
-    if (!name) return;
-    setAddingClient(true);
-    try {
-      await base44.entities.Client.create({ name, status: 'active' });
-      setNewClient('');
-      invalidate();
-      toast.success(`Client "${name}" added`);
-    } catch (err) {
-      toast.error('Failed to add client: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setAddingClient(false);
-    }
-  };
-
-  const toggleArchive = async (client) => {
-    try {
-      await base44.entities.Client.update(client.id, {
-        status: client.status === 'archived' ? 'active' : 'archived',
-      });
-      invalidate();
-    } catch (err) {
-      toast.error('Failed to update client: ' + (err?.message || 'Unknown error'));
-    }
-  };
-
   const saveScope = async (training) => {
     const value = rowScope[training.id] ?? scopeValueOf(training);
     setBusyRow(training.id);
     try {
       const { index } = await classifyTraining(training.id, value, clients);
-      invalidate();
       if (!isClassified(value)) {
         toast.success(`"${training.title}" set to Needs review (removed from chat)`);
       } else if (index?.ok) {
@@ -115,53 +77,7 @@ export default function KnowledgeScopeManager() {
   return (
     <>
       {/* Clients */}
-      <Card className="border-border">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Users className="w-4 h-4 text-primary" />
-            Clients
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Client-specific knowledge is only ever retrieved in that client's chat context.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              value={newClient}
-              onChange={(e) => setNewClient(e.target.value)}
-              placeholder="New client name"
-              className="flex-1 bg-background"
-              onKeyDown={(e) => { if (e.key === 'Enter' && !addingClient) addClient(); }}
-            />
-            <Button onClick={addClient} disabled={addingClient || !newClient.trim()} className="bg-primary hover:bg-primary/90 gap-2">
-              {addingClient ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-              Add
-            </Button>
-          </div>
-          {clients.length > 0 && (
-            <div className="divide-y divide-border border border-border rounded-xl">
-              {clients.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="flex-1 text-sm text-foreground truncate">{c.name}</span>
-                  {c.status === 'archived' && <Badge variant="outline" className="text-xs text-muted-foreground">Archived</Badge>}
-                  <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground" onClick={() => toggleArchive(c)}>
-                    {c.status === 'archived' ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-                    {c.status === 'archived' ? 'Restore' : 'Archive'}
-                  </Button>
-                  <DeleteClientButton
-                    client={c}
-                    linkedCount={trainings.filter(
-                      (t) => t.knowledge_scope === 'client-specific' && t.client_id === c.id,
-                    ).length}
-                    onDeleted={invalidate}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ClientsCard />
 
       {/* Needs review */}
       <Card className="border-border">

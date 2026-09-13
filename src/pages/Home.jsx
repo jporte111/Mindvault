@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import PullToRefresh from '@/components/layout/PullToRefresh';
 import { useTenantRole } from '@/hooks/useTenantRole';
-import ClientHome from '@/components/home/ClientHome';
+import AdminOverview from '@/components/admin/AdminOverview';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
@@ -31,7 +31,7 @@ export default function Home() {
       </div>
     );
   }
-  if (isClientAdmin) return <ClientHome />;
+  if (isClientAdmin) return <AdminOverview />;
 
   return (
     <div className="min-h-screen bg-background">
