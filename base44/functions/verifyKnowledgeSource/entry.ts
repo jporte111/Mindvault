@@ -95,8 +95,13 @@ Deno.serve(async (req) => {
 
     let draftId: string;
     if (draft) {
+      // Forks normalize empty lists to [] where the original had none — treat
+      // those as identical. Anything else differing means a human edited the
+      // draft, and we must not verify content that differs from the screen.
+      const norm = (v: unknown) =>
+        Array.isArray(v) ? (v.length ? JSON.stringify(v) : 'null') : JSON.stringify(v ?? null);
       const contentDiffers = (MINDVAULT_CONTENT_FIELDS as readonly string[]).some(
-        (f) => JSON.stringify(draft[f] ?? null) !== JSON.stringify(training[f] ?? null),
+        (f) => norm(draft[f]) !== norm(training[f]),
       );
       if (contentDiffers) {
         return Response.json(

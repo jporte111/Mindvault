@@ -1011,6 +1011,42 @@ export function createLifecycleEngine(deps: EngineDeps) {
           // verify / stale-clear. cleanup during recovery acts on
           // op.priorActiveVersionId (the OLD version), never op.targetVersionId.
           if (op.action === "activate" || op.action === "supersede") {
+            // An abandoned cutover record must NEVER undo a completed
+            // publication. Two safety checks before recoverActivation:
+            //   1. Neither the recorded prior nor the target is active anymore
+            //      -> a later activation already moved the lineage on; the
+            //      record is moot. Close it without touching the lineage.
+            //   2. The target is ALREADY active while the failure stage says
+            //      the flip never happened -> the cutover completed (stage
+            //      recording lagged or a later op finished it). Drive forward,
+            //      never roll back.
+            const priorNow = op.priorActiveVersionId ? await db.getVersion(op.priorActiveVersionId) : null;
+            const targetNow = await db.getVersion(op.targetVersionId);
+            if (!priorNow?.isActiveVersion && !targetNow?.isActiveVersion) {
+              await db.appendAudit({
+                code: "LIFECYCLE_RECONCILED",
+                lineageId: op.lineageId,
+                versionId: op.targetVersionId,
+                actorType: "system",
+                actorId: null,
+                summary: `closed abandoned ${op.action} record ${op.operationId} — lineage already moved on`,
+                at: clock.now(),
+              });
+              op.status = "completed";
+              op.completedAt = clock.now();
+              await db.putOperation(op);
+              handled++;
+              continue;
+            }
+            if (
+              (op.failureStage === "cutover_stalemark" || op.failureStage === "cutover_flip") &&
+              targetNow?.isActiveVersion
+            ) {
+              const rf = await completeActivationForward(op);
+              handled += rf.handled;
+              manual += rf.manual;
+              continue;
+            }
             const r = await recoverActivation(op);
             handled += r.handled;
             manual += r.manual;
@@ -1024,6 +1060,33 @@ export function createLifecycleEngine(deps: EngineDeps) {
           const kind = compensationKind(op.action, op.failureStage);
           const target = await db.getVersion(op.targetVersionId);
           if (kind === "resume" && target) {
+            // Already repaired by a later run or a fresh operation? When the
+            // target is verifiably healthy (indexed for its version, unit set
+            // complete, projection-clean, nothing held stale), close the
+            // record WITHOUT a rebuild — a rebuild would briefly stale-mark
+            // live units for no reason.
+            const targetHealthy =
+              target.indexState === "indexed" &&
+              target.indexedVersionNumber === target.versionNumber &&
+              (await worker.unitSetComplete(target)) &&
+              (await worker.projectionMismatches(target)).length === 0 &&
+              (await worker.verifyStaleCleared(target.id));
+            if (targetHealthy) {
+              await db.appendAudit({
+                code: "LIFECYCLE_RECONCILED",
+                lineageId: op.lineageId,
+                versionId: target.id,
+                actorType: "system",
+                actorId: null,
+                summary: `closed abandoned ${op.action} record ${op.operationId} — target already healthy`,
+                at: clock.now(),
+              });
+              op.status = "completed";
+              op.completedAt = clock.now();
+              await db.putOperation(op);
+              handled++;
+              continue;
+            }
             await worker.markStale([target.id]);
             if (op.failureStage === "restamp" || op.failureStage === "restamp_stale_clear") {
               await worker.restamp(target);
