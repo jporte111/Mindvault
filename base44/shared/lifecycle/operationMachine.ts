@@ -58,5 +58,9 @@ export function compensationKind(
     return "rollback_activation";
   }
   if (stage === "apply") return "resume"; // nothing was written yet; safe to retry from the top
+  // A build that died before recording any stage (connection dropped
+  // mid-request) has the same deterministic recovery as a recorded 'index'
+  // failure: stale-mark + rebuild + verify + clear.
+  if (action === "build_draft_index") return "resume";
   return "manual";
 }
