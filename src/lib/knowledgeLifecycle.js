@@ -68,6 +68,12 @@ export function runReconcile() {
   return unwrap(base44.functions.invoke('reconcileSourceLifecycle', {}));
 }
 
+// One-click verification: forks an identical draft, prepares it, verifies it,
+// and publishes it — the same steps the Knowledge Lifecycle panel runs by hand.
+export function verifyKnowledgeSource(trainingId) {
+  return unwrap(base44.functions.invoke('verifyKnowledgeSource', { trainingId }));
+}
+
 async function unwrap(p) {
   const r = await p;
   return r?.data ?? r;

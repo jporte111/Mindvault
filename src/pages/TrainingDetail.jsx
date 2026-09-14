@@ -9,6 +9,7 @@ import { ArrowLeft, Play, User, Clock, FileText, Sparkles, Loader2 } from 'lucid
 import TrainingDetailSections from '@/components/training/TrainingDetailSections';
 import CopyAIContext from '@/components/training/CopyAIContext';
 import ExportSOPButton from '@/components/training/ExportButtons';
+import VerifySourceButton from '@/components/training/VerifySourceButton';
 import InlineText from '@/components/edit/InlineText';
 import ProcessSelect from '@/components/knowledge/ProcessSelect';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
@@ -235,6 +236,7 @@ export default function TrainingDetail() {
                   {reanalyzing ? 'Analyzing...' : training.summary ? 'Re-analyze with AI' : 'Analyze with AI'}
                 </Button>
               )}
+              <VerifySourceButton training={training} />
               <CopyAIContext training={training} />
               <ExportSOPButton training={training} />
               {training.video_url && (
