@@ -1,13 +1,41 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { redact } from '../../shared/redact.ts';
-import { buildMindvaultLifecycle } from '../../shared/mindvaultLifecycle.ts';
+import { buildMindvaultLifecycle, MINDVAULT_CONTENT_FIELDS } from '../../shared/mindvaultLifecycle.ts';
 
-// One-click verification of a published knowledge source. Composes the SAME
-// governed engine primitives a human would run by hand in the Knowledge
-// Lifecycle panel, in order: fork an identical draft of the active version,
-// pre-index it, verify it, publish it. Content is never edited — the draft is
-// a clone of exactly what the admin saw on screen, so "verified" means a human
-// confirmed that content. Every step is audited by the lifecycle engine.
+// One-click verification of a published knowledge source. Runs the SAME
+// governed engine steps a human would run in the Knowledge Lifecycle panel:
+// fork an identical draft, pre-index it, verify it, publish it. Content is
+// never edited — "verified" always means a human confirmed what is on screen.
+//
+// RESUMABLE: index preparation can take a minute, and a request cut off
+// mid-run leaves an identical draft behind. A later click picks up where the
+// interrupted attempt stopped instead of failing with a conflict — but only
+// ever adopts a draft whose content is IDENTICAL to the published version.
+
+const OPEN_DRAFT_STATES = ['draft', 'in_review', 'changes_requested', 'verified'];
+
+const RETRY_HINTS: Record<string, string> = {
+  operation_in_flight:
+    'A previous attempt on this source is still wrapping up. Wait a couple of minutes and click "Verify this source" again.',
+  stale_state: 'The source was updated while verifying. Click "Verify this source" again.',
+  pre_index_required: 'The source is still being prepared. Click "Verify this source" again to finish.',
+  open_draft_exists:
+    'This source has an unpublished draft with different content. Review it on the Knowledge page first.',
+};
+
+function stepFail(step: string, r: any): Response {
+  const error = r?.error || 'failed';
+  return Response.json(
+    {
+      ok: false,
+      step,
+      error,
+      draftId: r?.draftId ?? null,
+      message: RETRY_HINTS[error] || r?.reason || error,
+    },
+    { status: 422 },
+  );
+}
 
 async function lifecycleEnabled(base44: any): Promise<boolean> {
   const rows = await base44.asServiceRole.entities.AppConfig.filter({ key: 'system' }).catch(() => []);
@@ -52,53 +80,62 @@ Deno.serve(async (req) => {
     const { engine } = buildMindvaultLifecycle(base44, { redact });
     const actor = { id: user.id, role: user.role };
 
-    // 1. Fork a byte-identical draft (the engine refuses if an open draft exists).
-    const cv = await engine.createVersion(actor, trainingId, (draft) => draft, 'other');
-    if (!cv.ok) {
-      const status = cv.error === 'open_draft_exists' ? 409 : cv.error === 'forbidden' ? 403 : 422;
-      const message = cv.error === 'open_draft_exists'
-        ? 'This source has an unpublished draft with different content. Review and publish that draft from the Knowledge page first.'
-        : cv.reason || cv.error;
-      return Response.json({ ok: false, error: cv.error, draftId: cv.draftId, message }, { status });
-    }
+    // Pick up an identical draft left by an interrupted attempt, or fork one.
+    const lineageId = training.root_source_id || training.id;
+    const siblings = await T.filter({ root_source_id: lineageId }).catch(() => []);
+    const activeVersionNumber = typeof training.version_number === 'number' ? training.version_number : 1;
+    const draft = (siblings || [])
+      .filter(
+        (s: any) =>
+          s.is_active_version === false &&
+          (typeof s.version_number === 'number' ? s.version_number : 1) > activeVersionNumber &&
+          OPEN_DRAFT_STATES.includes(s.lifecycle_state),
+      )
+      .sort((a: any, b: any) => (b.version_number ?? 0) - (a.version_number ?? 0))[0] || null;
 
-    // 2. Pre-index the draft (heavy generation; the served version is untouched).
-    const bi = await engine.buildDraftIndex(actor, cv.draftId!, 'other');
-    if (!bi.ok) {
-      return Response.json(
-        {
-          ok: false,
-          error: bi.error || 'pre_index_failed',
-          draftId: cv.draftId,
-          message: 'Preparing the source for verification failed — it will show as "Needs attention" on the Knowledge page, where you can retry.',
-        },
-        { status: 422 },
+    let draftId: string;
+    if (draft) {
+      const contentDiffers = (MINDVAULT_CONTENT_FIELDS as readonly string[]).some(
+        (f) => JSON.stringify(draft[f] ?? null) !== JSON.stringify(training[f] ?? null),
       );
+      if (contentDiffers) {
+        return Response.json(
+          { ok: false, error: 'draft_has_changes', message: RETRY_HINTS.open_draft_exists },
+          { status: 409 },
+        );
+      }
+      draftId = draft.id;
+    } else {
+      const cv = await engine.createVersion(actor, trainingId, (d) => d, 'other');
+      if (!cv.ok) return stepFail('create_version', cv);
+      draftId = cv.draftId!;
     }
 
-    // 3. Verify + publish the draft.
-    const v = await engine.verify(actor, cv.draftId!);
-    if (!v.ok) {
-      return Response.json({ ok: false, error: v.error, draftId: cv.draftId, message: v.reason || 'Verification failed.' }, { status: 422 });
+    // Prepare the draft's index — skipped when an earlier attempt finished it.
+    let draftRow = draft || (await T.get(draftId).catch(() => null));
+    if (!draftRow) {
+      return Response.json({ ok: false, error: 'draft_not_found' }, { status: 422 });
+    }
+    const needsBuild =
+      draftRow.index_status !== 'indexed' ||
+      (draftRow.indexed_version_number ?? null) !== (draftRow.version_number ?? null);
+    if (needsBuild) {
+      const bi = await engine.buildDraftIndex(actor, draftId, 'other');
+      if (!bi.ok) return stepFail('prepare', bi);
     }
 
-    const a = await engine.activate(actor, cv.draftId!, {});
-    if (!a.ok) {
-      return Response.json(
-        {
-          ok: false,
-          error: a.error,
-          draftId: cv.draftId,
-          message: 'Verified, but publishing failed — finish it from the Knowledge page (Publish on the draft).',
-        },
-        { status: 422 },
-      );
+    // Verify + publish.
+    if ((draftRow.verification_status || 'unverified') !== 'verified') {
+      const v = await engine.verify(actor, draftId);
+      if (!v.ok) return stepFail('verify', v);
     }
+
+    const a = await engine.activate(actor, draftId, {});
+    if (!a.ok) return stepFail('publish', a);
 
     return Response.json({
       ok: true,
       displayState: a.displayState,
-      draftId: cv.draftId,
       ...(a.verifiedSourceIds ? { verifiedSourceIds: a.verifiedSourceIds } : {}),
     });
   } catch (error) {

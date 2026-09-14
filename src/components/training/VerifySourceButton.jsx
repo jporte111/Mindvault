@@ -35,7 +35,8 @@ export default function VerifySourceButton({ training }) {
         toast.error(r?.message || r?.error || 'Verification failed.');
       }
     } catch (err) {
-      toast.error('Verification failed: ' + (err?.message || 'Unknown error'));
+      const data = err?.response?.data;
+      toast.error('Verification failed: ' + (data?.message || data?.error || err?.message || 'Unknown error'));
     } finally {
       setVerifying(false);
       queryClient.invalidateQueries({ queryKey: ['training', training.id] });
