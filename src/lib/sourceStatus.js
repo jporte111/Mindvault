@@ -15,6 +15,18 @@ export const SOURCE_STATUSES = {
 export const SOURCE_STATUS_ORDER = ['attention', 'review', 'processing', 'available', 'superseded', 'archived'];
 
 /**
+ * True only for the current, non-archived version of a knowledge source —
+ * the record a user or analysis should actually see. Retired historical
+ * versions (is_active_version === false) and archived sources stay reachable
+ * from the source detail page's version history, but never appear in the
+ * Library or feed content analyses.
+ */
+export function isCurrentLiveVersion(s) {
+  if (!s) return false;
+  return !s.is_archived && s.is_active_version !== false;
+}
+
+/**
  * Derive one business status for a knowledge source.
  * Returns { key, label, tone, reason, next, canSetAvailability, canRetryIndex, detailHref }
  */

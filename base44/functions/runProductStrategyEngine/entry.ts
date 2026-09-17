@@ -48,7 +48,22 @@ We are NOT trying to copy broad platforms like Ramp. Ramp focuses heavily on spe
 
 async function getReadyTrainings(base44) {
   const trainings = await base44.asServiceRole.entities.Training.list('-created_date', 200);
-  return trainings.filter(t => t.status === 'ready' || t.summary);
+  // Only the CURRENT version of each distinct source. Retired historical
+  // versions (is_active_version === false) and archived sources are excluded
+  // so pattern frequency and confidence reflect the true source count.
+  const live = trainings.filter(t =>
+    (t.status === 'ready' || t.summary) &&
+    t.is_active_version !== false &&
+    !t.is_archived
+  );
+  // Safety net: keep only one record per logical source (list is newest-first),
+  // so a data anomaly can never analyze the same SOP twice.
+  const byRoot = new Map();
+  for (const t of live) {
+    const key = t.root_source_id || t.id;
+    if (!byRoot.has(key)) byRoot.set(key, t);
+  }
+  return [...byRoot.values()];
 }
 
 async function callLLM(base44, prompt) {

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import TrainingCard from '@/components/knowledge/TrainingCard';
 import EmptyState from '@/components/common/EmptyState';
+import { isCurrentLiveVersion } from '@/lib/sourceStatus';
 import { Input } from '@/components/ui/input';
 import { BookOpen, Search, ChevronDown, Download, Upload } from 'lucide-react';
 import SubmitRecordingModal from '@/components/knowledge/SubmitRecordingModal';
@@ -59,9 +60,13 @@ export default function Library() {
     queryFn: () => base44.entities.Training.list('-created_date'),
   });
 
-  const allSoftware = [...new Set(trainings.flatMap(t => t.software_systems || []))].sort();
+  // Only the current version of each source — retired historical versions and
+  // archived sources stay reachable from a source's detail page, not here.
+  const currentTrainings = trainings.filter(isCurrentLiveVersion);
 
-  const filtered = trainings.filter(t => {
+  const allSoftware = [...new Set(currentTrainings.flatMap(t => t.software_systems || []))].sort();
+
+  const filtered = currentTrainings.filter(t => {
     const q = search.toLowerCase();
     const matchesSearch = !search ||
       t.title?.toLowerCase().includes(q) ||
@@ -103,7 +108,7 @@ export default function Library() {
             </div>
             <div className="flex items-center justify-between ml-11">
               <p className="text-muted-foreground text-sm">
-                {trainings.length} knowledge source{trainings.length !== 1 ? 's' : ''}
+                {currentTrainings.length} knowledge source{currentTrainings.length !== 1 ? 's' : ''}
               </p>
               <div className="flex gap-2">
                 <Button data-tour="add-knowledge" size="sm" className="gap-2 text-xs bg-primary hover:bg-primary/90" onClick={() => setShowUploadModal(true)}>
