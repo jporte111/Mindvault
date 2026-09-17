@@ -12,6 +12,9 @@ import ExportSOPButton from '@/components/training/ExportButtons';
 import VerifySourceButton from '@/components/training/VerifySourceButton';
 import InlineText from '@/components/edit/InlineText';
 import ProcessSelect from '@/components/knowledge/ProcessSelect';
+import SourceTypeSelect from '@/components/training/SourceTypeSelect';
+import ProcessOwnerSelect from '@/components/training/ProcessOwnerSelect';
+import { SOURCE_TYPE_OPTIONS } from '@/lib/knowledgeSource';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { Workflow } from 'lucide-react';
 import { toast } from 'sonner';
@@ -185,6 +188,16 @@ export default function TrainingDetail() {
                     Processing
                   </Badge>
                 )}
+                {isAdmin ? (
+                  <SourceTypeSelect
+                    value={training.source_type || ''}
+                    onChange={(v) => handleUpdate('source_type', v)}
+                  />
+                ) : training.source_type ? (
+                  <Badge variant="outline" className="text-xs">
+                    {SOURCE_TYPE_OPTIONS.find((o) => o.value === training.source_type)?.label || training.source_type}
+                  </Badge>
+                ) : null}
               </div>
               <h1 className="font-sora text-2xl md:text-3xl font-bold text-foreground leading-tight">
                 <InlineText value={training.title} onSave={(v) => handleUpdate('title', v)} isAdmin={isAdmin} className="font-sora text-2xl md:text-3xl font-bold text-foreground leading-tight" />
@@ -207,13 +220,20 @@ export default function TrainingDetail() {
                 <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
                   <Workflow className="w-4 h-4 flex-shrink-0" />
                   {isAdmin ? (
-                    <div className="w-72 max-w-full">
-                      <ProcessSelect
-                        source={{ knowledge_scope: training.knowledge_scope, client_id: training.client_id }}
-                        value={training.operational_process_id || ''}
-                        onChange={(v) => handleUpdate('operational_process_id', v || null)}
-                        className="h-9"
-                      />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-72 max-w-full">
+                        <ProcessSelect
+                          source={{ knowledge_scope: training.knowledge_scope, client_id: training.client_id }}
+                          value={training.operational_process_id || ''}
+                          onChange={(v) => handleUpdate('operational_process_id', v || null)}
+                          className="h-9"
+                        />
+                      </div>
+                      {training.operational_process_id && processes.find((p) => p.id === training.operational_process_id) && (
+                        <ProcessOwnerSelect
+                          process={processes.find((p) => p.id === training.operational_process_id)}
+                        />
+                      )}
                     </div>
                   ) : (
                     <span>

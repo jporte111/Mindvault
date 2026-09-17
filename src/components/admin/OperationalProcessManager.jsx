@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Workflow, Loader2, Archive, ArchiveRestore, Pencil, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
+import { useAssignableUsers } from '@/hooks/useAssignableUsers';
 import ConceptHelp from '@/components/onboarding/ConceptHelp';
 import { recordAppAction, recordAppError, clearRecentAppError } from '@/lib/supportContext';
 
@@ -184,27 +185,9 @@ export default function OperationalProcessManager() {
   });
   const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
 
-  // People options for owner / SME / backup SME. Platform admins can list app
-  // users directly; Client Admins cannot, so their options come from their
-  // own tenant's member list (already verified server-side).
-  const { data: platformUsers = null } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => base44.entities.User.list().catch(() => []),
-    enabled: isSuperAdmin,
-  });
-  const { data: tenantMembers = null } = useQuery({
-    queryKey: ['tenant-members'],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('manageTenantMembers', { action: 'list' });
-      return res?.data?.members ?? [];
-    },
-    enabled: !isSuperAdmin,
-  });
-  const users = isSuperAdmin
-    ? platformUsers ?? []
-    : (tenantMembers ?? [])
-        .filter((m) => m.user_id && m.status === 'active')
-        .map((m) => ({ id: m.user_id, full_name: m.display_name || m.email }));
+  // People options for owner / SME / backup SME (shared with the source-page
+  // owner picker — src/hooks/useAssignableUsers.js).
+  const users = useAssignableUsers(isSuperAdmin);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['operational-processes'] });
 
