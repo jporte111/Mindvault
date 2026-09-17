@@ -295,6 +295,11 @@ ${decisionRuleNames.length ? decisionRuleNames.join('\n') : 'None identified yet
       let recommendationRecord = null;
       let additionalTopicsNeeded = '';
       if (recData) {
+        // The LLM sometimes returns a list (or null) here — the entity requires
+        // a string, so normalize before writing.
+        let topicsNeeded = recData.additional_training_topics_needed;
+        if (Array.isArray(topicsNeeded)) topicsNeeded = topicsNeeded.join('; ');
+        else if (typeof topicsNeeded !== 'string') topicsNeeded = '';
         recommendationRecord = {
           product_name_idea: recData.product_name_idea,
           positioning_statement: recData.positioning_statement,
@@ -308,14 +313,14 @@ ${decisionRuleNames.length ? decisionRuleNames.join('\n') : 'None identified yet
           future_version_roadmap: recData.future_version_roadmap,
           risks_or_weaknesses: recData.risks_or_weaknesses,
           data_needed_to_improve_confidence: recData.data_needed_to_improve_confidence,
-          additional_training_topics_needed: recData.additional_training_topics_needed,
+          additional_training_topics_needed: topicsNeeded,
           confidence_level: confidenceLevel,
           confidence_reason: confidenceReason,
           related_product_clusters: recData.related_product_clusters || [],
           related_training_ids: mapIndicesToIds(recData.related_training_indices),
           last_updated_date: now,
         };
-        additionalTopicsNeeded = recData.additional_training_topics_needed || '';
+        additionalTopicsNeeded = topicsNeeded;
       }
 
       await base44.asServiceRole.entities.ProductRecommendation.deleteMany({});
