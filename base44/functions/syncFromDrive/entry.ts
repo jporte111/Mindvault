@@ -10,7 +10,22 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { folderId, clientId, scope, sourceType: sourceTypeArg } = body;
+    const { folderId: folderIdArg, clientId, scope, sourceType: sourceTypeArg } = body;
+
+    // Accept either a bare folder ID or a full Drive folder URL — extract the
+    // ID so a pasted link can't corrupt the Drive query.
+    let folderId: string | undefined;
+    if (typeof folderIdArg === 'string' && folderIdArg.trim()) {
+      const raw = folderIdArg.trim();
+      const match = raw.match(/folders\/([a-zA-Z0-9_-]+)/) || raw.match(/^([a-zA-Z0-9_-]+)$/);
+      if (!match) {
+        return Response.json(
+          { error: "That doesn't look like a Google Drive folder. Paste the folder link, or just the ID that comes after 'folders/' in the URL." },
+          { status: 400 },
+        );
+      }
+      folderId = match[1];
+    }
 
     const KNOWN_SOURCE_TYPES = ['recording', 'transcript', 'sop', 'process_doc', 'policy', 'checklist', 'reference', 'legacy_unspecified', 'other'];
     if (sourceTypeArg != null && !KNOWN_SOURCE_TYPES.includes(sourceTypeArg)) {
@@ -71,10 +86,26 @@ Deno.serve(async (req) => {
     const filesRes = await fetch(filesUrl, { headers: authHeader });
     if (!filesRes.ok) {
       const err = await filesRes.text();
-      return Response.json({ error: 'Failed to list Drive files', details: err }, { status: 500 });
+      return Response.json({ error: 'Could not read that Google Drive folder. Check the link, or make sure the folder is shared with the connected Google account.', details: err }, { status: 500 });
     }
 
     const { files } = await filesRes.json();
+
+    // A folder that doesn't exist (or isn't shared with the connected
+    // account) silently returns an empty list — surface a clear error instead
+    // of reporting "nothing to sync".
+    if (folderId && !(files || []).length) {
+      const folderRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id`,
+        { headers: authHeader }
+      );
+      if (!folderRes.ok) {
+        return Response.json(
+          { error: "We couldn't open that Google Drive folder. Check the folder ID, and make sure the folder is shared with the connected Google account, then try again." },
+          { status: 400 },
+        );
+      }
+    }
     console.log(`Found ${(files || []).length} files in folder`);
     console.log('Files:', JSON.stringify((files || []).map(f => ({ name: f.name, mimeType: f.mimeType, id: f.id }))));
 

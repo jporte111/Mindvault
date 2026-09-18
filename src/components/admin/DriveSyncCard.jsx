@@ -28,15 +28,30 @@ export default function DriveSyncCard() {
       : syncScope.startsWith('client:')
         ? { clientId: syncScope.slice('client:'.length) }
         : {};
-    const res = await base44.functions.invoke('syncFromDrive', { folderId: folderId.trim() || undefined, ...scopeArg });
-    setSyncResult(res.data);
-    setSyncing(false);
-    if (res.data.synced > 0) {
-      queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
-      queryClient.invalidateQueries({ queryKey: ['trainings'] });
-      toast.success(`Synced ${res.data.synced} new knowledge source${res.data.synced === 1 ? '' : 's'}!`);
-    } else {
-      toast.info('No new knowledge sources found.');
+    try {
+      const res = await base44.functions.invoke('syncFromDrive', { folderId: folderId.trim() || undefined, ...scopeArg });
+      const data = res?.data ?? {};
+      if (data.error) {
+        setSyncResult({ error: data.error });
+        toast.error(data.error);
+        return;
+      }
+      setSyncResult(data);
+      if (data.synced > 0) {
+        queryClient.invalidateQueries({ queryKey: ['all-trainings'] });
+        queryClient.invalidateQueries({ queryKey: ['trainings'] });
+        toast.success(`Synced ${data.synced} new knowledge source${data.synced === 1 ? '' : 's'}!`);
+      } else {
+        toast.info('No new knowledge sources found.');
+      }
+    } catch (err) {
+      const message =
+        err?.response?.data?.error || err?.data?.error || err?.message ||
+        'Sync failed — please check the folder link and try again.';
+      setSyncResult({ error: message });
+      toast.error(message);
+    } finally {
+      setSyncing(false);
     }
   };
 
