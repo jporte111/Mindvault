@@ -16,7 +16,6 @@ const employeeItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/library', icon: BookOpen, label: 'Knowledge' },
   { path: '/chat', icon: MessageSquare, label: 'AI Assistant' },
-  { path: '/connect', icon: Bot, label: 'Connect AI' },
 ];
 
 // Company administration — six clear areas for the company admin.
