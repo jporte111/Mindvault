@@ -93,7 +93,10 @@ export function useClientSetup() {
   });
 
   const tenant = tenantQuery.data ?? null;
-  const flags = user?.data || {};
+  // Saved setup flags. The profile's extra data can arrive flattened onto the
+  // user object (base44.auth.me()) or nested under .data — read both shapes
+  // so manual steps reflect their persisted state.
+  const flags = { ...(user?.data || {}), ...(user || {}) };
   const manual = {
     company_details: flags[CLIENT_SETUP_MANUAL_FLAGS.company_details] === true,
     test_mindvault: flags[CLIENT_SETUP_MANUAL_FLAGS.test_mindvault] === true,
