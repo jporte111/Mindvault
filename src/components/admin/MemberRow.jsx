@@ -3,12 +3,37 @@ import { Button } from '@/components/ui/button';
 import { UserMinus, UserPlus, Mail } from 'lucide-react';
 import DeleteMemberButton from './DeleteMemberButton';
 
+// Plain-language invite state under a pending member, so a failed, expired,
+// or canceled invitation is never silent.
+function inviteNote(invite) {
+  if (!invite) return { text: 'Invitation not sent yet', tone: 'warn' };
+  if (invite.status === 'expired') return { text: 'Invitation expired — resend a new one', tone: 'warn' };
+  if (invite.status === 'revoked') return { text: 'Invitation canceled', tone: 'muted' };
+  if (invite.status === 'pending') {
+    if (!invite.delivered) return { text: 'Invitation email failed to send', tone: 'bad' };
+    const expiry = invite.expires_at ? new Date(invite.expires_at) : null;
+    return {
+      text: expiry ? `Invitation email sent · expires ${expiry.toLocaleDateString()}` : 'Invitation email sent',
+      tone: 'ok',
+    };
+  }
+  return null;
+}
+
+const NOTE_TONES = {
+  ok: 'text-emerald-600 dark:text-emerald-400',
+  bad: 'text-destructive',
+  warn: 'text-amber-600 dark:text-amber-400',
+  muted: 'text-muted-foreground/70',
+};
+
 // One tenant-member row: role select + revoke / reactivate. All actions run
 // through the manageTenantMembers backend function — the UI never writes a
 // TenantMembership row directly.
 export default function MemberRow({ member, onAction, busy }) {
   const isInactive = member.status === 'inactive';
   const isPending = member.status === 'pending';
+  const inviteInfo = isPending ? inviteNote(member.invite) : null;
   const statusStyles = {
     active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-transparent',
     pending: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-transparent',
@@ -22,6 +47,9 @@ export default function MemberRow({ member, onAction, busy }) {
           {member.display_name || member.email}
         </p>
         <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+        {inviteInfo ? (
+          <p className={`text-xs mt-0.5 ${NOTE_TONES[inviteInfo.tone]}`}>{inviteInfo.text}</p>
+        ) : null}
       </div>
 
       <Badge variant="outline" className={`w-fit ${statusStyles[member.status] || ''}`}>

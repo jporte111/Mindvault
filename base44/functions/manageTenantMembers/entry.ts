@@ -30,6 +30,23 @@ async function listMembers(base44: any, tenantId: string) {
   const rows = await base44.asServiceRole.entities.TenantMembership.filter({
     tenant_id: tenantId,
   });
+  // Latest invitation per email, so the Team page can show whether an
+  // invite was sent, delivered, expired, or failed — never silently broken.
+  const latestInvite = new Map<string, any>();
+  try {
+    const invites = await base44.asServiceRole.entities.Invitation.filter({
+      tenant_id: tenantId,
+    });
+    for (const inv of invites || []) {
+      const key = String(inv.email || "").toLowerCase();
+      const cur = latestInvite.get(key);
+      if (!cur || String(inv.created_date || "") >= String(cur.created_date || "")) {
+        latestInvite.set(key, inv);
+      }
+    }
+  } catch (_) {
+    // Invite enrichment is display-only — the member list still loads.
+  }
   const enriched = await Promise.all((rows || []).map(async (m: any) => {
     let display_name: string | null = null;
     if (m.user_id) {
@@ -40,7 +57,16 @@ async function listMembers(base44: any, tenantId: string) {
         // User record unreachable — the member's email still displays.
       }
     }
-    return { ...m, display_name };
+    const inv = latestInvite.get(String(m.email || "").toLowerCase()) || null;
+    const invite = inv
+      ? {
+          status: inv.status,
+          sent_at: inv.sent_at || null,
+          expires_at: inv.expires_at || null,
+          delivered: !!inv.email_message_id,
+        }
+      : null;
+    return { ...m, display_name, invite };
   }));
   return enriched.sort(
     (a: any, b: any) =>

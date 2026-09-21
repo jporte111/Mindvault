@@ -71,7 +71,7 @@ export default function TenantMembersManager() {
       if (message) throw new Error(message);
       clearRecentAppError();
       recordAppAction({ action: label, page: 'Team', section: 'Team members' });
-      return true;
+      return res?.data || true;
     } catch (e) {
       const message = e?.response?.data?.error || e?.message || 'Something went wrong';
       recordAppError({
@@ -93,8 +93,16 @@ export default function TenantMembersManager() {
     const trimmed = email.trim();
     if (!trimmed) { toast.error('Enter an email address'); return; }
     setInviting(true);
-    const ok = await callApi({ action: 'invite', email: trimmed, app_role: appRole });
-    if (ok) { setEmail(''); refresh(); }
+    const data = await callApi({ action: 'invite', email: trimmed, app_role: appRole });
+    if (data) {
+      setEmail('');
+      refresh();
+      if (data.email_error) {
+        toast.error(`Invitation email failed: ${data.email_error}`);
+      } else if (data.email_mocked) {
+        toast.info('Email is in test mode — the invitation was not actually emailed.');
+      }
+    }
     setInviting(false);
   };
 

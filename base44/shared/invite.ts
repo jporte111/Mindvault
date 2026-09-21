@@ -226,10 +226,13 @@ export async function createAndSendInvitation(
 
   let send: { id: string; mocked: boolean };
   try {
-    send = await sendTransactionalEmail(email, rendered);
+    send = await sendTransactionalEmail(base44, email, rendered);
   } catch (err) {
+    // Record the REAL error so a failed send is diagnosable from the audit
+    // trail, not just "Email send failed".
+    const reason = String((err as any)?.message || err || "unknown error").slice(0, 300);
     await writeAudit(base44, invitation.id, "invite_send_failed", input.invitedByUserId || null,
-      `Email send failed for ${maskEmail(email)}`);
+      `Email send failed for ${maskEmail(email)}: ${reason}`);
     throw err;
   }
 

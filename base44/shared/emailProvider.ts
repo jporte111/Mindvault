@@ -4,14 +4,15 @@
 // SAFE BY DEFAULT: nothing leaves the system unless ALL of these hold —
 //   INVITE_EMAIL_MODE === 'live'   (exact string)
 //   INVITE_ESP_API_KEY is set
-//   INVITE_FROM is set             (e.g. "MindVault <invite@send.mindvault.app>")
+//   INVITE_FROM is set
 // Otherwise every send is recorded to an in-memory outbox and returns a
 // `mock-…` id. Development and tests never send real mail.
 //
-// Base44's own Core.SendEmail cannot be used here: it is plain-text only,
-// its from-address is Base44-controlled, and it only delivers to already-
-// registered users — an invitee is not one yet. So a real send is a direct
-// fetch to a domain-verified provider (Resend-compatible payload).
+// A LIVE send goes through the platform's real email API (Core.SendEmail),
+// which owns the from address and provider delivery, and reaches invitees
+// who are not yet registered users. When it refuses a send, the real
+// provider error is thrown — and the invite flow records it in the audit
+// trail — so a failed send is never silent.
 
 export interface RenderedEmail {
   subject: string;
@@ -82,8 +83,11 @@ function randomId(): string {
 /**
  * Send one transactional email. In mock mode (the default) it records the
  * message and returns `{ id: 'mock-…', mocked: true }` — no network call.
+ * In live mode it sends through the platform's real email API and surfaces
+ * the provider's real error when the send is refused.
  */
 export async function sendTransactionalEmail(
+  base44: any,
   to: string,
   rendered: RenderedEmail,
 ): Promise<EmailSendResult> {
@@ -103,25 +107,25 @@ export async function sendTransactionalEmail(
     return { id: rec.id, mocked: true };
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env("INVITE_ESP_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env("INVITE_FROM"),
+  let res: any;
+  try {
+    res = await base44.integrations.Core.SendEmail({
       to: recipient,
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`email provider responded ${res.status}`);
+    });
+  } catch (err: any) {
+    const detail = String(
+      err?.response?.data?.error || err?.data?.error || err?.message || err || "unknown error",
+    );
+    throw new Error(`Email API refused the send to ${recipient}: ${detail}`);
   }
-  const data = await res.json().catch(() => ({} as any));
-  return { id: (data && data.id) || "sent", mocked: false };
+  const data = (res?.data ?? res) || {};
+  const providerId = data?.id || data?.message_id;
+  // A non-mock id proves the send actually reached the platform's email
+  // API; 'sent-…' is only a fallback when the API returns no message id.
+  return { id: providerId ? String(providerId) : `sent-${randomId()}`, mocked: false };
 }
 
 // ---------------------------------------------------------------------------
