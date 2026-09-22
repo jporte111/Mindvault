@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { redact } from '../../shared/redact.ts';
 import { buildMindvaultLifecycle } from '../../shared/mindvaultLifecycle.ts';
+import { waitUntil } from 'base44:runtime';
+import { exportSourceToDropbox } from '../../shared/dropboxExport.ts';
 
 // Phase 6. The single authoritative path for lifecycle-critical mutations of a
 // knowledge source version. A thin HTTP shell over the reusable lifecycle
@@ -107,6 +109,16 @@ Deno.serve(async (req) => {
       return Response.json(
         { ok: false, error: result.error, reason: result.reason, ...(diag ? { operationId: result.operationId } : {}) },
         { status },
+      );
+    }
+
+    if (result.ok && action === 'activate') {
+      // Save the published PDF to the company Dropbox. Best-effort and
+      // post-response: a Dropbox failure never fails the publication.
+      waitUntil(
+        exportSourceToDropbox(base44, versionId).catch((e: unknown) =>
+          console.error('reviewKnowledgeSource: dropbox export failed:', redact(String(e))),
+        ),
       );
     }
 

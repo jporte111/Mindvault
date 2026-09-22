@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { redact } from '../../shared/redact.ts';
 import { buildMindvaultLifecycle, MINDVAULT_CONTENT_FIELDS } from '../../shared/mindvaultLifecycle.ts';
+import { waitUntil } from 'base44:runtime';
+import { exportSourceToDropbox } from '../../shared/dropboxExport.ts';
 
 // One-click verification of a published knowledge source. Runs the SAME
 // governed engine steps a human would run in the Knowledge Lifecycle panel:
@@ -137,6 +139,14 @@ Deno.serve(async (req) => {
 
     const a = await engine.activate(actor, draftId, {});
     if (!a.ok) return stepFail('publish', a);
+
+    // Save the published PDF to the company Dropbox. Best-effort and
+    // post-response: a Dropbox failure never fails the publication.
+    waitUntil(
+      exportSourceToDropbox(base44, draftId).catch((e: unknown) =>
+        console.error('verifyKnowledgeSource: dropbox export failed:', redact(String(e))),
+      ),
+    );
 
     return Response.json({
       ok: true,
