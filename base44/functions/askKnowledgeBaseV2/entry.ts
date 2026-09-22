@@ -599,6 +599,7 @@ Deno.serve(async (req) => {
         const gapSecret = Deno.env.get('GAP_HMAC_SECRET');
         if (
           flags.autoGap &&
+          !!user?.id &&
           gapSecret && gapSecret.trim() &&
           ((op.operational_status === 'PARTIAL' && op.missingFacets.length > 0) ||
             (op.operational_status === 'INSUFFICIENT' && ranked.length > 0))
