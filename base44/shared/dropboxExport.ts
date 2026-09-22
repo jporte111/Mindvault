@@ -7,7 +7,7 @@ import { redact } from './redact.ts';
 // published version of every source. Business language only — no internal
 // lifecycle terminology in the document itself.
 
-const DROPBOX_FOLDER = '/MindVault';
+const DROPBOX_FOLDER = '/Namaste/ADMIN';
 const MARGIN = 48;
 const PAGE_BOTTOM = 842 - MARGIN; // A4, points
 
