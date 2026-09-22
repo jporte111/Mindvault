@@ -502,18 +502,7 @@
     "title"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.tenant_id": "{{user.data.tenant_id}}"
-        }
-      ]
-    },
+    "read": true,
     "create": {
       "user_condition": {
         "role": "admin"
