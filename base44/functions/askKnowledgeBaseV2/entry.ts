@@ -285,8 +285,11 @@ Deno.serve(async (req) => {
   const startedAt = Date.now();
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Link-accessible app: anonymous visitors may also ask questions.
+    // Retrieval, generation, and logging run as the service role; the
+    // signed-in user is only used for gap-evidence reporter identity,
+    // which is skipped when there is none.
+    const user = await base44.auth.me().catch(() => null);
 
     const body = await req.json().catch(() => ({}));
     const question = (body?.question || '').toString().trim();

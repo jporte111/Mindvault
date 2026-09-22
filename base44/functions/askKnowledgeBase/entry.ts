@@ -3,11 +3,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Link-accessible app: anonymous visitors may also ask questions.
+    // Everything below reads and generates as the service role, so no
+    // signed-in user is required.
 
     const { question } = await req.json();
     if (!question) {
