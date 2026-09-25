@@ -5,9 +5,16 @@ import {
   classifyEdit,
   MINDVAULT_CONTENT_FIELDS,
   MINDVAULT_INPLACE_METADATA_FIELDS,
+  MINDVAULT_SUPERFICIAL_FIELDS,
   trainingToVersion,
 } from '../../shared/mindvaultLifecycle.ts';
 import { isOpenDraftCandidate } from '../../shared/lifecycle/stateMachine.ts';
+import { waitUntil } from 'base44:runtime';
+import {
+  deleteDropboxPdf,
+  dropboxPathForSource,
+  exportSourceToDropbox,
+} from '../../shared/dropboxExport.ts';
 
 // Phase 6. The ONLY content-editing entry point for a governed knowledge source.
 // It is NOT an in-place editor:
@@ -22,6 +29,18 @@ import { isOpenDraftCandidate } from '../../shared/lifecycle/stateMachine.ts';
 async function lifecycleEnabled(base44: any): Promise<boolean> {
   const rows = await base44.asServiceRole.entities.AppConfig.filter({ key: 'system' }).catch(() => []);
   return rows?.[0]?.source_lifecycle_enabled === true;
+}
+
+// After an in-place rename of a published source, keep the Dropbox backup in
+// sync: re-save the PDF under the new name and delete the old-named copy so
+// the folder keeps exactly one current PDF per source. Best-effort only.
+async function refreshRenamedPdf(base44: any, trainingId: string, oldTitle: string) {
+  const t = await base44.asServiceRole.entities.Training.get(trainingId).catch(() => null);
+  if (!t) return;
+  const exp = await exportSourceToDropbox(base44, trainingId);
+  if (!exp.ok) return;
+  const oldPath = dropboxPathForSource({ ...t, title: oldTitle });
+  if (oldPath !== exp.dropboxPath) await deleteDropboxPdf(base44, oldPath);
 }
 
 Deno.serve(async (req) => {
@@ -61,10 +80,11 @@ Deno.serve(async (req) => {
     const training = await T.get(trainingId).catch(() => null);
     if (!training) return Response.json({ error: 'Training not found' }, { status: 404 });
 
-    // ---- metadata-only: in-place governed restamp on the active version -----
+    // ---- metadata-only or superficial (e.g. a rename): in-place governed
+    // restamp on the active version — no draft, verification unchanged. -----
     if (kind === 'metadata') {
       const meta: Record<string, unknown> = {};
-      for (const k of MINDVAULT_INPLACE_METADATA_FIELDS) {
+      for (const k of [...MINDVAULT_INPLACE_METADATA_FIELDS, ...MINDVAULT_SUPERFICIAL_FIELDS]) {
         if (k in rawPatch) meta[k] = (rawPatch as Record<string, unknown>)[k];
       }
       const mp: any = { denorm: {} };
@@ -73,10 +93,28 @@ Deno.serve(async (req) => {
       if ('knowledge_scope' in meta || 'client_id' in meta) {
         mp.scopeKey = `${meta.knowledge_scope ?? training.knowledge_scope ?? 'unclassified'}:${meta.client_id ?? training.client_id ?? ''}`;
       }
-      for (const k of ['source_authority', 'operational_process_id', 'department', 'source_review_interval_days', 'client_name']) {
+      for (const k of ['source_authority', 'operational_process_id', 'department', 'source_review_interval_days', 'client_name', 'title']) {
         if (k in meta) mp.denorm[k] = meta[k];
       }
       const res = await engine.setMetadata(actor, trainingId, mp);
+      if (res.ok && 'title' in meta) {
+        const renamed = String(meta.title ?? '') !== String(training.title ?? '');
+        if (
+          renamed &&
+          training.is_active_version !== false &&
+          training.is_archived !== true &&
+          training.verification_status === 'verified'
+        ) {
+          // The published PDF is re-saved under the new name (old copy
+          // removed) after the response — a Dropbox hiccup never fails the
+          // rename itself.
+          waitUntil(
+            refreshRenamedPdf(base44, trainingId, String(training.title ?? '')).catch((e: unknown) =>
+              console.error('updateKnowledgeSource: dropbox refresh failed:', redact(String(e))),
+            ),
+          );
+        }
+      }
       return res.ok
         ? Response.json({ ok: true, mode: 'metadata', displayState: res.displayState, ...(diag ? { operationId: res.operationId } : {}) })
         : Response.json({ ok: false, error: res.error, reason: res.reason }, { status: res.error === 'stale_state' ? 409 : res.error === 'invalid_effective_window' ? 400 : 422 });

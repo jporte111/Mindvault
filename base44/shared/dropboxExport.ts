@@ -20,6 +20,33 @@ function sanitizeFilename(s: string): string {
   return cleaned || 'Untitled source';
 }
 
+/** The stable Dropbox path a source's PDF lives at. One file per logical
+ *  source (lineage id suffix keeps same-named sources from overwriting each
+ *  other; re-publishes overwrite the old PDF with the newest version). */
+export function dropboxPathForSource(t: any): string {
+  const shortId = String(t.root_source_id || t.id).slice(-6);
+  return `${DROPBOX_FOLDER}/${sanitizeFilename(t.title)} - ${shortId}.pdf`;
+}
+
+/** Best-effort removal of one old PDF path (after a rename). Never throws. */
+export async function deleteDropboxPdf(base44: any, dropboxPath: string): Promise<boolean> {
+  try {
+    const { accessToken } = await base44.asServiceRole.connectors.getConnection('dropbox');
+    if (!accessToken) return false;
+    const res = await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ path: dropboxPath }),
+    });
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 function buildSourcePdf(t: any): ArrayBuffer {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const maxW = doc.internal.pageSize.getWidth() - MARGIN * 2;
@@ -147,11 +174,7 @@ export async function exportSourceToDropbox(
   const { accessToken } = await base44.asServiceRole.connectors.getConnection('dropbox');
   if (!accessToken) return { ok: false, error: 'dropbox_not_connected' };
 
-  // One stable filename per logical source (lineage id suffix keeps
-  // same-named sources from overwriting each other; re-publishes overwrite
-  // the old PDF with the newest version).
-  const shortId = String(t.root_source_id || t.id).slice(-6);
-  const dropboxPath = `${DROPBOX_FOLDER}/${sanitizeFilename(t.title)} - ${shortId}.pdf`;
+  const dropboxPath = dropboxPathForSource(t);
 
   // Make sure the folder exists; an existing folder is fine.
   await fetch('https://api.dropboxapi.com/2/files/create_folder_v2', {

@@ -55,7 +55,8 @@ export async function runLifecycleAction(action, versionId, extra = {}) {
 
 // Content / metadata edit — always routes through updateKnowledgeSource, which
 // forks an unverified draft for an active version and never edits served
-// content in place. Returns { ok, mode, draftId?, displayState, error? }.
+// content in place. Superficial changes (a rename) and metadata apply in place
+// without touching verification. Returns { ok, mode, draftId?, displayState, error? }.
 export async function saveKnowledgeEdit(trainingId, patch, changeReason) {
   return unwrap(base44.functions.invoke('updateKnowledgeSource', { trainingId, patch, changeReason }));
 }

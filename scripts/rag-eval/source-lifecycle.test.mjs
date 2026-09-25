@@ -16,6 +16,7 @@ import {
   versionPatchToTraining,
   MINDVAULT_CONTENT_FIELDS,
   MINDVAULT_INPLACE_METADATA_FIELDS,
+  MINDVAULT_SUPERFICIAL_FIELDS,
   buildMindvaultLifecycle,
 } from '../../base44/shared/mindvaultLifecycle.ts';
 
@@ -29,7 +30,9 @@ const readEntity = (n) => JSON.parse(readFileSync(resolve(repo, `base44/entities
 test('classifyEdit: content fields fork; metadata fields restamp; mixed is refused', () => {
   assert.equal(classifyEdit({ summary: 'x' }), 'content');
   assert.equal(classifyEdit({ sop_steps: [] }), 'content');
-  assert.equal(classifyEdit({ title: 'x' }), 'content');
+  assert.equal(classifyEdit({ title: 'x' }), 'metadata'); // display-only rename -> in place
+  assert.equal(classifyEdit({ title: 'x', summary: 'y' }), 'content'); // rename rides along on the draft
+  assert.equal(classifyEdit({ title: 'x', department: 'd' }), 'metadata');
   assert.equal(classifyEdit({ effective_from: 'x' }), 'metadata');
   assert.equal(classifyEdit({ source_authority: 'policy' }), 'metadata');
   assert.equal(classifyEdit({ operational_process_id: 'p1' }), 'metadata');
@@ -37,9 +40,11 @@ test('classifyEdit: content fields fork; metadata fields restamp; mixed is refus
   assert.equal(classifyEdit({ presenter: 'x' }), 'none'); // not governed
 });
 
-test('content and metadata field lists do not overlap', () => {
+test('content and metadata field lists do not overlap; superficial fields are display-only', () => {
   const c = new Set(MINDVAULT_CONTENT_FIELDS);
   for (const m of MINDVAULT_INPLACE_METADATA_FIELDS) assert.equal(c.has(m), false, `${m} is in both lists`);
+  // superficial fields stay on the content carry-list (drafts must copy them)
+  for (const s of MINDVAULT_SUPERFICIAL_FIELDS) assert.equal(c.has(s), true, `${s} left the content carry-list`);
 });
 
 // ======================================================================

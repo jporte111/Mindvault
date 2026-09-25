@@ -83,13 +83,30 @@ export const MINDVAULT_INPLACE_METADATA_FIELDS = [
   "client_name",
 ] as const;
 
+// Superficial, display-only fields. They never feed chunk CONTENT — a title
+// rename only re-stamps the denormalized title copy on the chunks and the
+// business PDF — so a patch touching ONLY these mutates the ACTIVE version in
+// place through the same verified-restamp path as metadata: the new name shows
+// immediately, verification is unchanged, and no draft is forked. When such a
+// patch also carries a real content field, the rename simply rides along on
+// the forked draft. (title stays in MINDVAULT_CONTENT_FIELDS so forked drafts
+// and the chunk scope-stamp keep carrying it.)
+export const MINDVAULT_SUPERFICIAL_FIELDS = [
+  "title",
+] as const;
+
 export function classifyEdit(patch: Record<string, unknown>): "content" | "metadata" | "mixed" | "none" {
   const keys = Object.keys(patch || {});
-  const content = keys.some((k) => (MINDVAULT_CONTENT_FIELDS as readonly string[]).includes(k));
+  const sup = MINDVAULT_SUPERFICIAL_FIELDS as readonly string[];
+  // A real content field must fork a draft. A superficial rename in the same
+  // patch simply rides along on that draft; metadata mixed with content is
+  // still refused (split the patch).
+  const content = keys.some(
+    (k) => (MINDVAULT_CONTENT_FIELDS as readonly string[]).includes(k) && !sup.includes(k),
+  );
   const meta = keys.some((k) => (MINDVAULT_INPLACE_METADATA_FIELDS as readonly string[]).includes(k));
-  if (content && meta) return "mixed";
-  if (content) return "content";
-  if (meta) return "metadata";
+  if (content) return meta ? "mixed" : "content";
+  if (meta || keys.some((k) => sup.includes(k))) return "metadata";
   return "none";
 }
 

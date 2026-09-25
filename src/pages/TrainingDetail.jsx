@@ -22,7 +22,9 @@ import { saveKnowledgeEdit } from '@/lib/knowledgeLifecycle';
 
 // Fields that feed KnowledgeChunk generation — edits to these go through the
 // governed path (updateKnowledgeSource), which forks an unverified draft for a
-// published version and never edits served content in place. Non-content
+// published version and never edits served content in place. The title is
+// display-only: a rename applies directly to the published version without
+// affecting its verification. Non-content
 // fields (presenter, video_url…) still save directly.
 const CONTENT_FIELDS = new Set([
   'title', 'summary', 'key_takeaways', 'sop_steps', 'decision_rules',
