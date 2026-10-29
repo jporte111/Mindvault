@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import TrainingCard from '@/components/knowledge/TrainingCard';
 import EmptyState from '@/components/common/EmptyState';
 import { isCurrentLiveVersion } from '@/lib/sourceStatus';
@@ -9,6 +8,7 @@ import { BookOpen, Search, ChevronDown, Download, Upload } from 'lucide-react';
 import SubmitRecordingModal from '@/components/knowledge/SubmitRecordingModal';
 import { Button } from '@/components/ui/button';
 import PullToRefresh from '@/components/layout/PullToRefresh';
+import { listKnowledgeSources } from '@/lib/scopedData';
 
 const TOPIC_CATEGORIES = ['Bookkeeping', 'Payroll', 'Tax Prep', 'Reconciliation', 'Reporting', 'Cash Flow', 'Entity Management', 'Client Communication', 'Operations', 'Compliance', 'Troubleshooting', 'Other'];
 const CLIENT_SEGMENTS = ['Small Business', 'High-Net-Worth Household', 'Both', 'Internal Only'];
@@ -57,7 +57,7 @@ export default function Library() {
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ['trainings'],
-    queryFn: () => base44.entities.Training.list('-created_date'),
+    queryFn: () => listKnowledgeSources({ sort: '-created_date' }),
   });
 
   // Only the current version of each source — retired historical versions and

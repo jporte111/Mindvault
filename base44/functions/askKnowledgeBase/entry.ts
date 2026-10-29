@@ -1,11 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { resolveTenantContext, TenantAuthError } from '../../shared/tenant.ts';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    // Link-accessible app: anonymous visitors may also ask questions.
-    // Everything below reads and generates as the service role, so no
-    // signed-in user is required.
+    // EMERGENCY GATE (production hotfix). Chat reads and generates as the
+    // service role, so refuse anonymous callers and anyone without an ACTIVE
+    // membership in an ACTIVE tenant before any data is touched. Platform
+    // admins keep access. Retrieval scope is unchanged (single organization
+    // today); tenant-isolated retrieval ships separately.
+    let ctx;
+    try {
+      ctx = await resolveTenantContext(base44);
+    } catch (e) {
+      const status = e instanceof TenantAuthError ? e.status : 401;
+      return Response.json({ error: status === 401 ? 'Unauthorized' : 'Forbidden' }, { status });
+    }
+    if (!ctx.hasTenantAccess) {
+      return Response.json({ error: 'Forbidden — no active workspace membership' }, { status: 403 });
+    }
+    if (!ctx.isSuperAdmin) {
+      const tenant = ctx.tenantId ? await base44.asServiceRole.entities.Tenant.get(ctx.tenantId).catch(() => null) : null;
+      if (!tenant || (tenant.status && tenant.status !== 'active')) {
+        return Response.json({ error: 'Forbidden — workspace is not active' }, { status: 403 });
+      }
+    }
 
     const { question } = await req.json();
     if (!question) {

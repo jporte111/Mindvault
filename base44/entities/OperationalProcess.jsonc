@@ -4,7 +4,7 @@
   "properties": {
     "tenant_id": {
       "type": "string",
-      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 reads require an exact match with the user's tenant stamp. All member writes (create/update/delete) go through the manageOperationalProcess backend function, which verifies the authoritative TenantMembership record server-side and never trusts this field from a request payload."
+      "description": "Owning tenant id (Tenant record). THE tenant isolation key \u2014 direct entity access (read and write) is admin-only; tenant members read through the listOperationalProcesses backend function, which scopes by the authoritative TenantMembership record. All member writes (create/update/delete) go through the manageOperationalProcess backend function, which verifies the authoritative TenantMembership record server-side and never trusts this field from a request payload."
     },
     "name": {
       "type": "string",
@@ -103,16 +103,9 @@
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.tenant_id": "{{user.data.tenant_id}}"
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "create": {
       "user_condition": {

@@ -93,7 +93,7 @@ test('flag: additive only — no existing flag semantics, required, or RLS chang
   assert.equal(appConfig.properties.knowledge_health_enabled.default, false);
   assert.deepEqual(appConfig.rls, {
     create: { user_condition: { role: 'admin' } },
-    read: true,
+    read: { user_condition: { role: 'admin' } },
     update: { user_condition: { role: 'admin' } },
     delete: { user_condition: { role: 'admin' } },
   });

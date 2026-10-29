@@ -30,6 +30,7 @@ export interface TenantContext {
   tenantId: string | null; // authoritative tenant id from TenantMembership
   appRole: string | null; // 'client_admin' | 'client_user' | null
   hasTenantAccess: boolean; // super admin OR active membership
+  membershipActive: boolean; // the resolved membership itself is ACTIVE
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {
@@ -72,6 +73,7 @@ export async function resolveTenantContext(base44: any): Promise<TenantContext> 
     tenantId: membership?.tenant_id || null,
     appRole: membership?.app_role || null,
     hasTenantAccess: isSuperAdmin || membership?.status === "active",
+    membershipActive: membership?.status === "active",
   };
 }
 
@@ -166,6 +168,50 @@ export async function requireTenantMemberScope(
   if (!ctx.hasTenantAccess || !ctx.tenantId || ctx.appRole !== APP_ROLE_CLIENT_USER && ctx.appRole !== APP_ROLE_CLIENT_ADMIN) {
     throw new TenantAuthError(403, "Forbidden — no active tenant membership");
   }
+  return { isSuperAdmin: false, tenantId: ctx.tenantId, appRole: ctx.appRole };
+}
+
+/** The tenant must exist and be ACTIVE. Unknown -> 400; suspended/archived
+ *  -> 403. (Same contract as the staging/Release A helper.) */
+export async function assertActiveTenant(base44: any, tenantId: string): Promise<void> {
+  const t = await base44.asServiceRole.entities.Tenant.get(tenantId).catch(() => null);
+  if (!t) throw new TenantAuthError(400, "Unknown tenant");
+  if (t.status && t.status !== "active") {
+    throw new TenantAuthError(403, `This workspace is ${t.status}`);
+  }
+}
+
+/**
+ * Read access for the scoped read functions (knowledge sources, clients,
+ * workspace profile, settings). Same refusals as the chat gate:
+ * anonymous -> 401; platform admins pass (tenantId = their own ACTIVE
+ * membership tenant, else null); everyone else needs an ACTIVE membership in
+ * an active workspace (403 when none / pending / inactive / suspended, 400
+ * when the workspace is unknown). The tenant comes ONLY from TenantMembership
+ * — never the profile stamp or the request body. Production has no workspace
+ * selection: `_workspaceId` is accepted for call compatibility and ignored.
+ */
+export async function requireReadAccess(
+  base44: any,
+  _workspaceId?: string | null,
+): Promise<{ isSuperAdmin: boolean; tenantId: string | null; appRole: string | null }> {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.id) throw new TenantAuthError(401, "Unauthorized");
+  const ctx = await resolveTenantContext(base44);
+  if (ctx.isSuperAdmin) {
+    return { isSuperAdmin: true, tenantId: ctx.membershipActive ? ctx.tenantId : null, appRole: ctx.appRole };
+  }
+  if (!ctx.membershipActive || !ctx.tenantId) {
+    throw new TenantAuthError(403, "Forbidden — no active tenant membership");
+  }
+  // No workspace selection exists in production: a member of several
+  // workspaces is refused rather than silently scoped to whichever active row
+  // the query returns first.
+  const active = await base44.asServiceRole.entities.TenantMembership.filter({ user_id: ctx.userId, status: "active" });
+  if (new Set((active || []).map((m: any) => m.tenant_id).filter(Boolean)).size > 1) {
+    throw new TenantAuthError(409, "workspace_selection_required: you belong to more than one workspace");
+  }
+  await assertActiveTenant(base44, ctx.tenantId);
   return { isSuperAdmin: false, tenantId: ctx.tenantId, appRole: ctx.appRole };
 }
 

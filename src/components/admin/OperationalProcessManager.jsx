@@ -33,6 +33,7 @@ import {
   SCOPE_UNCLASSIFIED,
   CLIENT_PREFIX,
 } from '@/lib/operationalProcess';
+import { listMyClients } from '@/lib/scopedData';
 
 const selectClass =
   'h-11 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
@@ -183,7 +184,7 @@ export default function OperationalProcessManager() {
       return res?.data?.processes ?? res?.processes ?? [];
     },
   });
-  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => listMyClients() });
 
   // People options for owner / SME / backup SME (shared with the source-page
   // owner picker — src/hooks/useAssignableUsers.js).

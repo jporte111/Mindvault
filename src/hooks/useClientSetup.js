@@ -11,6 +11,7 @@ import {
   clientSetupRequiredComplete,
   CLIENT_SETUP_MANUAL_FLAGS,
 } from '@/lib/clientSetup';
+import { getMyWorkspace, listKnowledgeSources } from '@/lib/scopedData';
 
 // Resolve the caller's OWN workspace from their authoritative membership
 // tenant id — never 'the first tenant in the list'. A platform Super Admin
@@ -18,8 +19,8 @@ import {
 // different company's record.
 async function fetchMyTenant(tenantId) {
   if (!tenantId) return null;
-  const rows = await base44.entities.Tenant.filter({ id: tenantId });
-  return rows?.[0] ?? null;
+  // Server-resolved from the caller's own verified membership.
+  return getMyWorkspace();
 }
 
 /**
@@ -84,12 +85,18 @@ export function useClientSetup() {
   const sourcesQuery = useQuery({
     queryKey: ['client-setup-sources'],
     enabled: dataEnabled,
-    queryFn: async () => (await base44.entities.Training.list('-created_date')) ?? null,
+    queryFn: async () => (await listKnowledgeSources({ sort: '-created_date' })) ?? null,
   });
+  // OperationalProcess RLS is admin-only. Read through the scoped backend
+  // function, which resolves the tenant from TenantMembership and applies
+  // client-scope visibility — never a direct entity read.
   const processesQuery = useQuery({
     queryKey: ['client-setup-processes'],
     enabled: dataEnabled,
-    queryFn: async () => (await base44.entities.OperationalProcess.list()) ?? null,
+    queryFn: async () => {
+      const res = await base44.functions.invoke('listOperationalProcesses');
+      return res?.data?.processes ?? null;
+    },
   });
 
   const tenant = tenantQuery.data ?? null;

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { assertActiveTenant, requireTenantAdminScope, TenantAuthError } from '../../shared/tenant.ts';
 import {
   assessIngestionQuality,
   buildPass1Prompt,
@@ -32,17 +33,31 @@ function optPosNum(v: unknown): number | undefined {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { trainingId } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const trainingId = body?.trainingId;
     console.log('analyzeTraining received trainingId:', trainingId);
     if (!trainingId) return Response.json({ error: 'trainingId is required' }, { status: 400 });
 
+    // Platform admins, or an ACTIVE client admin of the source's own (active)
+    // tenant — the same people who may create sources. A source of another
+    // tenant — or a legacy untagged one, for anyone but a platform admin —
+    // gets the same 404 as a missing one. Checked before anything is written;
+    // the read uses the service role because Training direct reads are
+    // admin-only.
+    const isPlatformAdmin = user.role === 'admin';
+    const scope = isPlatformAdmin ? null : await requireTenantAdminScope(base44, null);
+    if (scope) await assertActiveTenant(base44, scope.tenantId);
+    const access = { isSuperAdmin: isPlatformAdmin, tenantId: scope?.tenantId ?? null };
+
     // 1. Fetch the knowledge source record
-    const training = await base44.entities.Training.get(trainingId);
+    const training = await base44.asServiceRole.entities.Training.get(trainingId).catch(() => null);
+    if (!training || (!access.isSuperAdmin && (!training.tenant_id || training.tenant_id !== access.tenantId))) {
+      return Response.json({ error: 'Training not found' }, { status: 404 });
+    }
     console.log('Fetched record — title:', training?.title, '| id:', training?.id, '| source_type:', training?.source_type);
-    if (!training) return Response.json({ error: 'Training not found' }, { status: 404 });
 
     // ---- Phase 6 PERMANENT SAFETY INVARIANT ---------------------------------
     // AI extraction must NEVER overwrite a SERVED governed source in place —
@@ -209,6 +224,9 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, reanalysis_target: decision.kind });
   } catch (error) {
+    if (error instanceof TenantAuthError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

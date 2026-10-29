@@ -3,11 +3,11 @@ import { BookOpen, MessageSquare, ArrowRight, Sparkles, Users } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import PullToRefresh from '@/components/layout/PullToRefresh';
 import { useTenantRole } from '@/hooks/useTenantRole';
 import AdminOverview from '@/components/admin/AdminOverview';
 import { Loader2 } from 'lucide-react';
+import { listKnowledgeSources } from '@/lib/scopedData';
 
 export default function Home() {
   const { user } = useOutletContext() || {};
@@ -16,7 +16,7 @@ export default function Home() {
 
   const { data: trainings = [] } = useQuery({
     queryKey: ['trainings-count'],
-    queryFn: () => base44.entities.Training.list(),
+    queryFn: () => listKnowledgeSources(),
   });
 
   const readyCount = trainings.filter(t => t.status === 'ready').length;

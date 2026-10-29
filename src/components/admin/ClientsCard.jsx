@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,22 +7,25 @@ import { Badge } from '@/components/ui/badge';
 import { Users, Loader2, Archive, ArchiveRestore } from 'lucide-react';
 import { toast } from 'sonner';
 import DeleteClientButton from '@/components/admin/DeleteClientButton';
+import { listKnowledgeSources, listMyClients, manageClient } from '@/lib/scopedData';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 
 // Client list management — add, archive/restore, and delete the clients
 // that client-specific knowledge can be scoped to. Shared by the company
 // Knowledge page and the platform admin panel.
 export default function ClientsCard() {
   const queryClient = useQueryClient();
+  const isPlatformAdmin = useIsAdmin();
   const [newClient, setNewClient] = useState('');
   const [addingClient, setAddingClient] = useState(false);
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
-    queryFn: () => base44.entities.Client.list('name'),
+    queryFn: () => listMyClients(),
   });
   const { data: trainings = [] } = useQuery({
     queryKey: ['all-trainings'],
-    queryFn: () => base44.entities.Training.list('-created_date'),
+    queryFn: () => listKnowledgeSources({ sort: '-created_date' }),
   });
 
   const invalidate = () => {
@@ -37,7 +39,7 @@ export default function ClientsCard() {
     if (!name) return;
     setAddingClient(true);
     try {
-      await base44.entities.Client.create({ name, status: 'active' });
+      await manageClient({ action: 'create', name });
       setNewClient('');
       invalidate();
       toast.success(`Client "${name}" added`);
@@ -50,7 +52,9 @@ export default function ClientsCard() {
 
   const toggleArchive = async (client) => {
     try {
-      await base44.entities.Client.update(client.id, {
+      await manageClient({
+        action: 'update',
+        clientId: client.id,
         status: client.status === 'archived' ? 'active' : 'archived',
       });
       invalidate();
@@ -91,17 +95,23 @@ export default function ClientsCard() {
               <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="flex-1 text-sm text-foreground truncate">{c.name}</span>
                 {c.status === 'archived' && <Badge variant="outline" className="text-xs text-muted-foreground">Archived</Badge>}
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground" onClick={() => toggleArchive(c)}>
-                  {c.status === 'archived' ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-                  {c.status === 'archived' ? 'Restore' : 'Archive'}
-                </Button>
-                <DeleteClientButton
-                  client={c}
-                  linkedCount={trainings.filter(
-                    (t) => t.knowledge_scope === 'client-specific' && t.client_id === c.id,
-                  ).length}
-                  onDeleted={invalidate}
-                />
+                {/* Legacy clients without a workspace are managed by platform admins only (the server refuses others). */}
+                {!c.tenant_id && !isPlatformAdmin ? (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">Shared (legacy)</Badge>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground" onClick={() => toggleArchive(c)}>
+                      {c.status === 'archived' ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                      {c.status === 'archived' ? 'Restore' : 'Archive'}
+                    </Button>
+                    <DeleteClientButton
+                      client={c}
+                      // Same rule as the server: any source referencing the client blocks deletion.
+                      linkedCount={trainings.filter((t) => t.client_id === c.id).length}
+                      onDeleted={invalidate}
+                    />
+                  </>
+                )}
               </div>
             ))}
           </div>

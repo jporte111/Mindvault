@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +14,7 @@ import {
   fetchSourceHistory,
   runReconcile,
 } from '@/lib/knowledgeLifecycle';
+import { listKnowledgeSources } from '@/lib/scopedData';
 
 const TONE_CLASS = {
   ok: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -54,7 +54,7 @@ export default function KnowledgeLifecyclePanel() {
 
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ['all-trainings'],
-    queryFn: () => base44.entities.Training.list('-created_date'),
+    queryFn: () => listKnowledgeSources({ sort: '-created_date' }),
   });
 
   const { data: history } = useQuery({

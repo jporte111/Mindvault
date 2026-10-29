@@ -7,8 +7,8 @@ import {
 
 // Guarded OperationalProcess writes for the multi-tenant model.
 //
-// The entity's RLS allows member READS within their own tenant and reserves
-// direct writes for the Base44 admin (Super Admin). Client Admins (Base44 role
+// The entity's RLS reserves ALL direct access (read and write) for the Base44
+// admin (Super Admin); members read via listOperationalProcesses. Client Admins (Base44 role
 // 'user' + TenantMembership.app_role 'client_admin') perform all writes here,
 // where authorization comes from the AUTHORITATIVE TenantMembership record —
 // never from user profile stamps or request payloads.

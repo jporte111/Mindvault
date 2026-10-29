@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import { CLIENT_PREFIX, SCOPE_GENERAL, SCOPE_UNCLASSIFIED } from '@/lib/knowledgeScope';
+import { listMyClients } from '@/lib/scopedData';
 
 // Scope picker for a training / recording. Value is one of:
 //   "unclassified" | "general" | "client:<id>"
@@ -13,7 +13,7 @@ export default function ClientSelect({
 }) {
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
-    queryFn: () => base44.entities.Client.list('name'),
+    queryFn: () => listMyClients(),
   });
 
   const active = clients.filter((c) => c.status !== 'archived');

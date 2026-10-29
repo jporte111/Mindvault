@@ -1,6 +1,5 @@
 import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useTenantRole } from '@/hooks/useTenantRole';
 import { useHashScroll } from '@/hooks/useHashScroll';
@@ -9,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import CompanyDetailsForm from '@/components/onboarding/CompanyDetailsForm';
 import TenantMembersManager from '@/components/admin/TenantMembersManager';
 import TenantLogoMark from '@/components/common/TenantLogoMark';
+import { getMyWorkspace } from '@/lib/scopedData';
 
 // Company & Team — company details and branding, invitations, and member
 // roles/permissions in one place. Company details are managed by the
@@ -105,8 +105,7 @@ function CompanyDetailsWrapper() {
     enabled: !!membership,
     staleTime: 60 * 1000,
     queryFn: async () => {
-      const rows = await base44.entities.Tenant.filter({ id: membership.tenant_id });
-      return rows?.[0] ?? null;
+      return getMyWorkspace();
     },
   });
 

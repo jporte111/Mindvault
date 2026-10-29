@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bot, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getAppSettings } from '@/lib/scopedData';
 
 export const CHAT_CONFIG_KEY = 'chat';
 export const SYSTEM_CONFIG_KEY = 'system';
@@ -14,10 +15,10 @@ export const SYSTEM_CONFIG_KEY = 'system';
 export function useChatConfig() {
   const { data } = useQuery({
     queryKey: ['app-config', CHAT_CONFIG_KEY],
-    queryFn: async () => {
-      const rows = await base44.entities.AppConfig.filter({ key: CHAT_CONFIG_KEY });
-      return rows[0] || null;
-    },
+    // AppConfig direct reads are admin-only: getAppSettings returns the full
+    // row to platform admins (the toggles update it by id) and only the
+    // member allowlist to everyone else.
+    queryFn: async () => (await getAppSettings())[CHAT_CONFIG_KEY] || null,
   });
   const rm = data?.retrieval_mode;
   return {
@@ -34,10 +35,7 @@ export function useChatConfig() {
 export function useSystemConfig() {
   const { data } = useQuery({
     queryKey: ['app-config', SYSTEM_CONFIG_KEY],
-    queryFn: async () => {
-      const rows = await base44.entities.AppConfig.filter({ key: SYSTEM_CONFIG_KEY });
-      return rows[0] || null;
-    },
+    queryFn: async () => (await getAppSettings())[SYSTEM_CONFIG_KEY] || null,
   });
   return {
     row: data || null,

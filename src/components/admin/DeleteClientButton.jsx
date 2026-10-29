@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -14,6 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { manageClient } from '@/lib/scopedData';
 
 // Permanently deletes a client record. Safety rule: if any knowledge is
 // currently classified as client-specific to this client, deletion is
@@ -27,7 +27,7 @@ export default function DeleteClientButton({ client, linkedCount, onDeleted }) {
   const doDelete = async () => {
     setBusy(true);
     try {
-      await base44.entities.Client.delete(client.id);
+      await manageClient({ action: 'delete', clientId: client.id });
       toast.success(`Client "${client.name}" deleted`);
       onDeleted?.();
     } catch (err) {

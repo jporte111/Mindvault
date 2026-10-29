@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +15,7 @@ import {
   scopeValueOf,
 } from '@/lib/knowledgeScope';
 import { sourceStatus, SOURCE_STATUS_ORDER } from '@/lib/sourceStatus';
+import { listKnowledgeSources, listMyClients } from '@/lib/scopedData';
 
 const TONE_CLASS = {
   red: 'bg-red-50 border-red-200 text-red-700',
@@ -37,11 +37,11 @@ export default function SourceStatusList() {
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
-    queryFn: () => base44.entities.Client.list('name'),
+    queryFn: () => listMyClients(),
   });
   const { data: trainings = [], isLoading } = useQuery({
     queryKey: ['all-trainings'],
-    queryFn: () => base44.entities.Training.list('-created_date'),
+    queryFn: () => listKnowledgeSources({ sort: '-created_date' }),
   });
 
   const invalidate = () => {

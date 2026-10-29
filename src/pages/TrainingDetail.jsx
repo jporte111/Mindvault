@@ -19,6 +19,7 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { Workflow } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveKnowledgeEdit } from '@/lib/knowledgeLifecycle';
+import { getKnowledgeSource } from '@/lib/scopedData';
 
 // Fields that feed KnowledgeChunk generation — edits to these go through the
 // governed path (updateKnowledgeSource), which forks an unverified draft for a
@@ -83,7 +84,7 @@ export default function TrainingDetail() {
 
   const { data: training, isLoading } = useQuery({
     queryKey: ['training', id],
-    queryFn: () => base44.entities.Training.get(id),
+    queryFn: () => getKnowledgeSource(id),
   });
 
   const { data: processes = [] } = useQuery({
@@ -116,7 +117,15 @@ export default function TrainingDetail() {
 
     // Poll every 5s until status leaves "processing"
     const poll = setInterval(async () => {
-      const updated = await base44.entities.Training.get(id);
+      let updated;
+      try {
+        updated = await getKnowledgeSource(id);
+      } catch {
+        // No longer visible (or the request failed): stop polling quietly.
+        clearInterval(poll);
+        setReanalyzing(false);
+        return;
+      }
       // Directly update the cache so the UI reflects fresh data immediately
       queryClient.setQueryData(['training', id], updated);
       queryClient.invalidateQueries({ queryKey: ['trainings'] });

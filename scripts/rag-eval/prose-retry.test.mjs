@@ -146,6 +146,11 @@ function makeSdk({ proseFailures = 0, clientMention = null } = {}) {
       integrations: { Core: { InvokeLLM: invoke } },
       entities: {
         Client: { get: async (id) => ({ id, name: 'JLM' }) },
+        // The chat gate requires an active membership in an active tenant.
+        TenantMembership: {
+          filter: async (q) => (q.user_id === 'user-1' ? [{ id: 'm-1', user_id: 'user-1', tenant_id: 'T', status: 'active', app_role: 'client_user' }] : []),
+        },
+        Tenant: { get: async (id) => (id === 'T' ? { id: 'T', status: 'active' } : null) },
         AppConfig: {
           filter: async (q) =>
             q?.key === 'chat'

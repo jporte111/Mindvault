@@ -18,6 +18,7 @@ import {
   SUPPORTED_UPLOAD_HINT,
   formatFromFilename,
 } from '@/lib/knowledgeSource';
+import { listMyClients } from '@/lib/scopedData';
 
 const hasSupportedExtension = (name = '') =>
   SUPPORTED_UPLOAD_EXTENSIONS.some((ext) => String(name).toLowerCase().endsWith(ext));
@@ -35,7 +36,7 @@ export default function UploadTraining() {
   const [sourceType, setSourceType] = useState('');
   const fileInputRef = useRef();
   const queryClient = useQueryClient();
-  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => base44.entities.Client.list('name') });
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => listMyClients() });
 
   // A platform Super Admin must choose which team's workspace this upload
   // targets — the backend requires an explicit tenant for the write.

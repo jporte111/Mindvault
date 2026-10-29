@@ -502,7 +502,11 @@
     "title"
   ],
   "rls": {
-    "read": true,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "create": {
       "user_condition": {
         "role": "admin"

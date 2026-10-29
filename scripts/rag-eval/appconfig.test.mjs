@@ -19,7 +19,7 @@ test('retrieval_mode is auto|lexical|semantic, default auto', () => {
   assert.equal(props.retrieval_mode.default, 'auto');
 });
 
-test('AppConfig writes are admin-only; read stays open', () => {
+test('AppConfig reads and writes are admin-only (members read the allowlist via getAppSettings)', () => {
   assert.ok(schema.rls, 'AppConfig has no rls block — any authenticated user could flip retrieval_mode');
   for (const op of ['create', 'update', 'delete']) {
     assert.deepEqual(
@@ -28,8 +28,9 @@ test('AppConfig writes are admin-only; read stays open', () => {
       `AppConfig.rls.${op} is not admin-gated`,
     );
   }
-  // The Chat page reads AppConfig for engine routing as any authenticated user.
-  assert.equal(schema.rls.read, true, 'AppConfig read must remain open for the Chat page');
+  // The Chat page reads engine routing through getAppSettings (member
+  // allowlist); direct reads would expose every administrative switch.
+  assert.deepEqual(schema.rls.read, { user_condition: { role: 'admin' } }, 'AppConfig direct read must be admin-only');
 });
 
 test('existing chat-engine fields are untouched by this change', () => {

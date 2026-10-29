@@ -8,6 +8,7 @@ import ClientSelect from '@/components/knowledge/ClientSelect';
 import { useAuth } from '@/lib/AuthContext';
 import { useChatConfig, useSystemConfig } from '@/components/admin/ChatEngineToggle';
 import { CLIENT_PREFIX, SCOPE_GENERAL } from '@/lib/knowledgeScope';
+import { listKnowledgeSources } from '@/lib/scopedData';
 
 // Stable 0-99 bucket for a user id, for canary rollout.
 function bucketFor(id) {
@@ -41,7 +42,7 @@ export default function Chat() {
   }, [clientScope]);
 
   useEffect(() => {
-    base44.entities.Training.filter({ status: 'ready' })
+    listKnowledgeSources({ status: 'ready' })
       .then((rows) => setHasContent(rows.length > 0))
       .catch(() => setHasContent(true));
   }, []);
