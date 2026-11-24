@@ -78,7 +78,8 @@ export default function Roadmap() {
 
       toast.success(`Strategy analysis complete! ${data1.pain_points_found} pain points, ${data1.workflow_patterns_found} workflows, ${data1.decision_rules_found} decision rules, ${data2.clusters_found} clusters, recommendation: ${data3.confidence_level} confidence.`);
     } catch (err) {
-      toast.error('Strategy analysis failed: ' + (err?.message || 'Unknown error'));
+      const msg = err?.response?.data?.error || err?.data?.error || err?.message || 'Unknown error';
+      toast.error('Strategy analysis failed: ' + msg);
     } finally {
       setRunning(false);
       setStrategyPhase('');

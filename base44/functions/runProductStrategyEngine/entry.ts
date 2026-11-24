@@ -8,6 +8,34 @@ function clampScore(v, fallback) {
   return Math.max(1, Math.min(5, Math.round(n)));
 }
 
+// Stored field vocabularies (must match the entity schemas). The model
+// sometimes answers with a near-miss ("HNW", "Internal ", "Critical") and a
+// single out-of-vocabulary value used to fail the whole phase with a 500, so
+// every enum is coerced before it is written.
+const CLIENT_SEGMENTS = ['Small Business', 'High-Net-Worth Household', 'Both', 'Internal Only'];
+const FACINGS = ['Internal', 'Client-Facing', 'Both'];
+const PRIORITIES = ['High', 'Medium', 'Low'];
+
+function asText(v) {
+  if (typeof v === 'string') return v.trim();
+  return v == null ? '' : String(v);
+}
+
+function asArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function pickEnum(v, allowed, fallback) {
+  const s = asText(v).toLowerCase();
+  if (!s) return fallback;
+  return allowed.find((a) => a.toLowerCase() === s) || fallback;
+}
+
+function safeCount(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+}
+
 function extractJson(text) {
   if (!text) return null;
   if (typeof text !== 'string') return text;
@@ -67,12 +95,22 @@ async function getReadyTrainings(base44) {
 }
 
 async function callLLM(base44, prompt) {
-  const res = await base44.asServiceRole.integrations.Core.InvokeLLM({
-    model: 'gemini_3_flash',
-    prompt,
-  });
-  const raw = typeof res === 'string' ? res : (res?.response || res?.output || JSON.stringify(res));
-  return extractJson(raw);
+  // One retry: a provider hiccup or rate limit used to fail the entire run.
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await base44.asServiceRole.integrations.Core.InvokeLLM({
+        model: 'gemini_3_flash',
+        prompt,
+      });
+      const raw = typeof res === 'string' ? res : (res?.response || res?.output || JSON.stringify(res));
+      return extractJson(raw);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+  throw lastError;
 }
 
 Deno.serve(async (req) => {
@@ -118,38 +156,52 @@ Return a JSON object (no markdown, no code fences) with three arrays:
 Training digests:
 ${digestText}`);
 
-      const painPointRecords = (data?.recurring_pain_points || []).map(p => ({
-        name: p.name,
-        description: p.description,
-        client_segment: p.client_segment,
-        related_training_ids: mapIndicesToIds(p.related_training_indices),
-        frequency_count: p.frequency_count || 2,
-        severity_score: clampScore(p.severity_score, 3),
-        first_seen_date: now,
-        last_seen_date: now,
-        supporting_evidence_summary: p.supporting_evidence_summary,
-      }));
-      const workflowRecords = (data?.workflow_patterns || []).map(w => ({
-        name: w.name,
-        description: w.description,
-        workflow_type: w.workflow_type,
-        client_segment: w.client_segment,
-        related_training_ids: mapIndicesToIds(w.related_training_indices),
-        frequency_count: w.frequency_count || 2,
-        automation_potential_score: clampScore(w.automation_potential_score, 3),
-        complexity_score: clampScore(w.complexity_score, 3),
-        supporting_evidence_summary: w.supporting_evidence_summary,
-      }));
-      const decisionRuleRecords = (data?.decision_rule_patterns || []).map(d => ({
-        rule_name: d.rule_name,
-        rule_description: d.rule_description,
-        example_if_then_rule: d.example_if_then_rule,
-        client_segment: d.client_segment,
-        related_training_ids: mapIndicesToIds(d.related_training_indices),
-        frequency_count: d.frequency_count || 2,
-        judgment_dependency_score: clampScore(d.judgment_dependency_score, 3),
-        supporting_evidence_summary: d.supporting_evidence_summary,
-      }));
+      const painPointRecords = asArray(data?.recurring_pain_points)
+        .map(p => ({
+          name: asText(p.name),
+          description: asText(p.description),
+          client_segment: pickEnum(p.client_segment, CLIENT_SEGMENTS, 'Both'),
+          related_training_ids: mapIndicesToIds(p.related_training_indices),
+          frequency_count: safeCount(p.frequency_count, 2),
+          severity_score: clampScore(p.severity_score, 3),
+          first_seen_date: now,
+          last_seen_date: now,
+          supporting_evidence_summary: asText(p.supporting_evidence_summary),
+        }))
+        .filter(r => r.name);
+      const workflowRecords = asArray(data?.workflow_patterns)
+        .map(w => ({
+          name: asText(w.name),
+          description: asText(w.description),
+          workflow_type: asText(w.workflow_type),
+          client_segment: pickEnum(w.client_segment, CLIENT_SEGMENTS, 'Both'),
+          related_training_ids: mapIndicesToIds(w.related_training_indices),
+          frequency_count: safeCount(w.frequency_count, 2),
+          automation_potential_score: clampScore(w.automation_potential_score, 3),
+          complexity_score: clampScore(w.complexity_score, 3),
+          supporting_evidence_summary: asText(w.supporting_evidence_summary),
+        }))
+        .filter(r => r.name);
+      const decisionRuleRecords = asArray(data?.decision_rule_patterns)
+        .map(d => ({
+          rule_name: asText(d.rule_name),
+          rule_description: asText(d.rule_description),
+          example_if_then_rule: asText(d.example_if_then_rule),
+          client_segment: pickEnum(d.client_segment, CLIENT_SEGMENTS, 'Both'),
+          related_training_ids: mapIndicesToIds(d.related_training_indices),
+          frequency_count: safeCount(d.frequency_count, 2),
+          judgment_dependency_score: clampScore(d.judgment_dependency_score, 3),
+          supporting_evidence_summary: asText(d.supporting_evidence_summary),
+        }))
+        .filter(r => r.rule_name);
+
+      // Never wipe the previous results for an unusable model response.
+      if (!painPointRecords.length && !workflowRecords.length && !decisionRuleRecords.length) {
+        return Response.json(
+          { error: 'The pattern analysis returned no usable results. Your existing strategy data was kept — please try again.' },
+          { status: 502 },
+        );
+      }
 
       await base44.asServiceRole.entities.RecurringPainPoint.deleteMany({});
       await base44.asServiceRole.entities.WorkflowPattern.deleteMany({});
@@ -214,28 +266,37 @@ ${workflowNames.length ? workflowNames.map((n, i) => `${i + 1}. ${n}`).join('\n'
 Decision rule patterns identified:
 ${decisionRuleNames.length ? decisionRuleNames.map((n, i) => `${i + 1}. ${n}`).join('\n') : 'None identified yet'}`);
 
-      const clusterRecords = (data?.product_opportunity_clusters || []).map(c => ({
-        cluster_name: c.cluster_name,
-        description: c.description,
-        related_feature_ideas: c.related_feature_ideas || [],
-        related_pain_points: c.related_pain_points || [],
-        related_workflow_patterns: c.related_workflow_patterns || [],
-        related_decision_rules: c.related_decision_rules || [],
-        client_segment: c.client_segment,
-        facing: c.facing,
-        internal_need_score: clampScore(c.internal_need_score, 3),
-        AI_estimated_market_demand_score: clampScore(c.AI_estimated_market_demand_score, 3),
-        business_fit_score: clampScore(c.business_fit_score, 3),
-        defensibility_score: clampScore(c.defensibility_score, 3),
-        implementation_complexity_score: clampScore(c.implementation_complexity_score, 3),
-        overall_opportunity_score: clampScore(c.overall_opportunity_score, 3),
-        priority: c.priority || 'Medium',
-        priority_reason: c.priority_reason,
-        related_training_ids: mapIndicesToIds(c.related_training_indices),
-        frequency_count: c.frequency_count || 1,
-        supporting_evidence_summary: c.supporting_evidence_summary,
-        last_updated_date: now,
-      }));
+      const clusterRecords = asArray(data?.product_opportunity_clusters)
+        .map(c => ({
+          cluster_name: asText(c.cluster_name),
+          description: asText(c.description),
+          related_feature_ideas: asArray(c.related_feature_ideas),
+          related_pain_points: asArray(c.related_pain_points),
+          related_workflow_patterns: asArray(c.related_workflow_patterns),
+          related_decision_rules: asArray(c.related_decision_rules),
+          client_segment: pickEnum(c.client_segment, CLIENT_SEGMENTS, 'Both'),
+          facing: pickEnum(c.facing, FACINGS, 'Both'),
+          internal_need_score: clampScore(c.internal_need_score, 3),
+          AI_estimated_market_demand_score: clampScore(c.AI_estimated_market_demand_score, 3),
+          business_fit_score: clampScore(c.business_fit_score, 3),
+          defensibility_score: clampScore(c.defensibility_score, 3),
+          implementation_complexity_score: clampScore(c.implementation_complexity_score, 3),
+          overall_opportunity_score: clampScore(c.overall_opportunity_score, 3),
+          priority: pickEnum(c.priority, PRIORITIES, 'Medium'),
+          priority_reason: asText(c.priority_reason),
+          related_training_ids: mapIndicesToIds(c.related_training_indices),
+          frequency_count: safeCount(c.frequency_count, 1),
+          supporting_evidence_summary: asText(c.supporting_evidence_summary),
+          last_updated_date: now,
+        }))
+        .filter(r => r.cluster_name);
+
+      if (!clusterRecords.length) {
+        return Response.json(
+          { error: 'The cluster analysis returned no usable results. Your existing strategy data was kept — please try again.' },
+          { status: 502 },
+        );
+      }
 
       await base44.asServiceRole.entities.ProductOpportunityCluster.deleteMany({});
       if (clusterRecords.length) await base44.asServiceRole.entities.ProductOpportunityCluster.bulkCreate(clusterRecords);
@@ -294,29 +355,30 @@ ${decisionRuleNames.length ? decisionRuleNames.join('\n') : 'None identified yet
       const recData = data?.product_recommendation;
       let recommendationRecord = null;
       let additionalTopicsNeeded = '';
-      if (recData) {
+      // A recommendation without a name cannot be stored (required field).
+      if (recData && asText(recData.product_name_idea)) {
         // The LLM sometimes returns a list (or null) here — the entity requires
         // a string, so normalize before writing.
         let topicsNeeded = recData.additional_training_topics_needed;
         if (Array.isArray(topicsNeeded)) topicsNeeded = topicsNeeded.join('; ');
         else if (typeof topicsNeeded !== 'string') topicsNeeded = '';
         recommendationRecord = {
-          product_name_idea: recData.product_name_idea,
-          positioning_statement: recData.positioning_statement,
-          target_users: recData.target_users,
-          main_problem_solved: recData.main_problem_solved,
-          core_modules: recData.core_modules || [],
-          unique_business_advantage: recData.unique_business_advantage,
-          why_hard_to_copy: recData.why_hard_to_copy,
-          competitive_positioning: recData.competitive_positioning,
-          first_version_mvp: recData.first_version_mvp,
-          future_version_roadmap: recData.future_version_roadmap,
-          risks_or_weaknesses: recData.risks_or_weaknesses,
-          data_needed_to_improve_confidence: recData.data_needed_to_improve_confidence,
+          product_name_idea: asText(recData.product_name_idea),
+          positioning_statement: asText(recData.positioning_statement),
+          target_users: asText(recData.target_users),
+          main_problem_solved: asText(recData.main_problem_solved),
+          core_modules: asArray(recData.core_modules),
+          unique_business_advantage: asText(recData.unique_business_advantage),
+          why_hard_to_copy: asText(recData.why_hard_to_copy),
+          competitive_positioning: asText(recData.competitive_positioning),
+          first_version_mvp: asText(recData.first_version_mvp),
+          future_version_roadmap: asText(recData.future_version_roadmap),
+          risks_or_weaknesses: asText(recData.risks_or_weaknesses),
+          data_needed_to_improve_confidence: asText(recData.data_needed_to_improve_confidence),
           additional_training_topics_needed: topicsNeeded,
           confidence_level: confidenceLevel,
           confidence_reason: confidenceReason,
-          related_product_clusters: recData.related_product_clusters || [],
+          related_product_clusters: asArray(recData.related_product_clusters),
           related_training_ids: mapIndicesToIds(recData.related_training_indices),
           last_updated_date: now,
         };
@@ -347,6 +409,10 @@ ${decisionRuleNames.length ? decisionRuleNames.join('\n') : 'None identified yet
 
     return Response.json({ error: 'Unknown phase: ' + phase }, { status: 400 });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('runProductStrategyEngine failed:', error?.message || String(error));
+    return Response.json(
+      { error: error?.message || 'Strategy analysis failed. Please try again.' },
+      { status: 500 },
+    );
   }
 });
