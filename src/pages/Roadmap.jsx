@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Brain, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { isCurrentLiveVersion } from '@/lib/sourceStatus';
 import StrategyDashboard from '@/components/strategy/StrategyDashboard';
 import FeatureIdeasLevel from '@/components/strategy/FeatureIdeasLevel';
 import StrategicOpportunities from '@/components/strategy/StrategicOpportunities';
@@ -41,7 +42,11 @@ export default function Roadmap() {
     queryFn: () => base44.entities.ProductRecommendation.list('-last_updated_date'),
   });
 
-  const analyzedCount = trainings.filter(t => t.status === 'ready' || t.summary).length;
+  // Only current knowledge sources count here — the same set the engine
+  // analyzes. Counting every stored record would include superseded older
+  // versions and archived sources and inflate the number on screen.
+  const currentTrainings = trainings.filter(isCurrentLiveVersion);
+  const analyzedCount = currentTrainings.filter(t => t.status === 'ready' || t.summary).length;
   const recommendation = recommendations[0];
   const hasRunAnalysis = painPoints.length > 0 || clusters.length > 0 || !!recommendation;
 
@@ -194,7 +199,7 @@ export default function Roadmap() {
       {/* Content */}
       <div className="px-8 py-6 max-w-5xl mx-auto">
         {level === 'features' ? (
-          <FeatureIdeasLevel trainings={trainings} isLoading={isLoading} />
+          <FeatureIdeasLevel trainings={currentTrainings} isLoading={isLoading} />
         ) : (
           <StrategicOpportunities
             painPoints={painPoints}

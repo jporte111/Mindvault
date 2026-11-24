@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageCircleQuestion, Send } from 'lucide-react';
+import { MessageCircleQuestion, Send, Loader2 } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { pageLabelFor } from '@/lib/pageLabels';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '@/components/ui/sheet';
@@ -10,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useTenantRole } from '@/hooks/useTenantRole';
 import { useClientSetup, useTenantName } from '@/hooks/useClientSetup';
-import { answerAdminHelpQuestion, getStarterPrompts } from '@/lib/adminHelp';
+import { answerAdminHelpQuestion, getStarterPrompts, INSUFFICIENT_HELP_MESSAGE } from '@/lib/adminHelp';
 import { buildSupportContext } from '@/lib/supportContext';
 
 // The Help AI opens as a side panel without leaving the current page — the
@@ -37,6 +39,7 @@ export default function AdminHelpAssistant() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
+  const [thinking, setThinking] = useState(false);
 
   useEffect(() => {
     const openHelp = () => setOpen(true);
@@ -83,9 +86,17 @@ export default function AdminHelpAssistant() {
   // needs, never a tenant id or membership row.
   const userRole = isAdmin ? 'super_admin' : isClientAdmin ? 'client_admin' : 'client_user';
 
-  const ask = (question) => {
+  const appendMessages = (list) => {
+    setMessages((prev) => {
+      const next = [...prev, ...list];
+      return next.length > MAX_MESSAGES ? next.slice(next.length - MAX_MESSAGES) : next;
+    });
+  };
+
+  const ask = async (question) => {
     const q = String(question || '').trim();
-    if (!q) return;
+    if (!q || thinking) return;
+
     // Context passed to the planner: the current route + hash, derived
     // read-only setup state, the recent conversation turns, and a
     // structured runtime support context (current page/section, role,
@@ -94,36 +105,68 @@ export default function AdminHelpAssistant() {
     // no entity payload, no security-sensitive fields.
     const routeWithHash = `${location.pathname}${location.hash || ''}`;
     const setupCtx = buildSetupContext();
-    const result = answerAdminHelpQuestion(q, {
+    const history = messages.slice(-10).map(({ role, text }) => ({ role, text }));
+    const supportContext = buildSupportContext({
+      route: routeWithHash,
+      userRole,
+      tenantName: tenantName || null,
+      setup: setupCtx
+        ? {
+            progressPct: setupCtx.progressPct,
+            setupComplete: setupCtx.setupComplete,
+            nextItem: setupCtx.nextItem
+              ? { id: undefined, label: setupCtx.nextItem.label }
+              : null,
+            counts: setupCtx.counts,
+            items: setupCtx.items,
+          }
+        : null,
+    });
+
+    // Deterministic local answer: instant, offline-safe, and the source of the
+    // deep-link buttons (it only ever offers allowlisted pages).
+    const local = answerAdminHelpQuestion(q, {
       route: routeWithHash,
       setup: setupCtx,
-      history: messages.slice(-10).map(({ role, text }) => ({ role, text })),
-      supportContext: buildSupportContext({
-        route: routeWithHash,
-        userRole,
-        tenantName: tenantName || null,
-        setup: setupCtx
-          ? {
-              progressPct: setupCtx.progressPct,
-              setupComplete: setupCtx.setupComplete,
-              nextItem: setupCtx.nextItem
-                ? { id: undefined, label: setupCtx.nextItem.label }
-                : null,
-              counts: setupCtx.counts,
-              items: setupCtx.items,
-            }
-          : null,
-      }),
+      history,
+      supportContext,
     });
-    setMessages((prev) => {
-      const next = [
-        ...prev,
-        { role: 'user', text: q },
-        { role: 'assistant', text: result.answer, sources: result.sources, navigation: result.navigation },
-      ];
-      return next.length > MAX_MESSAGES ? next.slice(next.length - MAX_MESSAGES) : next;
-    });
+
     setDraft('');
+    setThinking(true);
+    appendMessages([{ role: 'user', text: q }]);
+
+    let answer = local.answer;
+    let sources = local.sources;
+    let navigation = local.navigation;
+
+    try {
+      // Grounded answer: the MindVault product manual plus THIS workspace's
+      // live numbers, read server-side from the verified membership — never
+      // from this browser.
+      const res = await base44.functions.invoke('askAdminHelp', {
+        question: q,
+        page: routeWithHash,
+        page_label: pageLabelFor(location.pathname),
+        section: supportContext?.currentSection || '',
+        history,
+      });
+      const data = res?.data || res;
+      if (data?.answer && typeof data.answer === 'string') {
+        answer = data.answer.trim();
+        sources = [
+          { id: 'mindvault_support', title: 'MindVault product support' },
+          ...(data.facts_scope ? [{ id: 'live_data', title: 'your live workspace data' }] : []),
+        ];
+        const localMatched = local.answer && local.answer !== INSUFFICIENT_HELP_MESSAGE;
+        navigation = localMatched ? local.navigation : [];
+      }
+    } catch {
+      // Keep the deterministic answer.
+    }
+
+    setThinking(false);
+    appendMessages([{ role: 'assistant', text: answer, sources, navigation }]);
   };
 
   const onSubmit = (e) => {
@@ -151,10 +194,11 @@ export default function AdminHelpAssistant() {
         <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0 gap-0">
           <SheetHeader className="p-4 border-b border-border text-left space-y-1">
             <SheetTitle>MindVault Help</SheetTitle>
-            <SheetDescription>Ask how to set up and use MindVault.</SheetDescription>
+            <SheetDescription>Ask anything about MindVault, your screens and your numbers.</SheetDescription>
             <p className="text-[11px] text-muted-foreground pt-1">
-              This assistant explains MindVault and your setup progress. It does not answer questions
-              from your company knowledge — use the AI Assistant for that.
+              This assistant explains how MindVault works, reads the page you are on, and checks your
+              workspace's live counts. It does not answer questions from your company knowledge — use
+              the AI Assistant for that.
             </p>
           </SheetHeader>
 
@@ -215,6 +259,15 @@ export default function AdminHelpAssistant() {
                   )}
                 </div>
               ))}
+
+              {thinking && (
+                <div className="text-left">
+                  <div className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm bg-muted text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Checking MindVault and your workspace…
+                  </div>
+                </div>
+              )}
             </div>
           </ScrollArea>
 
@@ -231,7 +284,7 @@ export default function AdminHelpAssistant() {
                 }
               }}
             />
-            <Button type="submit" size="icon" disabled={!draft.trim()} aria-label="Send">
+            <Button type="submit" size="icon" disabled={!draft.trim() || thinking} aria-label="Send">
               <Send className="w-4 h-4" />
             </Button>
           </form>
